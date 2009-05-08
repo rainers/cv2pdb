@@ -1,0 +1,12 @@
+
+This is the CHANGES file for cv2pdb, a 
+converter of DMD CodeView debug information to PDB files
+
+Copyright (c) 2009 by Rainer Schuetze, All Rights Reserved
+
+Version history
+---------------
+
+2009-05-08 Version 0.1
+
+  * initial release

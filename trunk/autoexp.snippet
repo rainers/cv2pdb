@@ -1,0 +1,100 @@
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; This file is part cv2pdb, a 
+;; converter of DMD CodeView debug information to PDB files
+;;
+;; written by Rainer Schuetze, placed into the Public Domain
+;;
+;;	 D types
+;; 
+;; add the content of this file to the [AutoExpand] section
+;; of
+;; <Visual Studio Installation Path>\Common7\Package\Debugger\autoexp.dat
+;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; string: dynamic array of char
+const char[]|char[]|string {
+    preview ( 
+ 		  #if ($e.data == 0) ( "null" )
+		  #else ( 
+        #(
+           "[", $e.length, "] ", [$e.data, s]
+        )
+      )
+    )
+    children (
+        #(
+            length: [$e.length, i],
+            data: [$e.data]
+        )
+    )
+}
+
+; dynamic array
+*[] {
+    preview ( 
+ 		  #if ($e.data == 0) ( "null" )
+ 		  #else ( 
+        #(
+          "[", $e.length, "](",
+          #array
+          (
+            expr :	($e.data)[$i],
+            size :	$e.length
+          ),
+          ")"
+        )
+      )
+    )
+    children (
+        #(
+            length: [$e.length, i],
+            #array (
+                expr: $e.data[$i],
+                size: $e.length
+            )
+        )
+    )
+}
+
+;; display associative array
+;;
+aa<*> {
+    preview(
+      #(
+        "[", $e.a->nodes, "] ", [(void*) $e.a]
+      )
+    )
+    children(
+        #(
+            #array (
+                expr: &$e.a->b.data[$i],
+                size: $e.a->b.length
+            ) : 
+            #tree (
+                head : $e,
+                left : left,
+                right : right,
+                ; size : $c.size
+            ) : $e
+              
+        )
+    )
+}
+
+; display tree
+internal@aaA<*,*> {
+    preview(
+      #( "<", $e.key, ", ", $e.value, ">" )
+    )
+}
+
+;; display null references for class objects
+*@* {
+	preview(
+		#( 
+   		#if (&$e == 0) ( "null" )
+   		#else ( [$e,!] )
+   	)
+  )
+}
