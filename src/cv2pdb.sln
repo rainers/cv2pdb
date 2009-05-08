@@ -1,0 +1,20 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 10.00
+# Visual Studio 2008
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "cv2pdb", "cv2pdb.vcproj", "{5E2BD27D-446A-4C99-9829-135F7C000D90}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Win32 = Debug|Win32
+		Release|Win32 = Release|Win32
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{5E2BD27D-446A-4C99-9829-135F7C000D90}.Debug|Win32.ActiveCfg = Debug|Win32
+		{5E2BD27D-446A-4C99-9829-135F7C000D90}.Debug|Win32.Build.0 = Debug|Win32
+		{5E2BD27D-446A-4C99-9829-135F7C000D90}.Release|Win32.ActiveCfg = Release|Win32
+		{5E2BD27D-446A-4C99-9829-135F7C000D90}.Release|Win32.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal

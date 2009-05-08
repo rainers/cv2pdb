@@ -1,0 +1,49 @@
+
+This is the INSTALL file for cv2pdb, a 
+converter of DMD CodeView debug information to PDB files
+
+Copyright (c) 2009 by Rainer Schuetze, All Rights Reserved
+
+Prerequisites
+-------------
+
+For this program to be useful, you should have either Microsoft Visual
+Studio 2005 or 2008 or one of the Express versions installed. cv2pdb 
+uses one of the Microsoft DLLs to actually write the PDB file.
+
+Installation
+------------
+Sorry, there is no full featured installer available yet, you'll have
+to do some simple manual steps to use cv2pdb.
+
+1. The binary package of cv2pdb contains an executable cv2pdb.exe, which
+should be copied somewhere accessible through your PATH environment
+variable.
+
+2. cv2pdb.exe must be able to locate the DLL mspdb80.dll from the Visual
+Studio installation. It reads out the installation path of the latter, but
+if this fails, mspdb80.dll should also be accessible through your PATH 
+environment variable.
+
+3. For best debugging experience, you should configure Visual Studio 
+to use C/C++ syntax highlighting for D files. This is done by
+navigating to the file extensions option page (found in Tools -> Options
+-> Text editor -> File Extensions) and adding extensions "d" and "di"
+with editor "Microsoft Visual C++". This will also enable display of
+variables in the "Auto" watch window.
+
+4. You should also add the contents of the file autoexp.snippet to the 
+[AutoExpand] section of the file autoexp.dat found in 
+<Visual Studio Installation Path>\Common7\Packages\Debugger.
+Please note that in a standard installation of Visual Studio, the
+section [AutoExpand] extends to the bottom of the file but a few lines
+for the section [hresult].
+These lines will enable a convenient display of strings, dynamic arrays, 
+associative arrays and null references.
+
+Building from source
+--------------------
+The source package comes with a Visual Studio 2008 project and solution
+that work with both the Standard and the Express version. These won't
+work in VS2005, but rebuilding the project should be easy.
+
