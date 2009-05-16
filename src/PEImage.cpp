@@ -10,6 +10,7 @@ extern "C" {
 #include "mscvpdb.h"
 }
 
+#include <stdio.h>
 #include <io.h>
 #include <fcntl.h>
 #include <ctype.h>
@@ -59,7 +60,7 @@ bool PEImage::load(const char* iname)
 
 	close(fd);
 	fd = -1;
-	return initPtr();
+	return initPtr(true);
 }
 
 ///////////////////////////////////////////////////////////////////////
@@ -86,17 +87,9 @@ bool PEImage::save(const char* oname)
 ///////////////////////////////////////////////////////////////////////
 bool PEImage::replaceDebugSection (const void* data, int datalen)
 {
-	int align = hdr->OptionalHeader.FileAlignment;
-	int align_len = datalen;
-	int fill = 0;
-	if (align > 0)
-	{
-		fill = (align - (dump_total_len % align)) % align;
-		align_len = ((datalen + align - 1) / align) * align;
-	}
-	char* newdata = (char*) alloc_aligned(dump_total_len + fill + datalen, 0x1000);
-	if(!newdata)
-		return setError("cannot alloc new image");
+	// append new debug directory to data
+	IMAGE_DEBUG_DIRECTORY debugdir = *dbgDir;
+	int xdatalen = datalen + sizeof(debugdir);
 
 	// assume there is place for another section because of section alignment
 	int s;
@@ -104,22 +97,43 @@ bool PEImage::replaceDebugSection (const void* data, int datalen)
 	for(s = 0; s < hdr->FileHeader.NumberOfSections; s++)
 	{
 		if (strcmp ((char*) sec [s].Name, ".debug") == 0)
+		{
+			if (s == hdr->FileHeader.NumberOfSections - 1)
+			{
+				dump_total_len = sec[s].PointerToRawData;
+				break;
+			}
 			strcpy ((char*) sec [s].Name, ".ddebug");
+			printf("warning: .debug not last section, cannot remove section\n");
+		}
 		lastVirtualAddress = sec [s].VirtualAddress + sec[s].Misc.VirtualSize;
 	}
 
-	int salign_len = datalen;
+	int align = hdr->OptionalHeader.FileAlignment;
+	int align_len = xdatalen;
+	int fill = 0;
+
+	if (align > 0)
+	{
+		fill = (align - (dump_total_len % align)) % align;
+		align_len = ((xdatalen + align - 1) / align) * align;
+	}
+	char* newdata = (char*) alloc_aligned(dump_total_len + fill + xdatalen, 0x1000);
+	if(!newdata)
+		return setError("cannot alloc new image");
+
+	int salign_len = xdatalen;
 	align = hdr->OptionalHeader.SectionAlignment;
 	if (align > 0)
 	{
 		lastVirtualAddress = ((lastVirtualAddress + align - 1) / align) * align;
-		salign_len = ((datalen + align - 1) / align) * align;
+		salign_len = ((xdatalen + align - 1) / align) * align;
 	}
 
 	strcpy((char*) sec[s].Name, ".debug");
 	sec[s].Misc.VirtualSize = align_len; // union with PhysicalAddress;
 	sec[s].VirtualAddress = lastVirtualAddress;
-	sec[s].SizeOfRawData = datalen;
+	sec[s].SizeOfRawData = xdatalen;
 	sec[s].PointerToRawData = dump_total_len + fill;
 	sec[s].PointerToRelocations = 0;
 	sec[s].PointerToLinenumbers = 0;
@@ -127,27 +141,33 @@ bool PEImage::replaceDebugSection (const void* data, int datalen)
 	sec[s].NumberOfLinenumbers = 0;
 	sec[s].Characteristics = IMAGE_SCN_MEM_WRITE | IMAGE_SCN_MEM_READ | IMAGE_SCN_MEM_DISCARDABLE | IMAGE_SCN_CNT_INITIALIZED_DATA;
 
-	hdr->FileHeader.NumberOfSections++;
-	hdr->OptionalHeader.SizeOfImage += salign_len;
+	hdr->FileHeader.NumberOfSections = s + 1;
+	// hdr->OptionalHeader.SizeOfImage += salign_len;
+	hdr->OptionalHeader.SizeOfImage = sec[s].VirtualAddress + salign_len;
 
-	dbgDir->PointerToRawData = sec[s].PointerToRawData;
-	dbgDir->AddressOfRawData = sec[s].PointerToRawData;
-	dbgDir->SizeOfData = sec[s].SizeOfRawData;
+	hdr->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_DEBUG].VirtualAddress = lastVirtualAddress + datalen;
 
 	// append debug data chunk to existing file image
 	memcpy(newdata, dump_base, dump_total_len);
 	memset(newdata + dump_total_len, 0, fill);
 	memcpy(newdata + dump_total_len + fill, data, datalen);
 
+	dbgDir = (IMAGE_DEBUG_DIRECTORY*) (newdata + dump_total_len + fill + datalen);
+	memcpy(dbgDir, &debugdir, sizeof(debugdir));
+
+	dbgDir->PointerToRawData = sec[s].PointerToRawData;
+	dbgDir->AddressOfRawData = sec[s].PointerToRawData;
+	dbgDir->SizeOfData = sec[s].SizeOfRawData;
+	
 	free_aligned(dump_base);
 	dump_base = newdata;
-	dump_total_len += fill + datalen;
+	dump_total_len += fill + xdatalen;
 
-	return initPtr();
+	return initPtr(false);
 }
 
 ///////////////////////////////////////////////////////////////////////
-bool PEImage::initPtr()
+bool PEImage::initPtr(bool initDbgDir)
 {
 	dos = DPV<IMAGE_DOS_HEADER> (0);
 	if(!dos)

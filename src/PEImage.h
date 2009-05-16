@@ -58,7 +58,7 @@ public:
 	bool save(const char* oname);
 
 	bool replaceDebugSection (const void* data, int datalen);
-	bool initPtr();
+	bool initPtr(bool initDbgDir);
 
 	int countCVEntries() const;
 	OMFDirEntry* getCVEntry(int i) const;

@@ -33,7 +33,7 @@ SRC = src\cv2pdb.cpp \
 
 ADD = Makefile src\cv2pdb.vcproj src\cv2pdb.sln
 
-DOC = VERSION README INSTALL LICENSE CHANGES autoexp.snippet
+DOC = VERSION README INSTALL LICENSE CHANGES TODO autoexp.snippet
 
 BIN = bin\Release\cv2pdb.exe
 

@@ -10,3 +10,11 @@ Version history
 2009-05-08 Version 0.1
 
   * initial release
+
+2009-05-16 Version 0.2
+
+  * replace .debug section in executable rather than rename it. (only works
+    if it is the last section).
+  * support for field type LF_VFUNCTAB and symbol type S_CONSTANT used by DMC.
+  * added stringview to autoexp.dat for full length text display.
+

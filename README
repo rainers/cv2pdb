@@ -5,7 +5,7 @@ converter of DMD CodeView debug information to PDB files
 Copyright (c) 2009 by Rainer Schuetze, All Rights Reserved
 
 The goal of this project is to make debugging of D applications that
-were created with the Digital Mars DMD compiler, as painless as possible 
+were created with the Digital Mars DMD compiler, as seamless as possible 
 in current versions of Visual Studio (i.e Visual Studio 2008 and 
 VCExpress).
 As a side effect, other applications might also benefit from the 
@@ -45,6 +45,20 @@ See the file INSTALL for further details.
 
 Usage
 -----
+
+Quick start:
+
+Simply run
+
+   cv2pdb debuggee.exe
+
+on your executable to debug and start the debugger, e.g.
+
+   devenv debuggee.exe
+or
+   vcexpress debuggee.exe
+
+Description:
 
 cv2pdb.exe is a command line tool which outputs its usage information
 if run without arguments:
