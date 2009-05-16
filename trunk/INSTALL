@@ -7,9 +7,11 @@ Copyright (c) 2009 by Rainer Schuetze, All Rights Reserved
 Prerequisites
 -------------
 
-For this program to be useful, you should have either Microsoft Visual
-Studio 2005 or 2008 or one of the Express versions installed. cv2pdb 
-uses one of the Microsoft DLLs to actually write the PDB file.
+For this program to be useful, you should have you should have the 
+Digital Mars D Compiler (http://www.digitalmars.com/d/2.0/dmd-windows.html)
+and either Microsoft Visual Studio 2005 or 2008 or one of the Express 
+versions installed. cv2pdb uses one of the Microsoft DLLs to actually
+write the PDB file.
 
 Installation
 ------------
@@ -45,5 +47,5 @@ Building from source
 --------------------
 The source package comes with a Visual Studio 2008 project and solution
 that work with both the Standard and the Express version. These won't
-work in VS2005, but rebuilding the project should be easy.
+work in VS2005, but creating a VS2005 project should be easy.
 

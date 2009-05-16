@@ -22,6 +22,14 @@ const char[]|char[]|string {
         )
       )
     )
+    stringview ( 
+ 		  #if ($e.data == 0) ( "null" )
+		  #else ( 
+        #(
+           [$e.data, s]
+        )
+      )
+    )
     children (
         #(
             length: [$e.length, i],

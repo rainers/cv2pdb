@@ -489,6 +489,18 @@ int CV2PDB::addFields(codeview_reftype* dfieldlist, const codeview_reftype* fiel
 			copylen += strlen(fieldtype->nesttype_v3.name) + 1;
 			break;
 
+		case LF_VFUNCTAB_V1:
+			dfieldtype->vfunctab_v2.id = LF_VFUNCTAB_V2;
+			dfieldtype->vfunctab_v2.type = fieldtype->vfunctab_v1.type;
+			dfieldtype->vfunctab_v2._pad0 = 0;
+			pos  += sizeof(fieldtype->vfunctab_v1);
+			dpos += sizeof(dfieldtype->vfunctab_v2);
+			break;
+
+		case LF_VFUNCTAB_V2:
+			copylen = sizeof(dfieldtype->vfunctab_v2);
+			break;
+
 		default:
 			setError("unsupported field entry");
 			break;
@@ -1773,6 +1785,7 @@ int CV2PDB::copySymbols(BYTE* srcSymbols, int srcSize, BYTE* destSymbols, int de
 {
 	codeview_symbol* lastGProcSym = 0;
 	int type, length, destlength;
+	int leaf_len, value;
 	for (int i = 0; i < srcSize; i += length)
 	{
 		codeview_symbol* sym = (codeview_symbol*)(srcSymbols + i);
@@ -1885,9 +1898,21 @@ int CV2PDB::copySymbols(BYTE* srcSymbols, int srcSize, BYTE* destSymbols, int de
 			destSize += 4;
 			break;
 
+		case S_CONSTANT_V1:
+			dsym->constant_v2.id = v3 ? S_CONSTANT_V3 : S_CONSTANT_V2;
+			dsym->constant_v2.type = sym->constant_v1.type;
+			leaf_len = numeric_leaf(&value, &sym->constant_v1.cvalue);
+			memcpy(&dsym->constant_v2.cvalue, &sym->constant_v1.cvalue, leaf_len);
+			destlength = pstrcpy_v (v3, (BYTE*) &dsym->constant_v2.cvalue + leaf_len, 
+			                            (BYTE*) &sym->constant_v1.cvalue + leaf_len);
+			destlength += sizeof(dsym->constant_v2) - sizeof(dsym->constant_v2.cvalue) + leaf_len;
+			dsym->constant_v2.len = destlength - 2;
+			break;
+
 		case S_ALIGN_V1:
 			continue; // throw away
 			break;
+
 		default:
 			sym = sym;
 			break;

@@ -1,0 +1,25 @@
+
+This is the TODO file for cv2pdb, a 
+converter of DMD CodeView debug information to PDB files
+
+Copyright (c) 2009 by Rainer Schuetze, All Rights Reserved
+
+There are some quirks that you might run into when using 
+Visual Studio to debug D programs. These will hopefully be removed 
+in the future, but not all have a known solution.
+
+* has to use '@' instead of '.' in class names to avoid confusing debugger, 
+  but it looks ugly
+* "this.var" is not a valid debugger expression, you have to use 
+  "var" or "this->var"
+* strings are displayed zero-terminated, not D style (though display 
+  is often ok)
+* global/static vars have to be watched with full module and class name 
+  specified (e.g. module@globvar)
+* type of associative arrays is displayed as aa<*> to allow overload 
+  in autoexp.dat
+* DMD does not emit different debug information for const and invariant, 
+  type info is the same
+* type display of delegate does not have arguments 
+* assoc_array.length cannot be displayed (it is assoc_array.a->length)
+* support DMC debug info?
