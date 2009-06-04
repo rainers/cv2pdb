@@ -446,7 +446,7 @@ int CV2PDB::addFields(codeview_reftype* dfieldlist, const codeview_reftype* fiel
 			break;
 
 		case LF_STMEMBER_V1:
-			dfieldtype->stmember_v2.id = v3 ? LF_METHOD_V3 : LF_METHOD_V2;
+			dfieldtype->stmember_v2.id = v3 ? LF_STMEMBER_V3 : LF_STMEMBER_V2;
 			dfieldtype->stmember_v2.attribute = fieldtype->stmember_v1.attribute;
 			dfieldtype->stmember_v2.type = translateType(fieldtype->stmember_v1.type);
 			pos  += sizeof(dfieldtype->stmember_v1) - sizeof(dfieldtype->stmember_v1.p_name);
@@ -569,6 +569,34 @@ int CV2PDB::addFieldMember(codeview_fieldtype* dfieldtype, int attr, int offset,
 	dfieldtype->member_v2.type = translateType(type);
 	int len = cstrcpy_v(v3, (BYTE*)(&dfieldtype->member_v2 + 1), name);
 	len += sizeof (dfieldtype->member_v2);
+
+	unsigned char* p = (unsigned char*) dfieldtype;
+	for (; len & 3; len++)
+		p[len] = 0xf4 - (len & 3);
+	return len;
+}
+
+int CV2PDB::addFieldStaticMember(codeview_fieldtype* dfieldtype, int attr, int type, const char* name)
+{
+	dfieldtype->stmember_v2.id = v3 ? LF_STMEMBER_V3 : LF_STMEMBER_V2;
+	dfieldtype->stmember_v2.attribute = attr;
+	dfieldtype->stmember_v2.type = translateType(type);
+	int len = cstrcpy_v(v3, (BYTE*)(&dfieldtype->stmember_v2.p_name), name);
+	len += sizeof (dfieldtype->stmember_v2) - sizeof (dfieldtype->stmember_v2.p_name);
+
+	unsigned char* p = (unsigned char*) dfieldtype;
+	for (; len & 3; len++)
+		p[len] = 0xf4 - (len & 3);
+	return len;
+}
+
+int CV2PDB::addFieldNestedType(codeview_fieldtype* dfieldtype, int type, const char* name)
+{
+	dfieldtype->nesttype_v2.id = v3 ? LF_NESTTYPE_V3 : LF_NESTTYPE_V2;
+	dfieldtype->nesttype_v2._pad0 = 0;
+	dfieldtype->nesttype_v2.type = type;
+	int len = cstrcpy_v(v3, (BYTE*)(&dfieldtype->nesttype_v2.p_name), name);
+	len += sizeof (dfieldtype->nesttype_v2) - sizeof(dfieldtype->nesttype_v2.p_name);
 
 	unsigned char* p = (unsigned char*) dfieldtype;
 	for (; len & 3; len++)
@@ -1078,12 +1106,34 @@ const char* CV2PDB::appendDynamicArray(int indexType, int elemType)
 
 	checkUserTypeAlloc();
 
+	static char name[256];
+	nameOfDynamicArray(indexType, elemType, name, sizeof(name));
+
 	// nextUserType: pointer to elemType
 	cbUserTypes += addPointerType(userTypes + cbUserTypes, elemType);
+	int dataptrType = nextUserType++;
+
+	int dstringType = 0;
+	if(strcmp(name, "string") == 0)
+	{
+		// nextUserType + 1: field list (size, array)
+		rdtype = (codeview_reftype*) (userTypes + cbUserTypes);
+		rdtype->fieldlist.id = LF_FIELDLIST_V2;
+		int helpfieldlistType = nextUserType++;
+
+		rdtype->fieldlist.len = 2;
+		cbUserTypes += rdtype->fieldlist.len + 2;
+
+		dtype = (codeview_type*) (userTypes + cbUserTypes);
+		cbUserTypes += addClass(dtype, 2, helpfieldlistType, 0, 0, 0, 0, "string_viewhelper");
+		dstringType = nextUserType++;
+		addUdtSymbol(dstringType, "string_viewhelper");
+	}
 
 	// nextUserType + 1: field list (size, array)
 	rdtype = (codeview_reftype*) (userTypes + cbUserTypes);
 	rdtype->fieldlist.id = LF_FIELDLIST_V2;
+	int fieldlistType = nextUserType++;
 
 	// member indexType length
 	codeview_fieldtype* dfieldtype = (codeview_fieldtype*)rdtype->fieldlist.list;
@@ -1091,20 +1141,24 @@ const char* CV2PDB::appendDynamicArray(int indexType, int elemType)
 	
 	// member elemType* data[]
 	dfieldtype = (codeview_fieldtype*)(rdtype->fieldlist.list + len1);
-	int len2 = addFieldMember(dfieldtype, 1, 4, nextUserType, "data");
+	int len2 = addFieldMember(dfieldtype, 1, 4, dataptrType, "data");
 
+	int numElem = 2;
 	rdtype->fieldlist.len = len1 + len2 + 2;
+
+	if(strcmp(name, "string") == 0)
+	{
+		dfieldtype = (codeview_fieldtype*)(rdtype->fieldlist.list + rdtype->fieldlist.len - 2);
+		rdtype->fieldlist.len = addFieldMember(dfieldtype, 1, 0, dstringType, "__viewhelper");
+		numElem++;
+	}
+
 	cbUserTypes += rdtype->fieldlist.len + 2;
-
-	static char name[256];
-	nameOfDynamicArray(indexType, elemType, name, sizeof(name));
-
-	// nextUserType + 2: struct	
 	dtype = (codeview_type*) (userTypes + cbUserTypes);
-	cbUserTypes += addClass(dtype, 2, nextUserType + 1, 0, 0, 0, 8, name);
+	cbUserTypes += addClass(dtype, numElem, fieldlistType, 0, 0, 0, 8, name);
+	int udType = nextUserType++;
 
-	nextUserType += 3;
-	addUdtSymbol(nextUserType - 1, name);
+	addUdtSymbol(udType, name);
 	return name;
 }
 
@@ -1291,53 +1345,65 @@ int CV2PDB::appendObjectType (int object_derived_type)
 	checkUserTypeAlloc();
 
 	// append object type info
-	int typeNo = nextUserType;
-	codeview_reftype* rdtype = (codeview_reftype*) (userTypes + cbUserTypes);
-	
+	codeview_reftype* rdtype;
+	codeview_type* dtype;
+
+	int viewHelperType = 0;
+	bool addViewHelper = true;
+	if(addViewHelper)
+	{
+		rdtype = (codeview_reftype*) (userTypes + cbUserTypes);
+		rdtype->fieldlist.id = LF_FIELDLIST_V2;
+		int helpfieldlistType = nextUserType++;
+		rdtype->fieldlist.len = 2;
+		cbUserTypes += rdtype->fieldlist.len + 2;
+
+		dtype = (codeview_type*) (userTypes + cbUserTypes);
+		cbUserTypes += addClass(dtype, 2, helpfieldlistType, 0, 0, 0, 0, "object_viewhelper");
+		viewHelperType = nextUserType++;
+		addUdtSymbol(viewHelperType, "object_viewhelper");
+	}
+
 	// vtable
+	rdtype = (codeview_reftype*) (userTypes + cbUserTypes);
 	rdtype->generic.len = 6;
 	rdtype->generic.id = LF_VTSHAPE_V1;
 	((unsigned short*) (&rdtype->generic + 1))[0] = 1;
 	((unsigned short*) (&rdtype->generic + 1))[1] = 0xf150;
 	cbUserTypes += rdtype->generic.len + 2;
+	int vtableType = nextUserType++;
 
 	// vtable*
-	codeview_type* dtype = (codeview_type*) (userTypes + cbUserTypes);
-	dtype->pointer_v2.id = LF_POINTER_V2;
-	dtype->pointer_v2.len = 10;
-	dtype->pointer_v2.datatype = typeNo;
-	dtype->pointer_v2.attribute = 0x800A;
-	cbUserTypes += dtype->generic.len + 2;
+	dtype = (codeview_type*) (userTypes + cbUserTypes);
+	cbUserTypes += addPointerType(dtype, vtableType);
+	int vtablePtrType = nextUserType++;
 
 	// field list
 	rdtype = (codeview_reftype*) (userTypes + cbUserTypes);
 	rdtype->fieldlist.id = LF_FIELDLIST_V2;
+
 	codeview_fieldtype* dfieldtype = (codeview_fieldtype*)rdtype->fieldlist.list;
 	dfieldtype->vfunctab_v2.id = LF_VFUNCTAB_V2; // id correct?
 	dfieldtype->vfunctab_v2._pad0 = 0;
-	dfieldtype->vfunctab_v2.type = typeNo + 1; // vtable*
+	dfieldtype->vfunctab_v2.type = vtablePtrType; // vtable*
 	rdtype->fieldlist.len = sizeof(dfieldtype->vfunctab_v2) + 2;
+	int numElem = 1;
+
+	if(addViewHelper)
+	{
+		dfieldtype = (codeview_fieldtype*)(rdtype->fieldlist.list + rdtype->fieldlist.len - 2);
+		rdtype->fieldlist.len += addFieldMember(dfieldtype, 1, 0, viewHelperType, "__viewhelper");
+		numElem++;
+	}
+
 	cbUserTypes += rdtype->generic.len + 2;
+	int fieldListType = nextUserType++;
 
 #define OBJECT_SYMBOL "object@Object"
 
 	dtype = (codeview_type*) (userTypes + cbUserTypes);
-	dtype->struct_v2.id = v3 ? LF_CLASS_V3 : LF_CLASS_V2;
-	dtype->struct_v2.n_element = 1;
-	dtype->struct_v2.fieldlist = typeNo + 2;
-	dtype->struct_v2.property = 0;
-	dtype->struct_v2.derived = object_derived_type;
-	dtype->struct_v2.vshape = typeNo;
-	dtype->struct_v2.structlen = 4;
-	int len = cstrcpy_v (v3, (BYTE*) (&dtype->struct_v2 + 1), OBJECT_SYMBOL);
-	len += sizeof (dtype->struct_v2);
-	for (; len & 3; len++)
-		userTypes[cbUserTypes + len] = 0xf4 - (len & 3);
-	dtype->struct_v2.len = len - 2;
-	cbUserTypes += dtype->generic.len + 2;
-
-	objectType = typeNo + 3;
-	nextUserType += 4;
+	cbUserTypes += addClass(dtype, numElem, fieldListType, 0, object_derived_type, vtableType, 4, OBJECT_SYMBOL);
+	objectType = nextUserType++;
 
 	addUdtSymbol(objectType, OBJECT_SYMBOL);
 	return objectType;
@@ -1398,7 +1464,7 @@ bool CV2PDB::initGlobalTypes()
 				codeview_reftype* rdtype = (codeview_reftype*) (globalTypes + cbGlobalTypes);
 
 				// for debugging, cancel special processing after the limit
-				unsigned int typeLimit = 0x7fffffff;
+				unsigned int typeLimit = 0x7fffffff; // 0x1ddd; // 
 				if (t > typeLimit)
 				{
 					dtype->pointer_v2.id = LF_POINTER_V2;
@@ -1483,7 +1549,7 @@ bool CV2PDB::initGlobalTypes()
 					len += leaf_len + sizeof(dtype->struct_v2) - sizeof(type->struct_v2.structlen);
 
 					// remember type index of derived list for object.Object
-					if (type->struct_v1.derived)
+					if (Dversion > 0 && type->struct_v1.derived)
 						if (memcmp((char*) &type->struct_v1.structlen + leaf_len, "\x0dobject.Object", 14) == 0)
 							object_derived_type = type->struct_v1.derived;
 					break;
@@ -1503,11 +1569,12 @@ bool CV2PDB::initGlobalTypes()
 				case LF_POINTER_V1:
 					dtype->pointer_v2.id = LF_POINTER_V2;
 					dtype->pointer_v2.datatype = translateType(type->pointer_v1.datatype);
-					if (type->pointer_v1.datatype >= 0x1000 && (type->pointer_v1.attribute & 0xE0) == 0)
+					if (Dversion > 0 && type->pointer_v1.datatype >= 0x1000
+					                 && (type->pointer_v1.attribute & 0xE0) == 0)
 					{
 						if (thisIsNotRef) // const pointer for this
 							pointerTypes[t] = appendPointerType(type->pointer_v1.datatype, 
-																type->pointer_v1.attribute | 0x400);
+							                                    type->pointer_v1.attribute | 0x400);
 						dtype->pointer_v2.attribute = type->pointer_v1.attribute | 0x20; // convert to reference
 					}
 					else
@@ -1611,6 +1678,14 @@ bool CV2PDB::initGlobalTypes()
 					len = sizeof(dtype->modifier_v2);
 					break;
 
+				case LF_BITFIELD_V1:
+					rdtype->bitfield_v2.id = LF_BITFIELD_V2;
+					rdtype->bitfield_v2.nbits = rtype->bitfield_v1.nbits;
+					rdtype->bitfield_v2.bitoff = rtype->bitfield_v1.bitoff;
+					rdtype->bitfield_v2.type = translateType(rtype->bitfield_v1.type);
+					len = sizeof(rdtype->bitfield_v2);
+					break;
+
 				default:
 					memcpy(dtype, type, len);
 					break;
@@ -1624,7 +1699,8 @@ bool CV2PDB::initGlobalTypes()
 			}
 
 #if 1
-			appendObjectType (object_derived_type);
+			if(Dversion > 0)
+				appendObjectType (object_derived_type);
 #endif
 #if 1
 			if (cbGlobalTypes + cbUserTypes > allocGlobalTypes)
@@ -1695,17 +1771,19 @@ bool CV2PDB::addSrcLines()
 
 					int segoff = lnSegStartEnd[2*s];
 					int seglength = lnSegStartEnd[2*s + 1] - segoff;
+					int cnt = sourceLine->cLnOff;
 
-					mspdb::LineInfoEntry* lineInfo = new mspdb::LineInfoEntry[sourceLine->cLnOff];
-					for (int ln = 0; ln < sourceLine->cLnOff; ln++)
+					mspdb::LineInfoEntry* lineInfo = new mspdb::LineInfoEntry[cnt];
+					for (int ln = 0; ln < cnt; ln++)
 					{
 						lineInfo[ln].offset = sourceLine->offset[ln] - segoff;
 						lineInfo[ln].line = lineNo[ln] - lineNo[0];
 					}
 					int rc = mod->AddLines(name, sourceLine->Seg, segoff, seglength, segoff, lineNo[0], 
-					                       (unsigned char*) lineInfo, sourceLine->cLnOff * sizeof(*lineInfo));
+					                       (unsigned char*) lineInfo, cnt * sizeof(*lineInfo));
 					if (rc <= 0)
 						return setError("cannot add line number info to module");
+					delete [] lineInfo;
 				}
 			}
 		}
@@ -1872,6 +1950,23 @@ int CV2PDB::copySymbols(BYTE* srcSymbols, int srcSize, BYTE* destSymbols, int de
 						type = pointerTypes[type - 0x1000];
 				}
 			}
+			else if(Dversion == 0)
+			{
+				int p = -1;
+				for(int i = 0; i < dsym->stack_v1.p_name.namelen; i++)
+					if(dsym->stack_v1.p_name.name[i] == ':')
+						p = i + 1;
+				if(p > 0)
+				{
+					for(int i = p; i < dsym->stack_v1.p_name.namelen; i++)
+						dsym->stack_v1.p_name.name[i - p] = dsym->stack_v1.p_name.name[i];
+					dsym->stack_v1.p_name.namelen -= p;
+					destlength = sizeof(dsym->stack_v1) + dsym->stack_v1.p_name.namelen - 1;
+					for (; destlength & 3; destlength++)
+						destSymbols[destSize + destlength] = 0;
+					dsym->stack_v1.len = destlength - 2;
+				}
+			}
 			dsym->stack_v1.symtype = translateType(type);
 			//sym->stack_v1.symtype = 0x1012;
 			break;
@@ -1889,18 +1984,24 @@ int CV2PDB::copySymbols(BYTE* srcSymbols, int srcSize, BYTE* destSymbols, int de
 		case S_PROCREF_V1:
 		case S_DATAREF_V1:
 		case S_LPROCREF_V1:
-			// dmd does not add a string, but it's not obvious to detect whether it exists or not
-			if (dsym->procref_v1.len != sizeof(dsym->procref_v1) - 4)
-				break;
-			
-			dsym->procref_v1.p_name.namelen = 0;
-			memset (dsym->procref_v1.p_name.name, 0, 3);  // also 4-byte alignment assumed
-			destSize += 4;
+			if(Dversion > 0)
+			{
+				// dmd does not add a string, but it's not obvious to detect whether it exists or not
+				if (dsym->procref_v1.len != sizeof(dsym->procref_v1) - 4)
+					break;
+        			
+				dsym->procref_v1.p_name.namelen = 0;
+				memset (dsym->procref_v1.p_name.name, 0, 3);  // also 4-byte alignment assumed
+				destlength += 4;
+			}
+			else
+				// throw entry away, it's use is unknown anyway, and it causes a lot of trouble
+				destlength = 0;
 			break;
 
 		case S_CONSTANT_V1:
 			dsym->constant_v2.id = v3 ? S_CONSTANT_V3 : S_CONSTANT_V2;
-			dsym->constant_v2.type = sym->constant_v1.type;
+			dsym->constant_v2.type = translateType(sym->constant_v1.type);
 			leaf_len = numeric_leaf(&value, &sym->constant_v1.cvalue);
 			memcpy(&dsym->constant_v2.cvalue, &sym->constant_v1.cvalue, leaf_len);
 			destlength = pstrcpy_v (v3, (BYTE*) &dsym->constant_v2.cvalue + leaf_len, 
