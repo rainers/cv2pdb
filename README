@@ -9,7 +9,7 @@ were created with the Digital Mars DMD compiler, as seamless as possible
 in current versions of Visual Studio (i.e Visual Studio 2008 and 
 VCExpress).
 As a side effect, other applications might also benefit from the 
-converted debug information, like WinDbg. 
+converted debug information, like WinDbg or DMC.
 
 Features
 --------
@@ -19,6 +19,7 @@ Features
 * generates generic debug info for dynamic arrays, associative arrays and delegates
 * autoexp.dat allows convenient display of dynamic and associative arrays in watch windows
 * demangles function names for convenient display of callstack 
+* support for DMC CodeView information 
 
 License information
 -------------------
@@ -63,13 +64,16 @@ Description:
 cv2pdb.exe is a command line tool which outputs its usage information
 if run without arguments:
 
-   usage: cv2pdb [-Dversion] <exe-file> [new-exe-file] [pdb-file]
+   usage: cv2pdb [-Dversion|-C] <exe-file> [new-exe-file] [pdb-file]
 
 With the -D option, you can specify the version of the DMD compiler
 you are using. Unfortunately, this information is not embedded into
 the debug information. The default is -D2. So far, this information 
 is only needed to determine whether "char[]" or "const char[]" is 
-translated to "string".
+translated to "string". 
+Option -C tells the program, that you want to debug a program compiled
+with DMC, the Digital Mars C/C++ compiler. It will disable some of the
+D specific functions and will enable adjustment of stack variable names.
 
 The first file name on the command line is expected to be the executable
 or dynamic library compiled by the DMD compiler and containing the 

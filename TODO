@@ -12,8 +12,6 @@ in the future, but not all have a known solution.
   but it looks ugly
 * "this.var" is not a valid debugger expression, you have to use 
   "var" or "this->var"
-* strings are displayed zero-terminated, not D style (though display 
-  is often ok)
 * global/static vars have to be watched with full module and class name 
   specified (e.g. module@globvar)
 * type of associative arrays is displayed as aa<*> to allow overload 
@@ -21,5 +19,5 @@ in the future, but not all have a known solution.
 * DMD does not emit different debug information for const and invariant, 
   type info is the same
 * type display of delegate does not have arguments 
-* assoc_array.length cannot be displayed (it is assoc_array.a->length)
-* support DMC debug info?
+* assoc_array.length cannot be displayed (it is assoc_array.a->nodes)
+* enum values not displayed

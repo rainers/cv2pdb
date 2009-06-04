@@ -47,6 +47,8 @@ public:
 	int addPointerType(unsigned char* dtype, int type, int attr = 0x800A);
 
 	int addFieldMember(codeview_fieldtype* dfieldtype, int attr, int offset, int type, const char* name);
+	int addFieldStaticMember(codeview_fieldtype* dfieldtype, int attr, int type, const char* name);
+	int addFieldNestedType(codeview_fieldtype* dfieldtype, int type, const char* name);
 
 	void checkUserTypeAlloc(int size = 1000, int add = 10000);
 

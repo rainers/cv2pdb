@@ -6,25 +6,44 @@
 ;;
 ;;	 D types
 ;; 
-;; add the content of this file to the [AutoExpand] section
-;; of
+;; add the content of this file to 
 ;; <Visual Studio Installation Path>\Common7\Package\Debugger\autoexp.dat
 ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; load helper dll dviewhelper.dll to display strings
+;;
+;; add the following 2 lines to the [AutoExpand] section
+;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; [AutoExpand] 
+
+string_viewhelper=$ADDIN(dviewhelper.dll,_DStringView@28)
+object_viewhelper=$ADDIN(dviewhelper.dll,_DObjectView@28)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;	 D types visualizer
+;; 
+;; add the remainder of this file to the [Visualizer] section
+;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; [Visualizer]
+
 ; string: dynamic array of char
 const char[]|char[]|string {
     preview ( 
- 		  #if ($e.data == 0) ( "null" )
-		  #else ( 
+        #if ($e.data == 0) ( "null" )
+        #else ( 
         #(
-           "[", $e.length, "] ", [$e.data, s]
+           "[", $e.length, "] ", [$e.__viewhelper]
+           ;; "[", $e.length, "] ", [$e.data,s]
         )
       )
     )
     stringview ( 
- 		  #if ($e.data == 0) ( "null" )
-		  #else ( 
+        #if ($e.data == 0) ( "null" )
+           #else ( 
         #(
            [$e.data, s]
         )
@@ -85,7 +104,6 @@ aa<*> {
                 right : right,
                 ; size : $c.size
             ) : $e
-              
         )
     )
 }
@@ -99,10 +117,12 @@ internal@aaA<*,*> {
 
 ;; display null references for class objects
 *@* {
-	preview(
-		#( 
-   		#if (&$e == 0) ( "null" )
-   		#else ( [$e,!] )
-   	)
+    preview(
+        #( 
+        #if (&$e == 0) ( "null" )
+   		#else ( #( "[", [$e.__viewhelper], "] ", [$e,!] ) )
+   		;; #else ( #( [$e,!] ) )
+    )
   )
 }
+

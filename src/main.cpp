@@ -101,6 +101,8 @@ int main(int argc, char** argv)
 			break;
 		if (argv[0][1] == 'D')
 			Dversion = strtod (argv[0] + 2, 0);
+		else if (argv[0][1] == 'C')
+			Dversion = 0;
 		else
 			fatal("unknwon option: %s", argv[0]);
 	}

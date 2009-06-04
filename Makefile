@@ -29,13 +29,14 @@ SRC = src\cv2pdb.cpp \
       src\PEImage.cpp \
       src\PEImage.h \
       src\symutil.cpp \
-      src\symutil.h
+      src\symutil.h \
+      src\dviewhelper\dviewhelper.cpp
 
-ADD = Makefile src\cv2pdb.vcproj src\cv2pdb.sln
+ADD = Makefile src\cv2pdb.vcproj src\dviewhelper\dviewhelper.vcproj src\cv2pdb.sln
 
 DOC = VERSION README INSTALL LICENSE CHANGES TODO autoexp.snippet
 
-BIN = bin\Release\cv2pdb.exe
+BIN = bin\Release\cv2pdb.exe bin\Release\dviewhelper.dll
 
 TEST = test\cvtest.d
 
@@ -48,7 +49,7 @@ DOWNLOADS = ..\downloads
 
 $(DOWNLOADS):
 	if not exist $(DOWNLOADS)\nul mkdir $(DOWNLOADS)
-  
+
 ###############################
 SRC_ZIP = $(DOWNLOADS)\cv2pdb_src_$(VERSION).zip
 
