@@ -1079,7 +1079,7 @@ bool CV2PDB::nameOfAssocArray(int indexType, int elemType, char* name, int maxle
 
 bool CV2PDB::nameOfDelegate(int thisType, int funcType, char* name, int maxlen)
 {
-	strcat(name, "delegate ");
+	strcpy(name, "delegate ");
 	int len = strlen(name);
 	if (!nameOfType(funcType, name + len, maxlen - len))
 		return false;
@@ -1101,6 +1101,9 @@ bool CV2PDB::nameOfOEMType(codeview_oem_type* oem, char* name, int maxlen)
 
 const char* CV2PDB::appendDynamicArray(int indexType, int elemType)
 {
+	indexType = translateType(indexType);
+	elemType = translateType(elemType);
+
 	codeview_reftype* rdtype;
 	codeview_type* dtype;
 
@@ -1172,6 +1175,9 @@ const char* CV2PDB::appendAssocArray(int keyType, int elemType)
 	//    keyType key;
 	//    elemType value;
 	// };
+
+	keyType = translateType(keyType);
+	elemType = translateType(elemType);
 
 	codeview_reftype* rdtype;
 	codeview_type* dtype;
@@ -1297,6 +1303,9 @@ const char* CV2PDB::appendAssocArray(int keyType, int elemType)
 
 const char* CV2PDB::appendDelegate(int thisType, int funcType)
 {
+	thisType = translateType(thisType);
+	funcType = translateType(funcType);
+
 	codeview_reftype* rdtype;
 	codeview_type* dtype;
 
@@ -1735,6 +1744,8 @@ bool CV2PDB::addTypes()
 			int rc = mod->AddTypes(globalTypes, cb);
 			if (rc <= 0)
 				return setError("cannot add type info to module");
+			// does it make sense to add symbols more than once?
+			// break;
 		}
 	}
 	return true;

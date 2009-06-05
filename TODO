@@ -21,3 +21,4 @@ in the future, but not all have a known solution.
 * type display of delegate does not have arguments 
 * assoc_array.length cannot be displayed (it is assoc_array.a->nodes)
 * enum values not displayed
+* does not work with debug version of phobos
