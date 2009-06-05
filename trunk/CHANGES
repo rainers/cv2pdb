@@ -18,7 +18,7 @@ Version history
   * support for field type LF_VFUNCTAB and symbol type S_CONSTANT used by DMC.
   * added stringview to autoexp.dat for full length text display.
 
-2009-06-01 Version 0.3
+2009-06-04 Version 0.3
 
   * static members' debug info was not correctly converted, causing debugger confusion
   * now works on executables compiled by DMC
@@ -28,3 +28,8 @@ Version history
   * added fields __viewhelper to classes string and object
   * new addin dviewhelper.dll to display correctly terminated strings
     and derived object type
+
+2009-06-05 Version 0.4
+
+  * fixed crash when long is used as index or element type of dynamic or 
+    associative arrays
