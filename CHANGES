@@ -33,3 +33,11 @@ Version history
 
   * fixed crash when long is used as index or element type of dynamic or 
     associative arrays
+
+2009-06-06 Version 0.5
+
+  * fixed error in __viewhelper field of string type, that could screw up type info
+  * added support for wstring and dstring
+  * fixed problems with debug info inside library by combining debug info of different modules 
+    into a single pseudo-module
+  * now also replaces '.' by '@' in enumerator types for more consistent debug info

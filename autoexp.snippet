@@ -19,8 +19,12 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; [AutoExpand] 
 
-string_viewhelper=$ADDIN(dviewhelper.dll,_DStringView@28)
 object_viewhelper=$ADDIN(dviewhelper.dll,_DObjectView@28)
+string_viewhelper=$ADDIN(dviewhelper.dll,_DStringView@28)
+wstring_viewhelper=$ADDIN(dviewhelper.dll,_DWStringView@28)
+dstring_viewhelper=$ADDIN(dviewhelper.dll,_DDStringView@28)
+
+;; eo section AutoExpand for D variables ;;;;;;;;;;;;;;;;;;;;;;
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;	 D types visualizer
@@ -30,20 +34,45 @@ object_viewhelper=$ADDIN(dviewhelper.dll,_DObjectView@28)
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; [Visualizer]
 
-; string: dynamic array of char
-const char[]|char[]|string {
+; string, wstring and dstring use __viewhelper
+string|wstring|dstring {
     preview ( 
-        #if ($e.data == 0) ( "null" )
-        #else ( 
+ 		  #if ($e.data == 0) ( "null" )
+		  #else ( 
         #(
            "[", $e.length, "] ", [$e.__viewhelper]
-           ;; "[", $e.length, "] ", [$e.data,s]
         )
       )
     )
     stringview ( 
-        #if ($e.data == 0) ( "null" )
-           #else ( 
+ 		  #if ($e.data == 0) ( "null" )
+		  #else ( 
+        #(
+           [$e.data, s]
+        )
+      )
+    )
+    children (
+        #(
+            length: [$e.length, i],
+            data: [$e.data]
+        )
+    )
+}
+
+; strings as dynamic arrays of char (no __viewhelper, check -D option for cv2pdb!)
+const char[]|char[]|const wchar[]|wchar[]|const dchar[]|dchar[] {
+    preview ( 
+ 		  #if ($e.data == 0) ( "null" )
+		  #else ( 
+        #(
+           "[", $e.length, "] ", [$e.data]
+        )
+      )
+    )
+    stringview ( 
+ 		  #if ($e.data == 0) ( "null" )
+		  #else ( 
         #(
            [$e.data, s]
         )
@@ -126,3 +155,4 @@ internal@aaA<*,*> {
   )
 }
 
+;; eo section Visualizer for D variables ;;;;;;;;;;;;;;;;;;;;;;

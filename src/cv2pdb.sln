@@ -17,6 +17,11 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 		..\VERSION = ..\VERSION
 	EndProjectSection
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "cvtest", "..\test\cvtest.vcproj", "{CCC0643D-7D3F-4D5E-AE0E-C871776E86AF}"
+	ProjectSection(ProjectDependencies) = postProject
+		{5E2BD27D-446A-4C99-9829-135F7C000D90} = {5E2BD27D-446A-4C99-9829-135F7C000D90}
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Win32 = Debug|Win32
@@ -31,6 +36,10 @@ Global
 		{E4424774-A7A0-4502-8626-2723904D70EA}.Debug|Win32.Build.0 = Debug|Win32
 		{E4424774-A7A0-4502-8626-2723904D70EA}.Release|Win32.ActiveCfg = Release|Win32
 		{E4424774-A7A0-4502-8626-2723904D70EA}.Release|Win32.Build.0 = Release|Win32
+		{CCC0643D-7D3F-4D5E-AE0E-C871776E86AF}.Debug|Win32.ActiveCfg = Debug|Win32
+		{CCC0643D-7D3F-4D5E-AE0E-C871776E86AF}.Debug|Win32.Build.0 = Debug|Win32
+		{CCC0643D-7D3F-4D5E-AE0E-C871776E86AF}.Release|Win32.ActiveCfg = Release|Win32
+		{CCC0643D-7D3F-4D5E-AE0E-C871776E86AF}.Release|Win32.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

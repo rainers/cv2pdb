@@ -89,14 +89,19 @@ public:
 	bool addSrcLines();
 	bool addPublics();
 
+	bool addUdtSymbol(int type, const char* name);
+
 	// returns new destSize
 	int copySymbols(BYTE* srcSymbols, int srcSize, BYTE* destSymbols, int destSize);
 
-	bool addUdtSymbol(int type, const char* name);
-	bool addSymbols(int iMod, BYTE* symbols, int cb);
+	bool writeSymbols(mspdb::Mod* mod, DWORD* data, int databytes, int prefix, bool addGlobals);
+	bool addSymbols(mspdb::Mod* mod, BYTE* symbols, int cb, bool addGlobals);
+	bool addSymbols(int iMod, BYTE* symbols, int cb, bool addGlobals);
 	bool addSymbols();
 
 	bool writeImage(const char* opath);
+
+	mspdb::Mod* globalMod();
 
 // private:
 	BYTE* libraries;
@@ -139,6 +144,7 @@ public:
 	int nextUserType;
 	int objectType;
 
+	bool useGlobalMod;
 	bool thisIsNotRef;
 	bool v3;
 	const char* lastError;

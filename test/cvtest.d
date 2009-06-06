@@ -1,12 +1,14 @@
 
 module cvtest;
 
+import std.string;
+import std.stdio;
 
 ///////////////// field types ////////////////////////
 // field type LF_ENUMERATE_V1
 enum enum_name
 {
-	kEnum1,
+	kEnum1 = 1,
 	kEnum2,
 	kEnum3,
 	kEnum500 = 500,
@@ -125,13 +127,16 @@ class Templ(T)
   }
 }
 
-enum stringMixin = "int a = 0;
-return x + a;
-";
-
-int mixinTest(int x)
+version(D2)
 {
-  mixin(stringMixin);
+    string stringMixin = "int a = 0;
+    return x + a;
+    ";
+
+    int mixinTest(int x)
+    {
+        mixin(stringMixin);
+    }
 }
 
 int main2(char[][]argv)
@@ -180,6 +185,8 @@ int main(char[][]argv)
 
 	main2(argv);
 
+	writefln("Hello world");
+
 	int[int] int_arr;
 	int_arr[1] = 100;
 	int_arr[98] = 101;
@@ -200,18 +207,22 @@ int main(char[][]argv)
 	struc_arr[ab2] = 6;
 	struc_arr[ab3] = 7;
 
-  Templ!(int) templ = new Templ!(int);
-  int y = templ.foo(3);
-  int z = mixinTest(7);
+	Templ!(int) templ = new Templ!(int);
+	int y = templ.foo(3);
+	version(D2)
+		int z = mixinTest(7);
   
-  (new Test).test();
+	(new Test).test();
+
+	dmd_quirks();
+	strings();
 
 	int[] dynint_arr;
 	dynint_arr ~= 12;
 	return dynint_arr.length;
 }
 
-alias invariant(char)[] string;
+// alias invariant(char)[] string;
 
 class Test
 {
@@ -230,4 +241,19 @@ class Test
 
 		return dyn_arr.length + assoc_arr.length + clss.c;
 	}
+}
+
+int strings()
+{
+	string cs = "char string";
+	wstring ws = "wchar string"w;
+	dstring ds = "dchar string"d;
+
+	return 0;
+}
+
+void dmd_quirks()
+{
+	long quirk_long; // written as delegate<void*,int>
+	ulong quirk_ulong; // written as int[]
 }
