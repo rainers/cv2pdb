@@ -48,7 +48,7 @@ public:
 		for (int i = 0; i < hdr->FileHeader.NumberOfSections; i++)
 		{
 			if (rva       >= sec[i].VirtualAddress &&
-				rva + len <= sec[i].VirtualAddress + sec[i].SizeOfRawData)
+			    rva + len <= sec[i].VirtualAddress + sec[i].SizeOfRawData)
 				return DPV<P>(sec[i].PointerToRawData + rva - sec[i].VirtualAddress, len);
 		}
 		return 0;
@@ -62,6 +62,8 @@ public:
 
 	int countCVEntries() const;
 	OMFDirEntry* getCVEntry(int i) const;
+
+	int getCVSize() const { return dbgDir->SizeOfData; }
 
 	// utilities
 	static void* alloc_aligned(unsigned int size, unsigned int align, unsigned int alignoff = 0);

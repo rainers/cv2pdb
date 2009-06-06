@@ -32,13 +32,18 @@ SRC = src\cv2pdb.cpp \
       src\symutil.h \
       src\dviewhelper\dviewhelper.cpp
 
-ADD = Makefile src\cv2pdb.vcproj src\dviewhelper\dviewhelper.vcproj src\cv2pdb.sln
+ADD = Makefile \
+      src\cv2pdb.vcproj \
+      src\dviewhelper\dviewhelper.vcproj \
+      src\cv2pdb.sln
 
 DOC = VERSION README INSTALL LICENSE CHANGES TODO autoexp.snippet
 
 BIN = bin\Release\cv2pdb.exe bin\Release\dviewhelper.dll
 
-TEST = test\cvtest.d
+TEST = test\cvtest.d \
+      test\cvtest.vcproj \
+      test\Makefile \
 
 all: bin src
 
@@ -70,6 +75,6 @@ $(BIN_ZIP): $(BIN) $(DOC) Makefile
 
 IDEDIR = $(VSINSTALLDIR)\Common7\IDE
 
-$(BIN): $(SRC) $(ADD) VERSION
+$(BIN): $(SRC) $(ADD) $(TEST) VERSION
 	if     exist "$(IDEDIR)\VCExpress.exe" "$(IDEDIR)\VCExpress.exe" /Build Release src\cv2pdb.sln
 	if not exist "$(IDEDIR)\VCExpress.exe" "$(IDEDIR)\devenv.exe" /Build Release src\cv2pdb.sln

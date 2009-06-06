@@ -6,8 +6,11 @@
 // License for redistribution is given by the Artistic License 2.0
 // see file LICENSE for further details
 //
-// Compile the DLL and add this to AUTOEXP.DAT in section [AutoExpand]
-// string=$ADDIN(<path to the DLL>\dviewhelper.dll,_DStringView@28)
+// Compile the DLL and add the following lines to AUTOEXP.DAT in section [AutoExpand]
+// string_viewhelper=$ADDIN(<path to the DLL>\dviewhelper.dll,_DStringView@28)
+// wstring_viewhelper=$ADDIN(<path to the DLL>\dviewhelper.dll,_DWStringView@28)
+// dstring_viewhelper=$ADDIN(<path to the DLL>\dviewhelper.dll,_DDStringView@28)
+// object_viewhelper=$ADDIN(<path to the DLL>\dviewhelper.dll,_DObjectView@28)
 //
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -35,9 +38,10 @@ struct DString
     DWORD data;
 };
 
-__declspec(dllexport)
-HRESULT WINAPI DStringView(DWORD dwAddress, DEBUGHELPER *pHelper, int nBase, BOOL bUniStrings, 
-                           char *pResult, size_t max, DWORD reserved)
+///////////////////////////////////////////////////////////////////////////////
+
+HRESULT WINAPI StringView(DWORD dwAddress, DEBUGHELPER *pHelper, int nBase, BOOL bUniStrings, 
+                          char *pResult, size_t max, DWORD sizePerChar)
 {
 	// Get the string struct
 	DString dstr;
@@ -53,17 +57,63 @@ HRESULT WINAPI DStringView(DWORD dwAddress, DEBUGHELPER *pHelper, int nBase, BOO
 		return S_OK;
 	}
 
+	char* pData = pResult + 1;
 	DWORD cnt = (dstr.length < max - 3 ? dstr.length : max - 3);
-	if (pHelper->ReadDebuggeeMemory(pHelper, dstr.data, cnt, pResult + 1, &read) != S_OK) 
+	if (sizePerChar * cnt > max)
+		pData = new char[sizePerChar * cnt];
+
+	if (pHelper->ReadDebuggeeMemory(pHelper, dstr.data, sizePerChar * cnt, pData, &read) != S_OK) 
 	{
 		strncpy(pResult,"Cannot access data", max);
-		return S_OK;
+	}
+	else
+	{
+		//! @todo: proper utf8/16/32 translation
+		for (DWORD p = 0; p < cnt; p++)
+		{
+			int ch;
+			if (sizePerChar == 4)
+				ch = ((long*) pData) [p];
+			else if (sizePerChar == 2)
+				ch = ((short*) pData) [p];
+			else
+				ch = pData [p];
+
+			if (ch >= 128 && ch < -128)
+				pResult[p + 1] = -1;
+			else
+				pResult[p + 1] = (char) ch;
+		}
+		pResult[0] = '\"';
+		pResult[cnt+1] = '\"';
+		pResult[cnt+2] = 0;
 	}
 
-	pResult[0] = '\"';
-	pResult[cnt+1] = '\"';
-	pResult[cnt+2] = 0;
+	if(pData != pResult + 1)
+		delete [] pData;
 	return S_OK;
+}
+
+
+__declspec(dllexport)
+HRESULT WINAPI DStringView(DWORD dwAddress, DEBUGHELPER *pHelper, int nBase, BOOL bUniStrings, 
+                           char *pResult, size_t max, DWORD reserved)
+{
+	return StringView(dwAddress, pHelper, nBase, bUniStrings, pResult, max, 1);
+}
+
+__declspec(dllexport)
+HRESULT WINAPI DWStringView(DWORD dwAddress, DEBUGHELPER *pHelper, int nBase, BOOL bUniStrings, 
+                            char *pResult, size_t max, DWORD reserved)
+{
+	return StringView(dwAddress, pHelper, nBase, bUniStrings, pResult, max, 2);
+}
+
+__declspec(dllexport)
+HRESULT WINAPI DDStringView(DWORD dwAddress, DEBUGHELPER *pHelper, int nBase, BOOL bUniStrings, 
+                            char *pResult, size_t max, DWORD reserved)
+{
+	return StringView(dwAddress, pHelper, nBase, bUniStrings, pResult, max, 4);
 }
 
 __declspec(dllexport)

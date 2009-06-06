@@ -23,6 +23,7 @@ CV2PDB::CV2PDB(PEImage& image)
 , pointerTypes(0)
 , Dversion(2)
 {
+	useGlobalMod = true;
 	thisIsNotRef = true;
 	v3 = true;
 	countEntries = img.countCVEntries(); 
@@ -152,14 +153,25 @@ bool CV2PDB::createModules()
 			const BYTE* plib = getLibrary (module->iLib);
 			const char* lib = (!plib || !*plib ? name : p2c(plib, 1));
 
-			if (modules[entry->iMod])
+			mspdb::Mod* mod;
+			if (useGlobalMod)
 			{
-				modules[entry->iMod]->Close();
-				modules[entry->iMod] = 0;
+				mod = globalMod();
+				if(!mod)
+					return false;
 			}
-			int rc = dbi->OpenMod(name, lib, &modules[entry->iMod]);
-			if (rc <= 0 || !modules[entry->iMod])
-				return setError("cannot create mod");
+			else
+			{
+				if (modules[entry->iMod])
+				{
+					modules[entry->iMod]->Close();
+					modules[entry->iMod] = 0;
+				}
+				int rc = dbi->OpenMod(name, lib, &modules[entry->iMod]);
+				if (rc <= 0 || !modules[entry->iMod])
+					return setError("cannot create mod");
+				mod = modules[entry->iMod];
+			}
 
 			for (int s = 0; s < module->cSeg; s++)
 			{
@@ -168,13 +180,24 @@ bool CV2PDB::createModules()
 				if (segMap && segIndex < segMap->cSeg)
 					segFlags = segMapDesc[segIndex].flags;
 				segFlags = 0x60101020; // 0x40401040, 0x60500020; // TODO
-				rc = modules[entry->iMod]->AddSecContrib(segIndex, segDesc[s].Off, segDesc[s].cbSeg, segFlags);
+				int rc = mod->AddSecContrib(segIndex, segDesc[s].Off, segDesc[s].cbSeg, segFlags);
 				if (rc <= 0)
 					return setError("cannot add section contribution to module");
 			}
 		}
 	}
 	return true;
+}
+
+mspdb::Mod* CV2PDB::globalMod()
+{
+	if (!globmod)
+	{
+		int rc = dbi->OpenMod("__Globals", "__Globals", &globmod);
+		if (rc <= 0 || !globmod)
+			setError("cannot create global module");
+	}
+	return globmod;
 }
 
 bool CV2PDB::initLibraries()
@@ -825,7 +848,7 @@ int CV2PDB::translateType(int type)
 
 bool CV2PDB::nameOfBasicType(int type, char* name, int maxlen)
 {
-	int size = type & 7;
+	int size =  type & 0xf;
 	int typ  = (type & 0xf0) >> 4;
 	int mode = (type & 0x700) >> 8;
 	
@@ -897,6 +920,9 @@ bool CV2PDB::nameOfBasicType(int type, char* name, int maxlen)
 		case 5: strcpy(name, "uint"); break;
 		case 6: strcpy(name, "long"); break;
 		case 7: strcpy(name, "ulong"); break;
+		case 8: strcpy(name, "dchar"); break;
+		default:
+			return setError("nameOfBasicType: unsupported size real int type");
 		}
 	}
 	if (mode != 0 && mode != 7)
@@ -1051,10 +1077,20 @@ bool CV2PDB::nameOfDynamicArray(int indexType, int elemType, char* name, int max
 {
 	if (!nameOfType(elemType, name, maxlen))
 		return false;
+
 	if (Dversion >= 2 && strcmp(name, "const char") == 0)
 		strcpy(name, "string");
+	else if (Dversion >= 2 && strcmp(name, "const wchar") == 0)
+		strcpy(name, "wstring");
+	else if (Dversion >= 2 && strcmp(name, "const dchar") == 0)
+		strcpy(name, "dstring");
+
 	else if (Dversion < 2 && strcmp(name, "char") == 0)
 		strcpy(name, "string");
+	else if (Dversion < 2 && strcmp(name, "wchar") == 0)
+		strcpy(name, "wstring");
+	else if (Dversion < 2 && strcmp(name, "dchar") == 0)
+		strcpy(name, "dstring");
 	else
 		strcat (name, "[]");
 	// sprintf(name, "dyn_array<%X,%X>", indexType, elemType);
@@ -1117,7 +1153,7 @@ const char* CV2PDB::appendDynamicArray(int indexType, int elemType)
 	int dataptrType = nextUserType++;
 
 	int dstringType = 0;
-	if(strcmp(name, "string") == 0)
+	if(strcmp(name, "string") == 0 || strcmp(name, "wstring") == 0 || strcmp(name, "dstring") == 0)
 	{
 		// nextUserType + 1: field list (size, array)
 		rdtype = (codeview_reftype*) (userTypes + cbUserTypes);
@@ -1127,10 +1163,12 @@ const char* CV2PDB::appendDynamicArray(int indexType, int elemType)
 		rdtype->fieldlist.len = 2;
 		cbUserTypes += rdtype->fieldlist.len + 2;
 
+		char helpertype[64];
+		strcat(strcpy(helpertype, name), "_viewhelper");
 		dtype = (codeview_type*) (userTypes + cbUserTypes);
-		cbUserTypes += addClass(dtype, 2, helpfieldlistType, 0, 0, 0, 0, "string_viewhelper");
+		cbUserTypes += addClass(dtype, 0, helpfieldlistType, 0, 0, 0, 0, helpertype);
 		dstringType = nextUserType++;
-		addUdtSymbol(dstringType, "string_viewhelper");
+		addUdtSymbol(dstringType, helpertype);
 	}
 
 	// nextUserType + 1: field list (size, array)
@@ -1149,10 +1187,10 @@ const char* CV2PDB::appendDynamicArray(int indexType, int elemType)
 	int numElem = 2;
 	rdtype->fieldlist.len = len1 + len2 + 2;
 
-	if(strcmp(name, "string") == 0)
+	if(dstringType > 0)
 	{
 		dfieldtype = (codeview_fieldtype*)(rdtype->fieldlist.list + rdtype->fieldlist.len - 2);
-		rdtype->fieldlist.len = addFieldMember(dfieldtype, 1, 0, dstringType, "__viewhelper");
+		rdtype->fieldlist.len += addFieldMember(dfieldtype, 1, 0, dstringType, "__viewhelper");
 		numElem++;
 	}
 
@@ -1368,7 +1406,7 @@ int CV2PDB::appendObjectType (int object_derived_type)
 		cbUserTypes += rdtype->fieldlist.len + 2;
 
 		dtype = (codeview_type*) (userTypes + cbUserTypes);
-		cbUserTypes += addClass(dtype, 2, helpfieldlistType, 0, 0, 0, 0, "object_viewhelper");
+		cbUserTypes += addClass(dtype, 0, helpfieldlistType, 0, 0, 0, 0, "object_viewhelper");
 		viewHelperType = nextUserType++;
 		addUdtSymbol(viewHelperType, "object_viewhelper");
 	}
@@ -1731,6 +1769,14 @@ bool CV2PDB::addTypes()
 	if (!globalTypes)
 		return true;
 
+	if (useGlobalMod)
+	{
+		int rc = globalMod()->AddTypes(globalTypes, cbGlobalTypes);
+		if (rc <= 0)
+			return setError("cannot add type info to module");
+		return true;
+	}
+
 	for (int m = 0; m < countEntries; m++)
 	{
 		OMFDirEntry* entry = img.getCVEntry(m);
@@ -1740,12 +1786,9 @@ bool CV2PDB::addTypes()
 			if (!mod)
 				return setError("sstSrcModule for non-existing module");
 
-			int cb = cbGlobalTypes;
-			int rc = mod->AddTypes(globalTypes, cb);
+			int rc = mod->AddTypes(globalTypes, cbGlobalTypes);
 			if (rc <= 0)
 				return setError("cannot add type info to module");
-			// does it make sense to add symbols more than once?
-			// break;
 		}
 	}
 	return true;
@@ -1758,7 +1801,7 @@ bool CV2PDB::addSrcLines()
 		OMFDirEntry* entry = img.getCVEntry(m);
 		if(entry->SubSection == sstSrcModule)
 		{
-			mspdb::Mod* mod = modules[entry->iMod];
+			mspdb::Mod* mod = useGlobalMod ? globalMod() : modules[entry->iMod];
 			if (!mod)
 				return setError("sstSrcModule for non-existing module");
 
@@ -1811,7 +1854,7 @@ bool CV2PDB::addPublics()
 		{
 			mspdb::Mod* mod = 0;
 			if (entry->iMod < countEntries)
-				mod = modules[entry->iMod];
+				mod = useGlobalMod ? globalMod() : modules[entry->iMod];
 			
 			OMFSymHash* header = img.CVP<OMFSymHash>(entry->lfo);
 			BYTE* symbols = img.CVP<BYTE>(entry->lfo + sizeof(OMFSymHash));
@@ -1890,6 +1933,9 @@ int CV2PDB::copySymbols(BYTE* srcSymbols, int srcSize, BYTE* destSymbols, int de
 		{
 		case S_UDT_V1:
 			dsym->udt_v1.type = translateType(sym->udt_v1.type);
+			for(int p = 0; p < dsym->udt_v1.p_name.namelen; p++)
+				if(dsym->udt_v1.p_name.name[p] == '.')
+					dsym->udt_v1.p_name.name[p] = '@';
 			//sym->udt_v1.type = 0x101e;
 			break;
 
@@ -2054,36 +2100,26 @@ bool CV2PDB::addUdtSymbol(int type, const char* name)
 	return true;
 }
 
-bool CV2PDB::addSymbols(int iMod, BYTE* symbols, int cb)
+bool CV2PDB::addSymbols(mspdb::Mod* mod, BYTE* symbols, int cb, bool addGlobals)
 {
-	mspdb::Mod* mod = 0;
-	if (iMod < countEntries)
-		mod = modules[iMod];
-	for (int i = 0; !mod && i < countEntries; i++)
-		mod = modules[i]; // add global symbols to first module
-	if (!mod)
-	{
-		if (!globmod)
-		{
-			int rc = dbi->OpenMod("<Globals>", "<Globals>", &globmod);
-			if (rc <= 0 || !globmod)
-				return setError("cannot create global module");
-		}
-		mod = globmod;
-	}
-	if (!mod)
-		return setError("no module to set symbols");
-
-	int prefix = mod == globmod ? 3 : 4;
+	int prefix = 4; // mod == globmod ? 3 : 4;
 	int words = (cb + cbGlobalSymbols + cbStaticSymbols + cbUdtSymbols + 3) / 4 + prefix;
-	DWORD* data = new DWORD[2 * words];
+	DWORD* data = new DWORD[2 * words + 1000];
 
 	int databytes = copySymbols(symbols, cb, (BYTE*) (data + prefix), 0);
-	if (staticSymbols)
+
+	bool rc = writeSymbols(mod, data, databytes, prefix, addGlobals);
+	delete [] data;
+	return rc;
+}
+
+bool CV2PDB::writeSymbols(mspdb::Mod* mod, DWORD* data, int databytes, int prefix, bool addGlobals)
+{
+	if (addGlobals && staticSymbols)
 		databytes = copySymbols(staticSymbols, cbStaticSymbols, (BYTE*) (data + prefix), databytes);
-	if (globalSymbols)
+	if (addGlobals && globalSymbols)
 		databytes = copySymbols(globalSymbols, cbGlobalSymbols, (BYTE*) (data + prefix), databytes);
-	if (udtSymbols)
+	if (addGlobals && udtSymbols)
 		databytes = copySymbols(udtSymbols, cbUdtSymbols, (BYTE*) (data + prefix), databytes);
 	
 	data[0] = 4;
@@ -2094,8 +2130,22 @@ bool CV2PDB::addSymbols(int iMod, BYTE* symbols, int cb)
 	int rc = mod->AddSymbols((BYTE*) data, ((databytes + 3) / 4 + prefix) * 4);
 	if (rc <= 0)
 		return setError("cannot add symbols to module");
-	delete [] data;
 	return true;
+}
+
+bool CV2PDB::addSymbols(int iMod, BYTE* symbols, int cb, bool addGlobals)
+{
+	mspdb::Mod* mod = 0;
+	if (iMod < countEntries)
+		mod = modules[iMod];
+	for (int i = 0; !mod && i < countEntries; i++)
+		mod = modules[i]; // add global symbols to first module
+	if (!mod)
+		mod = globalMod();
+	if (!mod)
+		return setError("no module to set symbols");
+
+	return addSymbols(mod, symbols, cb, addGlobals);
 }
 
 bool CV2PDB::addSymbols()
@@ -2103,6 +2153,13 @@ bool CV2PDB::addSymbols()
 	if (!initGlobalSymbols())
 		return false;
 
+	int prefix = 4;
+	DWORD* data = 0;
+	int databytes = 0;
+	if (useGlobalMod)
+		data = new DWORD[2 * img.getCVSize() + 1000]; // enough for all symbols
+
+	bool addGlobals = true;
 	for (int m = 0; m < countEntries; m++)
 	{
 		OMFDirEntry* entry = img.getCVEntry(m);
@@ -2112,8 +2169,11 @@ bool CV2PDB::addSymbols()
 		switch(entry->SubSection)
 		{
 		case sstAlignSym:
-			if (!addSymbols (entry->iMod, symbols + 4, entry->cb - 4))
+			if (useGlobalMod)
+				databytes = copySymbols(symbols + 4, entry->cb - 4, (BYTE*) (data + prefix), databytes);
+			else if (!addSymbols (entry->iMod, symbols + 4, entry->cb - 4, addGlobals))
 				return false;
+			addGlobals = false;
 			break;
 
 		case sstStaticSym:
@@ -2121,7 +2181,12 @@ bool CV2PDB::addSymbols()
 			break; // handled in initGlobalSymbols
 		}
 	}
-	return true;
+	bool rc = true;
+	if (useGlobalMod)
+		rc = writeSymbols (globalMod(), data, databytes, prefix, true);
+
+	delete [] data;
+	return rc;
 }
 
 bool CV2PDB::writeImage(const char* opath)
