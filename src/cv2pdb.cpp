@@ -1679,6 +1679,10 @@ bool CV2PDB::initGlobalTypes()
 					break;
 
 				case LF_DERIVED_V1:
+#if 1 // types wrong by DMD
+					rdtype->generic.id = LF_NULL_V1;
+					len = 4;
+#else
 					rdtype->derived_v2.id = LF_DERIVED_V2;
 					rdtype->derived_v2.num = rtype->derived_v1.num;
 					for (int i = 0; i < rtype->derived_v1.num; i++)
@@ -1687,6 +1691,7 @@ bool CV2PDB::initGlobalTypes()
 						else
 							rdtype->derived_v2.drvdcls[i] = translateType(rtype->derived_v1.drvdcls[i]);
 					len = sizeof(rdtype->derived_v2) + 4 * rdtype->derived_v2.num - sizeof(rdtype->derived_v2.drvdcls);
+#endif
 					break;
 
 				case LF_VTSHAPE_V1: // no alternate version known
