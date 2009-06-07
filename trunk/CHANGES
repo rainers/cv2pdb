@@ -41,3 +41,8 @@ Version history
   * fixed problems with debug info inside library by combining debug info of different modules 
     into a single pseudo-module
   * now also replaces '.' by '@' in enumerator types for more consistent debug info
+
+2009-06-07 Version 0.6
+
+  * removed LF_DERIVED info from debug info, as it is inconsistent in DMD generated info
+    with more than 4096 type entries
