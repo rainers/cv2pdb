@@ -333,14 +333,16 @@ static int copy_p2dsym(unsigned char* dp, int& dpos, const unsigned char* p, int
 	return len;
 }
 
+// if dfieldlist == 0, count fields
 int CV2PDB::addFields(codeview_reftype* dfieldlist, const codeview_reftype* fieldlist, int maxdlen)
 {
 	int len = fieldlist->fieldlist.len - 2;
 	const unsigned char* p = fieldlist->fieldlist.list;
-	unsigned char* dp = dfieldlist->fieldlist.list;
+	unsigned char* dp = dfieldlist ? dfieldlist->fieldlist.list : 0;
 	int pos = 0, dpos = 0;
 	int leaf_len, value;
 
+	int cntFields = 0;
 	int prev = pos;
 	while (pos < len && !hadError())
 	{
@@ -363,7 +365,7 @@ int CV2PDB::addFields(codeview_reftype* dfieldlist, const codeview_reftype* fiel
 		switch (fieldtype->generic.id)
 		{
 		case LF_ENUMERATE_V1:
-			if (v3)
+			if (dp && v3)
 			{
 				dfieldtype->enumerate_v3.id = LF_ENUMERATE_V3;
 				dfieldtype->enumerate_v3.attribute = fieldtype->enumerate_v1.attribute;
@@ -385,12 +387,15 @@ int CV2PDB::addFields(codeview_reftype* dfieldlist, const codeview_reftype* fiel
 			break;
 
 		case LF_MEMBER_V1:
-			dfieldtype->member_v2.id = v3 ? LF_MEMBER_V3 : LF_MEMBER_V2;
-			dfieldtype->member_v2.attribute = fieldtype->member_v1.attribute;
-			dfieldtype->member_v2.type = translateType(fieldtype->member_v1.type);
+			if (dp)
+			{
+				dfieldtype->member_v2.id = v3 ? LF_MEMBER_V3 : LF_MEMBER_V2;
+				dfieldtype->member_v2.attribute = fieldtype->member_v1.attribute;
+				dfieldtype->member_v2.type = translateType(fieldtype->member_v1.type);
+				dpos += sizeof(dfieldtype->member_v2.id) + sizeof(dfieldtype->member_v2.attribute) + sizeof(dfieldtype->member_v2.type);
+			}
 			pos  += sizeof(dfieldtype->member_v1.id) + sizeof(dfieldtype->member_v1.attribute) + sizeof(dfieldtype->member_v1.type);
-			dpos += sizeof(dfieldtype->member_v2.id) + sizeof(dfieldtype->member_v2.attribute) + sizeof(dfieldtype->member_v2.type);
-			if (v3)
+			if (dp && v3)
 			{
 				copy_leaf(dp, dpos, p, pos);
 				copy_p2dsym(dp, dpos, p, pos, maxdlen);
@@ -415,17 +420,23 @@ int CV2PDB::addFields(codeview_reftype* dfieldlist, const codeview_reftype* fiel
 			break;
 
 		case LF_BCLASS_V1:
-			dfieldtype->bclass_v2.id = LF_BCLASS_V2;
-			dfieldtype->bclass_v2.attribute = fieldtype->bclass_v1.attribute;
-			dfieldtype->bclass_v2.type = translateType(fieldtype->bclass_v1.type);
+			if (dp)
+			{
+				dfieldtype->bclass_v2.id = LF_BCLASS_V2;
+				dfieldtype->bclass_v2.attribute = fieldtype->bclass_v1.attribute;
+				dfieldtype->bclass_v2.type = translateType(fieldtype->bclass_v1.type);
+			}
 			pos  += sizeof(fieldtype->bclass_v1) - sizeof(fieldtype->bclass_v1.offset);
 #if 1
-			dpos += sizeof(dfieldtype->bclass_v2) - sizeof(fieldtype->bclass_v2.offset);
 			copylen = numeric_leaf(&value, &fieldtype->bclass_v1.offset);
-			memcpy (dp + dpos, p + pos, copylen);
+			if (dp)
+			{
+				dpos += sizeof(dfieldtype->bclass_v2) - sizeof(fieldtype->bclass_v2.offset);
+				memcpy (dp + dpos, p + pos, copylen);
+				dpos += copylen;
+				// dp[dpos++] = 0;
+			}
 			pos += copylen;
-			dpos += copylen;
-			// dp[dpos++] = 0;
 			copylen = 0;
 #else
 			dfieldtype->member_v2.id = LF_MEMBER_V2;
@@ -447,12 +458,15 @@ int CV2PDB::addFields(codeview_reftype* dfieldlist, const codeview_reftype* fiel
 			break;
 
 		case LF_METHOD_V1:
-			dfieldtype->method_v2.id = v3 ? LF_METHOD_V3 : LF_METHOD_V2;
-			dfieldtype->method_v2.count = fieldtype->method_v1.count;
-			dfieldtype->method_v2.mlist = fieldtype->method_v1.mlist;
+			if (dp)
+			{
+				dfieldtype->method_v2.id = v3 ? LF_METHOD_V3 : LF_METHOD_V2;
+				dfieldtype->method_v2.count = fieldtype->method_v1.count;
+				dfieldtype->method_v2.mlist = fieldtype->method_v1.mlist;
+				dpos += sizeof(dfieldtype->method_v2) - sizeof(dfieldtype->method_v2.p_name);
+			}
 			pos  += sizeof(dfieldtype->method_v1) - sizeof(dfieldtype->method_v1.p_name);
-			dpos += sizeof(dfieldtype->method_v2) - sizeof(dfieldtype->method_v2.p_name);
-			if (v3)
+			if (v3 && dp)
 				copy_p2dsym(dp, dpos, p, pos, maxdlen);
 			else
 				copylen = fieldtype->method_v1.p_name.namelen + 1;
@@ -469,12 +483,15 @@ int CV2PDB::addFields(codeview_reftype* dfieldlist, const codeview_reftype* fiel
 			break;
 
 		case LF_STMEMBER_V1:
-			dfieldtype->stmember_v2.id = v3 ? LF_STMEMBER_V3 : LF_STMEMBER_V2;
-			dfieldtype->stmember_v2.attribute = fieldtype->stmember_v1.attribute;
-			dfieldtype->stmember_v2.type = translateType(fieldtype->stmember_v1.type);
+			if (dp)
+			{
+				dfieldtype->stmember_v2.id = v3 ? LF_STMEMBER_V3 : LF_STMEMBER_V2;
+				dfieldtype->stmember_v2.attribute = fieldtype->stmember_v1.attribute;
+				dfieldtype->stmember_v2.type = translateType(fieldtype->stmember_v1.type);
+				dpos += sizeof(dfieldtype->stmember_v2) - sizeof(dfieldtype->stmember_v2.p_name);
+			}
 			pos  += sizeof(dfieldtype->stmember_v1) - sizeof(dfieldtype->stmember_v1.p_name);
-			dpos += sizeof(dfieldtype->stmember_v2) - sizeof(dfieldtype->stmember_v2.p_name);
-			if (v3)
+			if (v3 && dp)
 				copy_p2dsym(dp, dpos, p, pos, maxdlen);
 			else
 				copylen = fieldtype->stmember_v1.p_name.namelen + 1;
@@ -491,12 +508,15 @@ int CV2PDB::addFields(codeview_reftype* dfieldlist, const codeview_reftype* fiel
 			break;
 
 		case LF_NESTTYPE_V1:
-			dfieldtype->nesttype_v2.id = v3 ? LF_NESTTYPE_V3 : LF_NESTTYPE_V2;
-			dfieldtype->nesttype_v2.type = translateType(fieldtype->nesttype_v1.type);
-			dfieldtype->nesttype_v2._pad0 = 0;
+			if (dp)
+			{
+				dfieldtype->nesttype_v2.id = v3 ? LF_NESTTYPE_V3 : LF_NESTTYPE_V2;
+				dfieldtype->nesttype_v2.type = translateType(fieldtype->nesttype_v1.type);
+				dfieldtype->nesttype_v2._pad0 = 0;
+				dpos += sizeof(dfieldtype->nesttype_v2) - sizeof(dfieldtype->nesttype_v2.p_name);
+			}
 			pos  += sizeof(dfieldtype->nesttype_v1) - sizeof(dfieldtype->nesttype_v1.p_name);
-			dpos += sizeof(dfieldtype->nesttype_v2) - sizeof(dfieldtype->nesttype_v2.p_name);
-			if (v3)
+			if (v3 && dp)
 				copy_p2dsym(dp, dpos, p, pos, maxdlen);
 			else
 				copylen = fieldtype->nesttype_v1.p_name.namelen + 1;
@@ -513,11 +533,14 @@ int CV2PDB::addFields(codeview_reftype* dfieldlist, const codeview_reftype* fiel
 			break;
 
 		case LF_VFUNCTAB_V1:
-			dfieldtype->vfunctab_v2.id = LF_VFUNCTAB_V2;
-			dfieldtype->vfunctab_v2.type = fieldtype->vfunctab_v1.type;
-			dfieldtype->vfunctab_v2._pad0 = 0;
+			if (dp)
+			{
+				dfieldtype->vfunctab_v2.id = LF_VFUNCTAB_V2;
+				dfieldtype->vfunctab_v2.type = fieldtype->vfunctab_v1.type;
+				dfieldtype->vfunctab_v2._pad0 = 0;
+				dpos += sizeof(dfieldtype->vfunctab_v2);
+			}
 			pos  += sizeof(fieldtype->vfunctab_v1);
-			dpos += sizeof(dfieldtype->vfunctab_v2);
 			break;
 
 		case LF_VFUNCTAB_V2:
@@ -529,14 +552,23 @@ int CV2PDB::addFields(codeview_reftype* dfieldlist, const codeview_reftype* fiel
 			break;
 		}
 
-		memcpy (dp + dpos, p + pos, copylen);
-		pos += copylen;
-		dpos += copylen;
+		if (dp)
+		{
+			memcpy (dp + dpos, p + pos, copylen);
+			dpos += copylen;
 
-		for ( ; dpos & 3; dpos++)
-			dp[dpos] = 0xf4 - (dpos & 3);
+			for ( ; dpos & 3; dpos++)
+				dp[dpos] = 0xf4 - (dpos & 3);
+		}
+		pos += copylen;
+		cntFields++;
 	}
-	return dpos;
+	return dp ? dpos : cntFields;
+}
+
+int CV2PDB::countFields(const codeview_reftype* fieldlist)
+{
+	return addFields(0, fieldlist, 0);
 }
 
 int CV2PDB::addAggregate(codeview_type* dtype, bool clss, int n_element, int fieldlist, int property, 
@@ -1578,8 +1610,12 @@ bool CV2PDB::initGlobalTypes()
 					//dtype->struct_v2.id = v3 ? LF_STRUCTURE_V3 : LF_STRUCTURE_V2;
 					dtype->struct_v2.id = v3 ? LF_CLASS_V3 : LF_CLASS_V2;
 				LF_CLASS_V1_struct:
-					dtype->struct_v2.n_element = type->struct_v1.n_element;
 					dtype->struct_v2.fieldlist = type->struct_v1.fieldlist;
+					dtype->struct_v2.n_element = type->struct_v1.n_element;
+					if(type->struct_v1.fieldlist != 0)
+						if(const codeview_type* td = getTypeData(type->struct_v1.fieldlist))
+							if(td->generic.id == LF_FIELDLIST_V1 || td->generic.id == LF_FIELDLIST_V2)
+								dtype->struct_v2.n_element = countFields((const codeview_reftype*)td);
 					dtype->struct_v2.property = type->struct_v1.property | 0x200;
 					dtype->struct_v2.derived = type->struct_v1.derived;
 					dtype->struct_v2.vshape = type->struct_v1.vshape;

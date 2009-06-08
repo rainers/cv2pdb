@@ -46,3 +46,7 @@ Version history
 
   * removed LF_DERIVED info from debug info, as it is inconsistent in DMD generated info
     with more than 4096 type entries
+
+2009-06-08 Version 0.7
+
+  * corrected number of field entries in classes or struct, because DMD miscounts private members

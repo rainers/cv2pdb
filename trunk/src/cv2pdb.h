@@ -35,6 +35,7 @@ public:
 	bool initSegMap();
 
 	int addFields(codeview_reftype* dfieldlist, const codeview_reftype* fieldlist, int maxdlen);
+	int countFields(const codeview_reftype* fieldlist);
 
 	int addAggregate(codeview_type* dtype, bool clss, int n_element, int fieldlist, int property, 
 	                 int derived, int vshape, int structlen, const char*name);
