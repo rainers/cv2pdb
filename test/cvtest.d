@@ -30,6 +30,8 @@ class derived_class : public base_class
 {
 	int derived_member;
 	int a1_1234;
+
+private:
 	int a2;
 	int a3;
 	int a4;
