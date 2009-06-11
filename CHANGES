@@ -50,3 +50,10 @@ Version history
 2009-06-08 Version 0.7
 
   * corrected number of field entries in classes or struct, because DMD miscounts private members
+
+2009-06-11 Version 0.8
+
+  * tweaked visualizer macros to detect uninitialized associative arrays and to limit expansion
+    to arrays with less than 1024 entries
+  * renamed data pointer member of dynamic arrays to "ptr" to be consistent with the array property
+    in D.

@@ -1214,7 +1214,7 @@ const char* CV2PDB::appendDynamicArray(int indexType, int elemType)
 	
 	// member elemType* data[]
 	dfieldtype = (codeview_fieldtype*)(rdtype->fieldlist.list + len1);
-	int len2 = addFieldMember(dfieldtype, 1, 4, dataptrType, "data");
+	int len2 = addFieldMember(dfieldtype, 1, 4, dataptrType, "ptr");
 
 	int numElem = 2;
 	rdtype->fieldlist.len = len1 + len2 + 2;
