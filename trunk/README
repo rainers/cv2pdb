@@ -19,7 +19,7 @@ Features
 * generates generic debug info for dynamic arrays, associative arrays and delegates
 * autoexp.dat allows convenient display of dynamic and associative arrays in watch windows
 * demangles function names for convenient display of callstack 
-* support for DMC CodeView information 
+* also works for the Digital Mars C/C++ compiler DMC
 
 License information
 -------------------

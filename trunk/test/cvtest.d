@@ -168,8 +168,14 @@ int main2(char[][]argv)
 	alias_int_array int_array;
 	
 	int[] int_oem_long_dynarray; int_oem_long_dynarray ~= 12;
-	int[int] local_oem_int_assoc_array; local_oem_int_assoc_array[7] = 17;
+	int[int] local_oem_int_assoc_array; 
 
+	for (int i = 0; i < 1024; i++)
+	    local_oem_int_assoc_array[i] = 2*i;
+
+	local_oem_int_assoc_array[5000] = 1;
+
+	int *intptr = int_oem_long_dynarray.ptr;
 	Object null_obj;
 	derived_class null_derived;
 

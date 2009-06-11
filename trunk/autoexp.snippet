@@ -36,123 +36,141 @@ dstring_viewhelper=$ADDIN(dviewhelper.dll,_DDStringView@28)
 
 ; string, wstring and dstring use __viewhelper
 string|wstring|dstring {
-    preview ( 
- 		  #if ($e.data == 0) ( "null" )
-		  #else ( 
-        #(
-           "[", $e.length, "] ", [$e.__viewhelper]
-        )
-      )
-    )
-    stringview ( 
- 		  #if ($e.data == 0) ( "null" )
-		  #else ( 
-        #(
-           [$e.data, s]
-        )
-      )
-    )
-    children (
-        #(
-            length: [$e.length, i],
-            data: [$e.data]
-        )
-    )
+
+	preview ( 
+		#if ($e.ptr == 0) ( "null" )
+		#else ( 
+			#( "[", $e.length, "] ", [$e.__viewhelper] )
+		)
+	)
+	stringview ( 
+		#if ($e.ptr == 0) ( "null" )
+		#else ( 
+			#( [$e.ptr, s] )
+		)
+	)
+	children (
+		#(
+			length: [$e.length, i],
+			data: [$e.ptr]
+		)
+	)
 }
 
 ; strings as dynamic arrays of char (no __viewhelper, check -D option for cv2pdb!)
 const char[]|char[]|const wchar[]|wchar[]|const dchar[]|dchar[] {
-    preview ( 
- 		  #if ($e.data == 0) ( "null" )
-		  #else ( 
-        #(
-           "[", $e.length, "] ", [$e.data]
-        )
-      )
-    )
-    stringview ( 
- 		  #if ($e.data == 0) ( "null" )
-		  #else ( 
-        #(
-           [$e.data, s]
-        )
-      )
-    )
-    children (
-        #(
-            length: [$e.length, i],
-            data: [$e.data]
-        )
-    )
+
+	preview ( 
+		#if ($e.ptr == 0) ( "null" )
+		#else ( 
+			#( "[", $e.length, "] ", [$e.ptr] )
+		)
+	)
+	stringview ( 
+		#if ($e.ptr == 0) ( "null" )
+		#else ( 
+			#( [$e.ptr, s] )
+		)
+	)
+	children (
+		#(
+			length: [$e.length, i],
+			data: [$e.ptr]
+		)
+	)
 }
 
 ; dynamic array
 *[] {
-    preview ( 
- 		  #if ($e.data == 0) ( "null" )
- 		  #else ( 
-        #(
-          "[", $e.length, "](",
-          #array
-          (
-            expr :	($e.data)[$i],
-            size :	$e.length
-          ),
-          ")"
-        )
-      )
-    )
-    children (
-        #(
-            length: [$e.length, i],
-            #array (
-                expr: $e.data[$i],
-                size: $e.length
-            )
-        )
-    )
+	preview ( 
+		#if ($e.ptr == 0) ( "null" )
+		#else ( 
+			#(
+				"[", $e.length, "](",
+				#array (
+					expr : ($e.ptr)[$i],
+					size : $e.length
+				),
+				")"
+			)
+		)
+	)
+	children (
+		#(
+			length: [$e.length, i],
+			#array (
+				expr: $e.ptr[$i],
+				size: $e.length
+			)
+		)
+	)
 }
 
 ;; display associative array
 ;;
+;; the "magic" sizes of the basic dynamic array are used to check for uninitialized
+;; arrays
+;;              97UL,            389UL,
+;;           1_543UL,          6_151UL,
+;;          24_593UL,         98_317UL,
+;;          393_241UL,      1_572_869UL,
+;;        6_291_469UL,     25_165_843UL,
+;;      100_663_319UL,    402_653_189UL,
+;;    1_610_612_741UL,  4_294_967_291UL,
 aa<*> {
-    preview(
-      #(
-        "[", $e.a->nodes, "] ", [(void*) $e.a]
-      )
-    )
-    children(
-        #(
-            #array (
-                expr: &$e.a->b.data[$i],
-                size: $e.a->b.length
-            ) : 
-            #tree (
-                head : $e,
-                left : left,
-                right : right,
-                ; size : $c.size
-            ) : $e
-        )
-    )
+	preview(
+		#if($e.a == 0 || $e.a->b.ptr == 0) ( "null" )
+		; expressions must be in a sinlge line (sigh)
+		#elif($e.a->b.length == 97 || $e.a->b.length == 389 || $e.a->b.length == 1543 || $e.a->b.length == 6151 || $e.a->b.length == 24593 || $e.a->b.length == 98317 || $e.a->b.length == 393241 || $e.a->b.length == 1572869 || $e.a->b.length == 6291469 || $e.a->b.length == 25165843)
+		(
+			#if($e.a->nodes > 1024) (
+				#( "[", $e.a->nodes, "] ", [(void*) $e.a], " too large for expansion" )
+			)
+			#else (
+				#( "[", $e.a->nodes, "] ", [(void*) $e.a] )
+			)
+		)
+		#elif (1)  ; no #else in a series of #elif !?
+		(
+			#( "[", $e.a->nodes, "] ", [(void*) $e.a], " uninitialized" )
+		)
+	)
+	children(
+		#if($e.a == 0 || $e.a->b.ptr == 0 || $e.a->nodes > 1024) 
+			( #array( expr: 0, size: 0 ) )
+		#else (
+			#( 
+				#array (
+					expr: &$e.a->b.ptr[$i],
+					size: $e.a->b.length
+				) : 
+				#tree (
+					head : $e,
+					left : left,
+					right : right,
+				) : $e
+			)
+		)
+	)
 }
 
 ; display tree
 internal@aaA<*,*> {
-    preview(
-      #( "<", $e.key, ", ", $e.value, ">" )
-    )
+	preview(
+		#( "<", $e.key, ", ", $e.value, ">" )
+	)
 }
 
-;; display null references for class objects
+; display null references for class objects
 *@* {
-    preview(
-        #( 
-        #if (&$e == 0) ( "null" )
-   		#else ( #( "[", [$e.__viewhelper], "] ", [$e,!] ) )
-   		;; #else ( #( [$e,!] ) )
-    )
-  )
+	preview(
+		#( 
+			#if (&$e == 0) ( "null" )
+			#else ( 
+				#( "[", [$e.__viewhelper], "] ", [$e,!] ) 
+			)
+		)
+	)
 }
 
 ;; eo section Visualizer for D variables ;;;;;;;;;;;;;;;;;;;;;;
