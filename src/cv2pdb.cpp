@@ -15,11 +15,12 @@ static const int kIncomplete = 0x80;
 
 CV2PDB::CV2PDB(PEImage& image) 
 : img(image), pdb(0), dbi(0), libraries(0), rsds(0), modules(0), globmod(0)
-, segMap(0), segMapDesc(0), globalTypeHeader(0)
+, segMap(0), segMapDesc(0), segFrame2Index(0), globalTypeHeader(0)
 , globalTypes(0), cbGlobalTypes(0), allocGlobalTypes(0)
 , userTypes(0), cbUserTypes(0), allocUserTypes(0)
 , globalSymbols(0), cbGlobalSymbols(0), staticSymbols(0), cbStaticSymbols(0)
 , udtSymbols(0), cbUdtSymbols(0), allocUdtSymbols(0)
+, srcLineStart(0), srcLineSections(0)
 , pointerTypes(0)
 , Dversion(2)
 {
@@ -65,6 +66,15 @@ bool CV2PDB::cleanup(bool commit)
 	if (udtSymbols)
 		free(udtSymbols);
 	delete [] pointerTypes;
+
+	for(int i = 0; i < srcLineSections; i++)
+	    delete [] srcLineStart[i];
+	delete [] srcLineStart;
+	srcLineStart = 0;
+	srcLineSections =  0;
+
+	delete [] segFrame2Index;
+	segFrame2Index = 0;
 
 	globalTypes = 0;
 	cbGlobalTypes = 0;
@@ -230,12 +240,20 @@ bool CV2PDB::initSegMap()
 		case sstSegMap:
 			segMap = img.CVP<OMFSegMap>(entry->lfo);
 			segMapDesc = img.CVP<OMFSegMapDesc>(entry->lfo + sizeof(OMFSegMap));
+			int maxframe = -1;
 			for (int s = 0; s < segMap->cSeg; s++)
 			{
 				int rc = dbi->AddSec(segMapDesc[s].frame, segMapDesc[s].flags, segMapDesc[s].offset, segMapDesc[s].cbSeg);
 				if (rc <= 0)
 					return setError("cannot add section");
+				if (segMapDesc[s].frame > maxframe)
+				    maxframe = segMapDesc[s].frame;
 			}
+
+			segFrame2Index = new int[maxframe + 1];
+			memset(segFrame2Index, -1, (maxframe + 1) * sizeof(*segFrame2Index));
+			for (int s = 0; s < segMap->cSeg; s++)
+				segFrame2Index[segMapDesc[s].frame] = s;
 			break;
 		}
 	}
@@ -1835,6 +1853,110 @@ bool CV2PDB::addTypes()
 	return true;
 }
 
+bool CV2PDB::markSrcLineInBitmap(int segIndex, int adr)
+{
+	if (segIndex < 0 || segIndex >= segMap->cSeg)
+		return setError("invalid segment info in line number info");
+
+	int off = adr - segMapDesc[segIndex].offset;
+	if (off < 0 || off >= (int) segMapDesc[segIndex].cbSeg)
+		return setError("invalid segment offset in line number info");
+	
+	srcLineStart[segIndex][off] = true;
+	return true;
+}
+
+bool CV2PDB::createSrcLineBitmap()
+{
+	if (srcLineStart)
+		return true;
+	if (!segMap || !segMapDesc || !segFrame2Index)
+		return false;
+
+	srcLineSections = segMap->cSeg;
+	srcLineStart = new char*[srcLineSections];
+	memset(srcLineStart, 0, srcLineSections * sizeof (*srcLineStart));
+
+	for (int s = 0; s < segMap->cSeg; s++)
+	{
+		srcLineStart[s] = new char[segMapDesc[s].cbSeg];
+		memset(srcLineStart[s], 0, segMapDesc[s].cbSeg);
+	}
+
+	for (int m = 0; m < countEntries; m++)
+	{
+		OMFDirEntry* entry = img.getCVEntry(m);
+		if(entry->SubSection == sstSrcModule)
+		{
+			// mark the beginning of each line
+			OMFSourceModule* sourceModule = img.CVP<OMFSourceModule>(entry->lfo);
+			int* segStartEnd = img.CVP<int>(entry->lfo + 4 + 4 * sourceModule->cFile);
+			short* seg = img.CVP<short>(entry->lfo + 4 + 4 * sourceModule->cFile + 8 * sourceModule->cSeg);
+
+			for (int f = 0; f < sourceModule->cFile; f++)
+			{
+				int cvoff = entry->lfo + sourceModule->baseSrcFile[f];
+				OMFSourceFile* sourceFile = img.CVP<OMFSourceFile> (cvoff);
+				int* lnSegStartEnd = img.CVP<int>(cvoff + 4 + 4 * sourceFile->cSeg);
+
+				for (int s = 0; s < sourceFile->cSeg; s++)
+				{
+					int lnoff = entry->lfo + sourceFile->baseSrcLn[s];
+					OMFSourceLine* sourceLine = img.CVP<OMFSourceLine> (lnoff);
+					short* lineNo = img.CVP<short> (lnoff + 4 + 4 * sourceLine->cLnOff);
+
+					int cnt = sourceLine->cLnOff;
+					int segIndex = segFrame2Index[sourceLine->Seg];
+					
+					 // also mark the start of the line info segment
+					if (!markSrcLineInBitmap(segIndex, lnSegStartEnd[2*s]))
+						return false;
+
+					for (int ln = 0; ln < cnt; ln++)
+						if (!markSrcLineInBitmap(segIndex, sourceLine->offset[ln]))
+							return false;
+				}
+			}
+		}
+		if (entry->SubSection == sstModule)
+		{
+			// mark the beginning of each section
+			OMFModule* module   = img.CVP<OMFModule>(entry->lfo);
+			OMFSegDesc* segDesc = img.CVP<OMFSegDesc>(entry->lfo + sizeof(OMFModule));
+
+			for (int s = 0; s < module->cSeg; s++)
+			{
+				int seg = segDesc[s].Seg;
+				int segIndex = seg >= 0 && seg < segMap->cSeg ? segFrame2Index[seg] : -1;
+				if (!markSrcLineInBitmap(segIndex, segDesc[s].Off))
+					return false;
+			}
+		}
+	}
+
+	return true;
+}
+
+int CV2PDB::getNextSrcLine(int seg, unsigned int off)
+{
+	if (!createSrcLineBitmap())
+		return -1;
+
+	int s = segFrame2Index[seg];
+	if (s < 0)
+		return -1;
+
+	off -= segMapDesc[s].offset;
+	if (off < 0 || off >= segMapDesc[s].cbSeg)
+		return 0;
+
+	for (off++; off < segMapDesc[s].cbSeg; off++)
+		if (srcLineStart[s][off])
+			break;
+
+	return off + segMapDesc[s].offset;
+}
+
 bool CV2PDB::addSrcLines()
 {
 	for (int m = 0; m < countEntries; m++)
@@ -1862,11 +1984,16 @@ bool CV2PDB::addSrcLines()
 				{
 					int lnoff = entry->lfo + sourceFile->baseSrcLn[s];
 					OMFSourceLine* sourceLine = img.CVP<OMFSourceLine> (lnoff);
-					short* lineNo = img.CVP<short> (lnoff + 4 + 4 * sourceLine->cLnOff);
+					unsigned short* lineNo = img.CVP<unsigned short> (lnoff + 4 + 4 * sourceLine->cLnOff);
 
-					int segoff = lnSegStartEnd[2*s];
-					int seglength = lnSegStartEnd[2*s + 1] - segoff;
+					int seg = sourceLine->Seg;
 					int cnt = sourceLine->cLnOff;
+					if(cnt <= 0)
+					    continue;
+					int segoff = lnSegStartEnd[2*s];
+					// lnSegStartEnd[2*s + 1] only spans until the first byte of the last source line
+					int segend = getNextSrcLine(seg, sourceLine->offset[cnt-1]);
+					int seglength = (segend >= 0 ? segend - 1 - segoff : lnSegStartEnd[2*s + 1] - segoff);
 
 					mspdb::LineInfoEntry* lineInfo = new mspdb::LineInfoEntry[cnt];
 					for (int ln = 0; ln < cnt; ln++)
@@ -1874,7 +2001,7 @@ bool CV2PDB::addSrcLines()
 						lineInfo[ln].offset = sourceLine->offset[ln] - segoff;
 						lineInfo[ln].line = lineNo[ln] - lineNo[0];
 					}
-					int rc = mod->AddLines(name, sourceLine->Seg, segoff, seglength, segoff, lineNo[0], 
+					int rc = mod->AddLines(name, seg, segoff, seglength, segoff, lineNo[0], 
 					                       (unsigned char*) lineInfo, cnt * sizeof(*lineInfo));
 					if (rc <= 0)
 						return setError("cannot add line number info to module");

@@ -100,6 +100,10 @@ public:
 	bool addSymbols(int iMod, BYTE* symbols, int cb, bool addGlobals);
 	bool addSymbols();
 
+	bool markSrcLineInBitmap(int segIndex, int adr);
+	bool createSrcLineBitmap();
+	int  getNextSrcLine(int seg, unsigned int off);
+
 	bool writeImage(const char* opath);
 
 	mspdb::Mod* globalMod();
@@ -121,6 +125,8 @@ public:
 
 	OMFSegMap* segMap;
 	OMFSegMapDesc* segMapDesc;
+	int* segFrame2Index;
+
 	OMFGlobalTypes* globalTypeHeader;
 
 	unsigned char* globalTypes;
@@ -149,6 +155,9 @@ public:
 	bool thisIsNotRef;
 	bool v3;
 	const char* lastError;
+
+	int srcLineSections;
+	char** srcLineStart; // array of bitmaps per segment, indicating whether src line start is available for corresponding address
 
 	double Dversion;
 };

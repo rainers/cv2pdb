@@ -21,7 +21,5 @@ in the future, but not all have a known solution.
 * type display of delegate does not have arguments 
 * assoc_array.length cannot be displayed (it is assoc_array.a->nodes)
 * enum values not displayed
-* does not work with debug version of phobos
 * map dchar to something displayable
 * workaround for ulong (written by DMD as int[])
-* last code bytes in module not included in last source line
