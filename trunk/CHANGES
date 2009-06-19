@@ -57,3 +57,10 @@ Version history
     to arrays with less than 1024 entries
   * renamed data pointer member of dynamic arrays to "ptr" to be consistent with the array property
     in D.
+
+2009-06-19 Version 0.9
+
+  * fixed line number info at the end of a segment or when switching to another file 
+    because of inline expansion
+  * fixed line numbers > 32767 and sections with 0 line number entries
+

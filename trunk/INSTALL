@@ -34,11 +34,7 @@ navigating to the file extensions option page (found in Tools -> Options
 with editor "Microsoft Visual C++". This will also enable display of
 variables in the "Auto" watch window.
 
-4. the file dviewhelper.dll must be copied into a directory where
-the debugger can find it. This can be any directory accessible through your
-PATH variable or <Visual Studio Installation Path>\Common7\IDE.
-
-5. You should also add the contents of the file autoexp.snippet to the 
+4. You should also add the contents of the file autoexp.snippet to the 
 [AutoExpand] and [Visualizer] sections of the file autoexp.dat found in 
 <Visual Studio Installation Path>\Common7\Packages\Debugger.
 Please note that in a standard installation of Visual Studio, the
@@ -47,6 +43,13 @@ the section [Visualizer], which extends to the bottom of the file but a few line
 for the section [hresult].
 These lines will enable a convenient display of strings, dynamic arrays, 
 associative arrays, object types and null references.
+
+5. The file dviewhelper.dll must be copied into a directory where
+the debugger can find it. This can be any directory accessible through your
+PATH variable or <Visual Studio Installation Path>\Common7\IDE. Alternatively,
+the full path can be specified in the corresponding entries in the
+[AutoExpand] section of autoexp.dat.
+
 
 Building from source
 --------------------
