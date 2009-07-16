@@ -565,6 +565,14 @@ int CV2PDB::addFields(codeview_reftype* dfieldlist, const codeview_reftype* fiel
 			copylen = sizeof(dfieldtype->vfunctab_v2);
 			break;
 
+			// throw away friend function declarations, there is no v3 replacement and the debugger won't need them
+		case LF_FRIENDFCN_V1:
+			pos += sizeof(fieldtype->friendfcn_v1) + fieldtype->friendfcn_v1.p_name.namelen - 1;
+			continue;
+		case LF_FRIENDFCN_V2:
+			pos += sizeof(fieldtype->friendfcn_v2) + fieldtype->friendfcn_v2.p_name.namelen - 1;
+			continue;
+
 		default:
 			setError("unsupported field entry");
 			break;
