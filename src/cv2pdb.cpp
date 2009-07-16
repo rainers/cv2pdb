@@ -572,6 +572,21 @@ int CV2PDB::addFields(codeview_reftype* dfieldlist, const codeview_reftype* fiel
 		case LF_FRIENDFCN_V2:
 			pos += sizeof(fieldtype->friendfcn_v2) + fieldtype->friendfcn_v2.p_name.namelen - 1;
 			continue;
+		case LF_FRIENDCLS_V1:
+			pos += sizeof(fieldtype->friendcls_v1);
+			continue;
+		case LF_FRIENDCLS_V2:
+			pos += sizeof(fieldtype->friendcls_v2);
+			continue; 
+
+			// necessary to convert this info? no data associated with it, so it might not be used
+		case LF_VBCLASS_V1:
+		case LF_IVBCLASS_V1:
+			leaf_len = numeric_leaf(&value, &fieldtype->vbclass_v1.vbpoff);
+			pos += sizeof(fieldtype->vbclass_v1) - sizeof(fieldtype->vbclass_v1.vbpoff) + leaf_len;
+			copylen = numeric_leaf(&value, &fieldtype->vbclass_v1.vbpoff);
+			pos += copylen;
+			continue;
 
 		default:
 			setError("unsupported field entry");
