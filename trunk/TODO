@@ -23,3 +23,7 @@ in the future, but not all have a known solution.
 * enum values not displayed
 * map dchar to something displayable
 * workaround for ulong (written by DMD as int[])
+* watch incorrect if same variable name used in different parts of a function
+* rtti display: disable for structs
+* line number in templates sometimes off by 1 or 2
+* call to other function sometimes jumps to called function while still pushing args
