@@ -66,5 +66,7 @@ Version history
 
 2009-07-16 Version 0.10 unreleased yet
 
-  * entries LF_FRIENDCLS, LF_FRIENDFCN, LF_VBCLASS and LF_IVBCLASS written by DMC are now removed
+  * entries LF_FRIENDCLS, LF_FRIENDFCN, LF_VBCLASS and LF_IVBCLASS written by DMC are now removed.
+    thanks to Andrew.
+
 
