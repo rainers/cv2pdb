@@ -11,6 +11,8 @@
 #include <stdio.h>
 #include <direct.h>
 
+#define REMOVE_LF_DERIVED  1  // types wrong by DMD
+
 static const int kIncomplete = 0x80;
 
 CV2PDB::CV2PDB(PEImage& image) 
@@ -570,23 +572,46 @@ int CV2PDB::addFields(codeview_reftype* dfieldlist, const codeview_reftype* fiel
 			pos += sizeof(fieldtype->friendfcn_v1) + fieldtype->friendfcn_v1.p_name.namelen - 1;
 			continue;
 		case LF_FRIENDFCN_V2:
-			pos += sizeof(fieldtype->friendfcn_v2) + fieldtype->friendfcn_v2.p_name.namelen - 1;
+			copylen = sizeof(fieldtype->friendfcn_v2) + fieldtype->friendfcn_v2.p_name.namelen - 1;
 			continue;
+
 		case LF_FRIENDCLS_V1:
+			if(dp)
+			{
+				dfieldtype->friendcls_v2.id = LF_FRIENDCLS_V2;
+				dfieldtype->friendcls_v2._pad0 = 0;
+				dfieldtype->friendcls_v2.type = fieldtype->friendcls_v1.type;
+				dpos += sizeof(fieldtype->friendcls_v2);
+			}
 			pos += sizeof(fieldtype->friendcls_v1);
-			continue;
+			break;
 		case LF_FRIENDCLS_V2:
-			pos += sizeof(fieldtype->friendcls_v2);
-			continue; 
+			copylen = sizeof(fieldtype->friendcls_v2);
+			break; 
 
 			// necessary to convert this info? no data associated with it, so it might not be used
 		case LF_VBCLASS_V1:
 		case LF_IVBCLASS_V1:
+			if (dp)
+			{
+				dfieldtype->vbclass_v2.id = fieldtype->generic.id == LF_VBCLASS_V1 ? LF_VBCLASS_V2 : LF_IVBCLASS_V2;
+				dfieldtype->vbclass_v2.attribute = fieldtype->vbclass_v1.attribute;
+				dfieldtype->vbclass_v2.btype = fieldtype->vbclass_v1.btype;
+				dfieldtype->vbclass_v2.vbtype = fieldtype->vbclass_v1.vbtype;
+				dpos += sizeof(dfieldtype->vbclass_v2) - sizeof(dfieldtype->vbclass_v2.vbpoff);
+			}
+			pos += sizeof(fieldtype->vbclass_v1) - sizeof(fieldtype->vbclass_v1.vbpoff);
 			leaf_len = numeric_leaf(&value, &fieldtype->vbclass_v1.vbpoff);
-			pos += sizeof(fieldtype->vbclass_v1) - sizeof(fieldtype->vbclass_v1.vbpoff) + leaf_len;
-			copylen = numeric_leaf(&value, &fieldtype->vbclass_v1.vbpoff);
-			pos += copylen;
-			continue;
+			leaf_len += numeric_leaf(&value, (char*) &fieldtype->vbclass_v1.vbpoff + leaf_len);
+			copylen = leaf_len;
+			break;
+
+		case LF_VBCLASS_V2:
+		case LF_IVBCLASS_V2:
+			leaf_len = numeric_leaf(&value, &fieldtype->vbclass_v2.vbpoff);
+			leaf_len += numeric_leaf(&value, (char*) &fieldtype->vbclass_v2.vbpoff + leaf_len);
+			copylen = sizeof(fieldtype->vbclass_v2) - sizeof(fieldtype->vbclass_v2.vbpoff) + leaf_len;
+			break;
 
 		default:
 			setError("unsupported field entry");
@@ -1658,7 +1683,11 @@ bool CV2PDB::initGlobalTypes()
 							if(td->generic.id == LF_FIELDLIST_V1 || td->generic.id == LF_FIELDLIST_V2)
 								dtype->struct_v2.n_element = countFields((const codeview_reftype*)td);
 					dtype->struct_v2.property = type->struct_v1.property | 0x200;
+#if REMOVE_LF_DERIVED
+					dtype->struct_v2.derived = 0;
+#else
 					dtype->struct_v2.derived = type->struct_v1.derived;
+#endif
 					dtype->struct_v2.vshape = type->struct_v1.vshape;
 					leaf_len = numeric_leaf(&value, &type->struct_v1.structlen);
 					memcpy (&dtype->struct_v2.structlen, &type->struct_v1.structlen, leaf_len);
@@ -1673,7 +1702,7 @@ bool CV2PDB::initGlobalTypes()
 					len += leaf_len + sizeof(dtype->struct_v2) - sizeof(type->struct_v2.structlen);
 
 					// remember type index of derived list for object.Object
-					if (Dversion > 0 && type->struct_v1.derived)
+					if (Dversion > 0 && dtype->struct_v2.derived)
 						if (memcmp((char*) &type->struct_v1.structlen + leaf_len, "\x0dobject.Object", 14) == 0)
 							object_derived_type = type->struct_v1.derived;
 					break;
@@ -1756,7 +1785,7 @@ bool CV2PDB::initGlobalTypes()
 					break;
 
 				case LF_DERIVED_V1:
-#if 1 // types wrong by DMD
+#if REMOVE_LF_DERIVED
 					rdtype->generic.id = LF_NULL_V1;
 					len = 4;
 #else
