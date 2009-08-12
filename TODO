@@ -26,4 +26,4 @@ in the future, but not all have a known solution.
 * watch incorrect if same variable name used in different parts of a function
 * rtti display: disable for structs
 * line number in templates sometimes off by 1 or 2
-* call to other function sometimes jumps to called function while still pushing args
+* call to other function jumps to called function while pushing default arguments

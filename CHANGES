@@ -64,13 +64,10 @@ Version history
     because of inline expansion
   * fixed line numbers > 32767 and sections with 0 line number entries
 
-2009-07-16 Version 0.10 unreleased yet
+2009-08-12 Version 0.10
 
   * better support for DMC:
     - entries LF_FRIENDFCN removed
     - entries LF_FRIENDCLS, LF_VBCLASS and LF_IVBCLASS converted
     thanks to Andrew.
   * derived-classes info in class entry now cleared to be consistent with removal of LF_DERIVED
-
-
-
