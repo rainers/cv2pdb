@@ -71,3 +71,12 @@ Version history
     - entries LF_FRIENDCLS, LF_VBCLASS and LF_IVBCLASS converted
     thanks to Andrew.
   * derived-classes info in class entry now cleared to be consistent with removal of LF_DERIVED
+
+2009-12-29 Version 0.11
+
+  * basic types now show with their D names, not as C types
+  * "enum" prefix removed from type names of enumerator types
+  * added type information for complex data types
+  * dmd-patch needed for long/ulong support (http://d.puremagic.com/issues/show_bug.cgi?id=3373)
+  * experimental hack to add lexical scope to local variables (dmd patch in
+    http://d.puremagic.com/issues/show_bug.cgi?id=3657 needed)

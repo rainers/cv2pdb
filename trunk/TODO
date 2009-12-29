@@ -18,11 +18,11 @@ in the future, but not all have a known solution.
   in autoexp.dat
 * DMD does not emit different debug information for const and invariant, 
   type info is the same
+* DMD does not emit different debug information for float and ifloat, 
+  type info is the same
 * type display of delegate does not have arguments 
 * assoc_array.length cannot be displayed (it is assoc_array.a->nodes)
 * enum values not displayed
-* map dchar to something displayable
-* workaround for ulong (written by DMD as int[])
 * watch incorrect if same variable name used in different parts of a function
 * rtti display: disable for structs
 * line number in templates sometimes off by 1 or 2
