@@ -82,6 +82,9 @@ public:
 	const char* appendDelegate(int thisType, int funcType);
 	int appendObjectType (int object_derived_type);
 	int appendPointerType(int pointedType, int attr);
+	int appendTypedef(int type, const char* name);
+	int appendComplex(int cplxtype, int basetype, int elemsize, const char* name);
+	void appendTypedefs();
 
 	bool initGlobalTypes();
 	bool initGlobalSymbols();
@@ -150,6 +153,11 @@ public:
 
 	int nextUserType;
 	int objectType;
+
+	// D named types
+	int typedefs[20];
+	int translatedTypedefs[20];
+	int cntTypedefs;
 
 	bool useGlobalMod;
 	bool thisIsNotRef;

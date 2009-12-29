@@ -23,9 +23,13 @@ CV2PDB::CV2PDB(PEImage& image)
 , globalSymbols(0), cbGlobalSymbols(0), staticSymbols(0), cbStaticSymbols(0)
 , udtSymbols(0), cbUdtSymbols(0), allocUdtSymbols(0)
 , srcLineStart(0), srcLineSections(0)
-, pointerTypes(0)
+, pointerTypes(0), objectType(0)
 , Dversion(2)
 {
+	memset(typedefs, 0, sizeof(typedefs));
+	memset(translatedTypedefs, 0, sizeof(translatedTypedefs));
+	cntTypedefs = 0;
+
 	useGlobalMod = true;
 	thisIsNotRef = true;
 	v3 = true;
@@ -102,6 +106,10 @@ bool CV2PDB::cleanup(bool commit)
 	globalTypeHeader = 0;
 	objectType = 0;
 	pointerTypes = 0;
+	objectType = 0;
+	memset(typedefs, 0, sizeof(typedefs));
+	memset(translatedTypedefs, 0, sizeof(translatedTypedefs));
+	cntTypedefs = 0;
 
 	return true;
 }
@@ -926,7 +934,13 @@ int CV2PDB::sizeofType(int type)
 int CV2PDB::translateType(int type)
 {
 	if (type < 0x1000)
+	{
+		for(int i = 0; i < cntTypedefs; i++)
+			if(type == typedefs[i])
+				return translatedTypedefs[i];
 		return type;
+	}
+
 	const codeview_type* cvtype = getTypeData(type);
 	if (!cvtype)
 		return type;
@@ -1118,16 +1132,16 @@ bool CV2PDB::nameOfType(int type, char* name, int maxlen)
 		break;
 
 	case LF_ENUM_V1:
-		strcpy(name, "enum ");
-		p2ccpy(name + 5, (const BYTE*) &ptype->enumeration_v1.p_name);
+		//strcpy(name, "enum ");
+		p2ccpy(name, (const BYTE*) &ptype->enumeration_v1.p_name);
 		break;
 	case LF_ENUM_V2:
-		strcpy(name, "enum ");
-		p2ccpy(name + 5, (const BYTE*) &ptype->enumeration_v2.p_name);
+		//strcpy(name, "enum ");
+		p2ccpy(name, (const BYTE*) &ptype->enumeration_v2.p_name);
 		break;
 	case LF_ENUM_V3:
-		strcpy(name, "enum ");
-		strcpy(name + 5, ptype->enumeration_v3.name);
+		//strcpy(name, "enum ");
+		strcpy(name, ptype->enumeration_v3.name);
 		break;
 
 	case LF_MODIFIER_V1:
@@ -1564,6 +1578,96 @@ int CV2PDB::appendPointerType(int pointedType, int attr)
 	return nextUserType - 1;
 }
 
+int CV2PDB::appendComplex(int cplxtype, int basetype, int elemsize, const char* name)
+{
+	basetype = translateType(basetype);
+
+	codeview_reftype* rdtype;
+	codeview_type* dtype;
+
+	checkUserTypeAlloc();
+
+	// nextUserType: field list (size, array)
+	rdtype = (codeview_reftype*) (userTypes + cbUserTypes);
+	rdtype->fieldlist.id = LF_FIELDLIST_V2;
+
+	// member type re
+	codeview_fieldtype* dfieldtype = (codeview_fieldtype*)rdtype->fieldlist.list;
+	int len1 = addFieldMember(dfieldtype, 1, 0, basetype, "re");
+	
+	// member funcType* funcptr
+	dfieldtype = (codeview_fieldtype*)(rdtype->fieldlist.list + len1);
+	int len2 = addFieldMember(dfieldtype, 1, elemsize, basetype, "im");
+
+	rdtype->fieldlist.len = len1 + len2 + 2;
+	cbUserTypes += rdtype->fieldlist.len + 2;
+	int fieldlistType = nextUserType++;
+
+	// nextUserType + 3: struct delegate<>
+	dtype = (codeview_type*) (userTypes + cbUserTypes);
+	cbUserTypes += addClass(dtype, 2, fieldlistType, 0, 0, 0, 2*elemsize, name);
+
+	int classType = nextUserType++;
+	addUdtSymbol(classType, name);
+
+	typedefs[cntTypedefs] = cplxtype;
+	translatedTypedefs[cntTypedefs] = classType;
+	cntTypedefs++;
+
+	return classType;
+}
+
+int CV2PDB::appendTypedef(int type, const char* name)
+{
+	checkUserTypeAlloc();
+
+	int basetype = type;
+	if(type == 0x78)
+		basetype = 0x75; // dchar type not understood by debugger, use uint instead
+
+	codeview_reftype* rdtype = (codeview_reftype*) (userTypes + cbUserTypes);
+	rdtype->fieldlist.id = LF_FIELDLIST_V2;
+	rdtype->fieldlist.len = 2;
+	cbUserTypes += rdtype->fieldlist.len + 2;
+	int fieldlistType = nextUserType++;
+
+	codeview_type* dtype = (codeview_type*) (userTypes + cbUserTypes);
+	dtype->enumeration_v2.id = (v3 ? LF_ENUM_V3 : LF_ENUM_V2);
+	dtype->enumeration_v2.type = basetype;
+	dtype->enumeration_v2.fieldlist = fieldlistType;
+	dtype->enumeration_v2.count = 0;
+	dtype->enumeration_v2.property = 0x200;
+	int len = cstrcpy_v (v3, (BYTE*) &dtype->enumeration_v2.p_name, name);
+	len += sizeof(dtype->enumeration_v2) - sizeof(dtype->enumeration_v2.p_name);
+	dtype->enumeration_v2.len = len - 2;
+	cbUserTypes += len;
+
+	typedefs[cntTypedefs] = type;
+	translatedTypedefs[cntTypedefs] = nextUserType;
+	cntTypedefs++;
+
+	nextUserType++;
+	return nextUserType - 1;
+}
+
+void CV2PDB::appendTypedefs()
+{
+	appendTypedef(0x10, "byte");
+	appendTypedef(0x20, "ubyte");
+	appendTypedef(0x21, "ushort");
+	appendTypedef(0x75, "uint");
+	appendTypedef(0x1002, "dlong"); // instead of "long"
+	appendTypedef(0x1003, "ulong");
+	appendTypedef(0x42, "real");
+	// no imaginary types
+	appendTypedef(0x71, "wchar");
+	appendTypedef(0x78, "dchar");
+
+	appendComplex(0x50, 0x40, 4, "cfloat");
+	appendComplex(0x51, 0x41, 8, "cdouble");
+	appendComplex(0x52, 0x42, 10, "creal");
+}
+
 bool CV2PDB::initGlobalTypes()
 {
 	int object_derived_type = 0;
@@ -1590,6 +1694,8 @@ bool CV2PDB::initGlobalTypes()
 			cbGlobalTypes = 4;
 
 			nextUserType = globalTypeHeader->cTypes + 0x1000;
+
+			appendTypedefs();
 
 			for (unsigned int t = 0; t < globalTypeHeader->cTypes && !hadError(); t++)
 			{
@@ -2200,6 +2306,28 @@ int CV2PDB::copySymbols(BYTE* srcSymbols, int srcSize, BYTE* destSymbols, int de
 
 		case S_BPREL_V1:
 			type = dsym->stack_v1.symtype;
+#if 1
+			if (type == 0 && p2ccmp(dsym->stack_v1.p_name, "@sblk"))
+			{
+				unsigned offset = dsym->stack_v1.offset & 0xffff;
+				unsigned length = dsym->stack_v1.offset >> 16;
+				dsym->block_v3.id = S_BLOCK_V3;
+				dsym->block_v3.parent = 0;
+				dsym->block_v3.end = 0; // destSize + sizeof(dsym->block_v3) + 12;
+				dsym->block_v3.length = length;
+				dsym->block_v3.offset = offset + (lastGProcSym ? lastGProcSym->proc_v2.offset : 0);
+				dsym->block_v3.segment = (lastGProcSym ? lastGProcSym->proc_v2.segment : 0);
+				dsym->block_v3.name[0] = 0;
+				destlength = sizeof(dsym->block_v3);
+				dsym->data_v2.len = destlength - 2;
+			}
+			else if (type == 0 && p2ccmp(dsym->stack_v1.p_name, "@send"))
+			{
+				destlength = 4;
+				dsym->generic.id = S_END_V1;
+				dsym->generic.len = destlength - 2;
+			}
+#endif
 			if (p2ccmp(dsym->stack_v1.p_name, "this"))
 			{
 				if (lastGProcSym)
