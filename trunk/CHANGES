@@ -80,3 +80,7 @@ Version history
   * dmd-patch needed for long/ulong support (http://d.puremagic.com/issues/show_bug.cgi?id=3373)
   * experimental hack to add lexical scope to local variables (dmd patch in
     http://d.puremagic.com/issues/show_bug.cgi?id=3657 needed)
+
+Version 0.12
+
+  * added patch to convert binaries produced by Metroworks CodeWarrior

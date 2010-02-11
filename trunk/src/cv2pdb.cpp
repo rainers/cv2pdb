@@ -2037,8 +2037,12 @@ bool CV2PDB::createSrcLineBitmap()
 
 	for (int s = 0; s < segMap->cSeg; s++)
 	{
-		srcLineStart[s] = new char[segMapDesc[s].cbSeg];
-		memset(srcLineStart[s], 0, segMapDesc[s].cbSeg);
+		// cbSeg=-1 found in binary created by Metroworks CodeWarrior, so avoid new char[(size_t)-1]
+		if (segMapDesc[s].cbSeg <= LONG_MAX)
+		{
+			srcLineStart[s] = new char[segMapDesc[s].cbSeg];
+			memset(srcLineStart[s], 0, segMapDesc[s].cbSeg);
+		}
 	}
 
 	for (int m = 0; m < countEntries; m++)
@@ -2105,7 +2109,7 @@ int CV2PDB::getNextSrcLine(int seg, unsigned int off)
 		return -1;
 
 	off -= segMapDesc[s].offset;
-	if (off < 0 || off >= segMapDesc[s].cbSeg)
+	if (off < 0 || off >= segMapDesc[s].cbSeg || off > LONG_MAX)
 		return 0;
 
 	for (off++; off < segMapDesc[s].cbSeg; off++)
