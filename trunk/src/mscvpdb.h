@@ -119,7 +119,7 @@ union codeview_type
     {
         unsigned short int      len;
         short int               id;
-    } generic;
+    } common;
 
     struct
     {
@@ -365,7 +365,7 @@ union codeview_reftype
     {
         unsigned short int      len;
         short int               id;
-    } generic;
+    } common;
 
     struct
     {
@@ -430,7 +430,7 @@ union codeview_fieldtype
     struct
     {
         short int		id;
-    } generic;
+    } common;
 
     struct
     {
@@ -737,7 +737,7 @@ union codeview_oem_type
 		short int oemid;
 		short int id;
 		short int count;
-	} generic;
+	} common;
 
 	struct
 	{
@@ -1224,7 +1224,7 @@ union codeview_symbol
     {
         short int	        len;
         short int	        id;
-    } generic;
+    } common;
 
     struct
     {

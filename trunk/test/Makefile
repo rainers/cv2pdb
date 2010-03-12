@@ -6,7 +6,7 @@ SRC = cvtest.d
 DBGDIR = ..\bin\Debug
 RELDIR = ..\bin\Release
 
-DMD = c:\l\dmd-2.030\windows\bin\dmd.exe
+DMD = c:\l\dmd-2.040\windows\bin\dmd.exe
 # DMD = c:\l\dmd-1.045\windows\bin\dmd.exe
 
 CV2PDB_DBG = $(DBGDIR)\cv2pdb.exe

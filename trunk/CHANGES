@@ -84,3 +84,7 @@ Version history
 Version 0.12
 
   * added patch to convert binaries produced by Metroworks CodeWarrior
+  * names of local function are now demangled
+  * dmd 2.041 fixes long/ulong support (patch http://d.puremagic.com/issues/show_bug.cgi?id=3373
+    no longer needed)
+  * added managed C++ project to integrate cv2pdb with CLR (thanks to Alexander Bothe)

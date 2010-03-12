@@ -183,6 +183,18 @@ public:
 			hasthisptr = true;
 			goto Lagain;
 
+		case 'y':
+			p = "immutable(" + parseType() + ")";
+			goto L1;
+
+		case 'x':
+			p = "const(" + parseType() + ")";
+			goto L1;
+
+		case 'O':
+			p = "shared(" + parseType() + ")";
+			goto L1;
+
 		case 'F':				// D function
 		case 'U':				// C function
 		case 'W':				// Windows function
@@ -214,7 +226,7 @@ public:
 					goto Ldefault;
 
 				case 'K':
-					args += "inout ";
+					args += "ref ";
 					ni++;
 					goto Ldefault;
 
@@ -427,16 +439,18 @@ public:
 		try
 		{
 			string result = parseQualifiedName();
-			if (!plainName)
+			string typed_result = parseType(result);
+			while(ni < name.length)
 			{
-				result = parseType(result);
-				while(ni < name.length){
-					result += " . " + parseType(parseQualifiedName());
-				}
-
-				if (ni != name.length)
-					goto Lnot;
+				// throw away outer type (e.g. for local functions)
+				result = result + "." + parseQualifiedName();
+				typed_result = parseType(result);
 			}
+			if (!plainName)
+				result = typed_result;
+
+			if (ni != name.length)
+				goto Lnot;
 			return result;
 		}
 		catch (MangleException e)
@@ -456,6 +470,7 @@ void unittest()
 
 	static string table[][2] = 
 	{
+		{ "_D6object14_moduleTlsCtorUZv15_moduleTlsCtor2MFAPS6object10ModuleInfoiZv", "void object._moduleTlsCtor._moduleTlsCtor2(struct object.ModuleInfo*[], int)"},
 		{ "_D7dparser3dmd8Template21TemplateTypeParameter13overloadMatchMFC7dparser3dmd8Template17TemplateParameterZi", "int dparser.dmd.Template.TemplateTypeParameter.overloadMatch(class dparser.dmd.Template.TemplateParameter)"},
 		{ "printf",	"printf" },
 		{ "_foo",	"_foo" },
@@ -484,6 +499,8 @@ void unittest()
 
 bool d_demangle(const char* name, char* demangled, int maxlen, bool plain)
 {
+	// static bool once; if(!once) unittest(); once = true;
+
 	Demangle d;
 	string r = d.demangle(name, plain);
 	if (r.length == 0)
