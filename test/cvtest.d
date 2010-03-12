@@ -129,6 +129,21 @@ class Templ(T)
   }
 }
 
+struct struc
+{
+	int a;
+	struc * next;
+}
+
+class class_with_struct_member
+{
+	int c1;
+	int c2;
+	struc *s1;
+
+	this() { s1 = new struc; }
+};
+
 version(D2)
 {
     string stringMixin = "int a = 0;
@@ -183,6 +198,8 @@ int main2(char[][]argv)
 	int delegate() dg = &inst_method.method;
 	int res = dg();
 	
+	class_with_struct_member cwsm = new class_with_struct_member;
+
 	return 0;
 }
 
@@ -215,11 +232,13 @@ int main(char[][]argv)
 	struc_arr[ab2] = 6;
 	struc_arr[ab3] = 7;
 
+	struc s = { 2, null };
+	
 	Templ!(int) templ = new Templ!(int);
 	int y = templ.foo(3);
 	version(D2)
 		int z = mixinTest(7);
-  
+
 	(new Test).test();
 
 	dmd_quirks();
