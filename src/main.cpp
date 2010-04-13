@@ -1,5 +1,5 @@
 // Convert DMD CodeView debug information to PDB files
-// Copyright (c) 2009 by Rainer Schuetze, All Rights Reserved
+// Copyright (c) 2009-2010 by Rainer Schuetze, All Rights Reserved
 //
 // License for redistribution is given by the Artistic License 2.0
 // see file LICENSE for further details
@@ -81,7 +81,7 @@ int main(int argc, char** argv)
 	if (argc < 2)
 	{
 		printf("Convert DMD CodeView debug information to PDB files, Version %g\n", VERSION);
-		printf("Copyright (c) 2009 by Rainer Schuetze, All Rights Reserved\n");
+		printf("Copyright (c) 2009-2010 by Rainer Schuetze, All Rights Reserved\n");
 		printf("\n");
 		printf("License for redistribution is given by the Artistic License 2.0\n");
 		printf("see file LICENSE for further details\n");

@@ -154,6 +154,47 @@ aa<*> {
 	)
 }
 
+;; display associative array (starting with with dmd2.043, new sizes 4 and 31 were added, and
+;;  a list is used per hash entry instead of a tree
+;; remember to pass -D 2.043 to cv2pdb to produce suitable debug info
+;;
+aa2<*> {
+	preview(
+		#if($e.a == 0 || $e.a->b.ptr == 0) ( "null" )
+		; expressions must be in a single line (sigh)
+		#elif($e.a->b.length == 4 || $e.a->b.length == 31 || $e.a->b.length == 97 || $e.a->b.length == 389 || $e.a->b.length == 1543 || $e.a->b.length == 6151 || $e.a->b.length == 24593 || $e.a->b.length == 98317 || $e.a->b.length == 393241 || $e.a->b.length == 1572869 || $e.a->b.length == 6291469 || $e.a->b.length == 25165843)
+		(
+			#if($e.a->nodes > 1024) (
+				#( "[", $e.a->nodes, "] ", [(void*) $e.a], " too large for expansion" )
+			)
+			#else (
+				#( "[", $e.a->nodes, "] ", [(void*) $e.a] )
+			)
+		)
+		#elif (1)  ; no #else in a series of #elif !?
+		(
+			#( "[", $e.a->nodes, "] ", [(void*) $e.a], " uninitialized" )
+		)
+	)
+	children(
+		#if($e.a == 0 || $e.a->b.ptr == 0 || $e.a->nodes > 1024) 
+			( #array( expr: 0, size: 0 ) )
+		#else (
+			#( 
+				#array (
+					expr: &$e.a->b.ptr[$i],
+					size: $e.a->b.length
+				) : 
+				; DMD 2.043+
+				#list (
+					head : $e,
+					next : next
+				) : $e
+			)
+		)
+	)
+}
+
 ; display tree
 internal@aaA<*,*> {
 	preview(

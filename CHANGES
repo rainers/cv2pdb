@@ -88,3 +88,5 @@ Version 0.12
   * dmd 2.041 fixes long/ulong support (patch http://d.puremagic.com/issues/show_bug.cgi?id=3373
     no longer needed)
   * added managed C++ project to integrate cv2pdb with CLR (thanks to Alexander Bothe)
+  * dmd 2.043 uses different implementation of associative arrays, use command line
+    option -D 2.043 or above to produce the respective debug info 

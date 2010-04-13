@@ -2,7 +2,7 @@
 This is the README file for cv2pdb, a 
 converter of DMD CodeView debug information to PDB files
 
-Copyright (c) 2009 by Rainer Schuetze, All Rights Reserved
+Copyright (c) 2009-2010 by Rainer Schuetze, All Rights Reserved
 
 The goal of this project is to make debugging of D applications that
 were created with the Digital Mars DMD compiler, as seamless as possible 

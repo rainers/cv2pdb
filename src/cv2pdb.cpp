@@ -1,5 +1,5 @@
 // Convert DMD CodeView debug information to PDB files
-// Copyright (c) 2009 by Rainer Schuetze, All Rights Reserved
+// Copyright (c) 2009-2010 by Rainer Schuetze, All Rights Reserved
 //
 // License for redistribution is given by the Artistic License 2.0
 // see file LICENSE for further details
@@ -1211,7 +1211,10 @@ bool CV2PDB::nameOfDynamicArray(int indexType, int elemType, char* name, int max
 
 bool CV2PDB::nameOfAssocArray(int indexType, int elemType, char* name, int maxlen)
 {
-	strcpy(name, "aa<");
+	if(Dversion >= 2.043)
+		strcpy(name, "aa2<"); // to distinguish tree from list implementation
+	else
+		strcpy(name, "aa<");
 	int len = strlen(name);
 	if (!nameOfType(elemType, name + len, maxlen - len))
 		return false;
@@ -1359,33 +1362,50 @@ const char* CV2PDB::appendAssocArray(int keyType, int elemType)
 	rdtype = (codeview_reftype*) (userTypes + cbUserTypes);
 	rdtype->fieldlist.id = LF_FIELDLIST_V2;
 
+	int len1 = 0;
+	int len2 = 0;
+	int off = 0;
 	// member aaA* left
-	dfieldtype = (codeview_fieldtype*)rdtype->fieldlist.list;
-	int len1 = addFieldMember(dfieldtype, 1, 0, aaAPtrType, "left");
+	if(Dversion >= 2.043)
+	{
+		dfieldtype = (codeview_fieldtype*)rdtype->fieldlist.list;
+		len1 = addFieldMember(dfieldtype, 1, off, aaAPtrType, "next");
+		off += 4;
+	}
+	else
+	{
+		dfieldtype = (codeview_fieldtype*)rdtype->fieldlist.list;
+		len1 = addFieldMember(dfieldtype, 1, off, aaAPtrType, "left");
+		off += 4;
 
-	dfieldtype = (codeview_fieldtype*)(rdtype->fieldlist.list + len1);
-	int len2 = addFieldMember(dfieldtype, 1, 4, aaAPtrType, "right");
-
+		dfieldtype = (codeview_fieldtype*)(rdtype->fieldlist.list + len1);
+		len2 = addFieldMember(dfieldtype, 1, off, aaAPtrType, "right");
+		off += 4;
+	}
 	dfieldtype = (codeview_fieldtype*)(rdtype->fieldlist.list + len1 + len2);
-	int len3 = addFieldMember(dfieldtype, 1, 8, 0x74, "hash");
+	int len3 = addFieldMember(dfieldtype, 1, off, 0x74, "hash");
+	off += 4;
 
 	dfieldtype = (codeview_fieldtype*)(rdtype->fieldlist.list + len1 + len2 + len3);
-	int len4 = addFieldMember(dfieldtype, 1, 12, keyType, "key");
+	int len4 = addFieldMember(dfieldtype, 1, off, keyType, "key");
 
 	int typeLen = sizeofType(keyType);
 	typeLen = (typeLen + 3) & ~3; // align to 4 byte
+	off += typeLen;
+
 	dfieldtype = (codeview_fieldtype*)(rdtype->fieldlist.list + len1 + len2 + len3 + len4);
-	int len5 = addFieldMember(dfieldtype, 1, 12 + typeLen, elemType, "value");
+	int len5 = addFieldMember(dfieldtype, 1, off, elemType, "value");
 
 	int elemLen = sizeofType(elemType);
 	elemLen = (elemLen + 3) & ~3; // align to 4 byte
+	off += elemLen;
 
 	rdtype->fieldlist.len = len1 + len2 + len3 + len4 + len5 + 2;
 	cbUserTypes += rdtype->fieldlist.len + 2;
 	int fieldListType = nextUserType++;
 
 	dtype = (codeview_type*) (userTypes + cbUserTypes);
-	cbUserTypes += addClass(dtype, 5, fieldListType, 0, 0, 0, 12 + typeLen + elemLen, name);
+    cbUserTypes += addClass(dtype, len2 == 0 ? 4 : 5, fieldListType, 0, 0, 0, off, name);
 	addUdtSymbol(nextUserType, name);
 	int completeAAAType = nextUserType++;
 
