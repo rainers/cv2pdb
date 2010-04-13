@@ -71,6 +71,11 @@ you are using. Unfortunately, this information is not embedded into
 the debug information. The default is -D2. So far, this information 
 is only needed to determine whether "char[]" or "const char[]" is 
 translated to "string". 
+
+Starting with DMD 2.043, assoiciative arrays have a slightly different
+implementation, so debug information needs to be adjusted aswell. 
+Use -D 2.043 or higher to produce the matching debug info.
+
 Option -C tells the program, that you want to debug a program compiled
 with DMC, the Digital Mars C/C++ compiler. It will disable some of the
 D specific functions and will enable adjustment of stack variable names.
