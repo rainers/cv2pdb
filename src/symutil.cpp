@@ -36,7 +36,6 @@ int dsym2c(const BYTE* p, BYTE len, char* cname, int maxclen)
 			for(int z = 0; z < zlen; z++)
 				cname[cpos + z] = cname[cpos - zpos + z];
 			cpos += zlen;
-			break;
 		} 
 		else if (ch > 0x80)
 		{

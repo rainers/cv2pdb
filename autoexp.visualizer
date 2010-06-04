@@ -1,30 +1,6 @@
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; This file is part cv2pdb, a 
-;; converter of DMD CodeView debug information to PDB files
-;;
-;; written by Rainer Schuetze, placed into the Public Domain
-;;
-;;	 D types
-;; 
-;; add the content of this file to 
-;; <Visual Studio Installation Path>\Common7\Package\Debugger\autoexp.dat
-;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; load helper dll dviewhelper.dll to display strings
-;;
-;; add the following 2 lines to the [AutoExpand] section
-;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; [AutoExpand] 
-
-object_viewhelper=$ADDIN(dviewhelper.dll,_DObjectView@28)
-string_viewhelper=$ADDIN(dviewhelper.dll,_DStringView@28)
-wstring_viewhelper=$ADDIN(dviewhelper.dll,_DWStringView@28)
-dstring_viewhelper=$ADDIN(dviewhelper.dll,_DDStringView@28)
-
-;; eo section AutoExpand for D variables ;;;;;;;;;;;;;;;;;;;;;;
+;; added to [Visualizer] for cv2pdb - keep this line for uninstaller
+;; add DO NOT REMOVE to the line above after the '-' to not remove/update 
+;;  this section by the installer/uninstaller
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;	 D types visualizer
@@ -32,7 +8,6 @@ dstring_viewhelper=$ADDIN(dviewhelper.dll,_DDStringView@28)
 ;; add the remainder of this file to the [Visualizer] section
 ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; [Visualizer]
 
 ; string, wstring and dstring use __viewhelper
 string|wstring|dstring {
@@ -80,27 +55,55 @@ const char[]|char[]|const wchar[]|wchar[]|const dchar[]|dchar[] {
 	)
 }
 
+const void[]|void[] {
+	preview ( 
+		#if ($e.ptr == 0) ( "null" )
+		#else ( 
+			#( "[", $e.length, "] ", [(void*) $e.ptr] )
+		)
+	)
+	children (
+		#(
+			length: [$e.length],
+			ptr: [(void*) $e.ptr]
+		)
+	)
+}
+
 ; dynamic array
 *[] {
 	preview ( 
 		#if ($e.ptr == 0) ( "null" )
 		#else ( 
-			#(
-				"[", $e.length, "](",
-				#array (
-					expr : ($e.ptr)[$i],
-					size : $e.length
-				),
-				")"
+			#if($e.length > 1024) (
+				#( "[", $e.length, "] ", (void*) $e.ptr, " too large for expansion" )
+			)
+			#else (
+				#(
+					"[", $e.length, "](",
+					#array (
+						expr : ($e.ptr)[$i],
+						size : $e.length
+					),
+					")"
+				)
 			)
 		)
 	)
 	children (
-		#(
-			length: [$e.length, i],
-			#array (
-				expr: $e.ptr[$i],
-				size: $e.length
+		#if($e.length > 4096) (
+			#(
+				length: [$e.length],
+				ptr: [$e.ptr]
+			)
+		)
+		#else (
+			#(
+				length: [$e.length],
+				#array (
+					expr: $e.ptr[$i],
+					size: $e.length
+				)
 			)
 		)
 	)
@@ -120,7 +123,7 @@ const char[]|char[]|const wchar[]|wchar[]|const dchar[]|dchar[] {
 aa<*> {
 	preview(
 		#if($e.a == 0 || $e.a->b.ptr == 0) ( "null" )
-		; expressions must be in a sinlge line (sigh)
+		; expressions must be in a single line (sigh)
 		#elif($e.a->b.length == 97 || $e.a->b.length == 389 || $e.a->b.length == 1543 || $e.a->b.length == 6151 || $e.a->b.length == 24593 || $e.a->b.length == 98317 || $e.a->b.length == 393241 || $e.a->b.length == 1572869 || $e.a->b.length == 6291469 || $e.a->b.length == 25165843)
 		(
 			#if($e.a->nodes > 1024) (
@@ -147,7 +150,10 @@ aa<*> {
 				#tree (
 					head : $e,
 					left : left,
-					right : right,
+					right : right
+; limit size for sanity, hope rehashing takes care of not long lists
+; limiting the number does not work, it will try to show the given number of elements
+;					size : 32
 				) : $e
 			)
 		)
@@ -177,9 +183,11 @@ aa2<*> {
 		)
 	)
 	children(
-		#if($e.a == 0 || $e.a->b.ptr == 0 || $e.a->nodes > 1024) 
+		#if($e.a == 0 || $e.a->b.ptr == 0) 
 			( #array( expr: 0, size: 0 ) )
-		#else (
+		; expressions must be in a single line (sigh)
+		#elif($e.a->b.length == 4 || $e.a->b.length == 31 || $e.a->b.length == 97 || $e.a->b.length == 389 || $e.a->b.length == 1543 || $e.a->b.length == 6151 || $e.a->b.length == 24593 || $e.a->b.length == 98317 || $e.a->b.length == 393241 || $e.a->b.length == 1572869 || $e.a->b.length == 6291469 || $e.a->b.length == 25165843)
+		(
 			#( 
 				#array (
 					expr: &$e.a->b.ptr[$i],
@@ -189,8 +197,15 @@ aa2<*> {
 				#list (
 					head : $e,
 					next : next
+; limit size for sanity, hope rehashing takes care of not long lists
+; limiting the number does not work, it will try to show the given number of elements
+;					size : 32
 				) : $e
 			)
+		)
+		#elif (1)  ; no #else in a series of #elif !?
+		(
+			#( "[", $e.a->nodes, "] ", [(void*) $e.a], " uninitialized" )
 		)
 	)
 }
@@ -215,3 +230,4 @@ internal@aaA<*,*> {
 }
 
 ;; eo section Visualizer for D variables ;;;;;;;;;;;;;;;;;;;;;;
+;; eo added for cv2pdb - keep this line for uninstaller

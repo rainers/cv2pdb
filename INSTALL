@@ -9,22 +9,33 @@ Prerequisites
 
 For this program to be useful, you should have you should have the 
 Digital Mars D Compiler (http://www.digitalmars.com/d/2.0/dmd-windows.html)
-and either Microsoft Visual Studio 2005 or 2008 or one of the Express 
+and either Microsoft Visual Studio 2005, 2008 or 2010 or one of the Express 
 versions installed. cv2pdb uses one of the Microsoft DLLs to actually
 write the PDB file.
 
+If you are using some other program, you'll still need some
+files from one of the distributions. These are mspdb80.dll, mspdbsrv.exe, 
+msobj80.dll, mspdbcore.dll and msvcr90.dll from the VS2008 installation or
+mspdb100.dll, mspdbsrv.exe, msobj100.dll, mspdbcore.dll and msvcr100.dll
+from VS2010. They should be accessible through the PATH environment variable.
+(The VS Shell is missing the msobj80.dll/msobj100.dll only). 
+
 Installation
 ------------
-Sorry, there is no full featured installer available yet, you'll have
+You might want to consider installing Visual D (www.dsource.org/project/visuald)
+instead of cv2pdb. Visual D provides both project and language integration
+into Visual Studio and comes with an installer that includes cv2pdb.
+
+There is no full featured installer available for cv2pdb, you'll have
 to do some simple manual steps to use cv2pdb.
 
 1. The binary package of cv2pdb contains an executable cv2pdb.exe, which
 should be copied somewhere accessible through your PATH environment
 variable.
 
-2. cv2pdb.exe must be able to locate the DLL mspdb80.dll from the Visual
-Studio installation. It reads out the installation path of the latter, but
-if this fails, mspdb80.dll should also be accessible through your PATH 
+2. cv2pdb.exe must be able to locate the DLL mspdb80.dll/mspdb100.dll from the Visual
+Studio installation. It tries to read the installation path of the latter from the registry, but
+if this fails, mspdb80.dll/mspdb100.dll should also be accessible through your PATH 
 environment variable.
 
 3. For best debugging experience, you should configure Visual Studio 
@@ -34,8 +45,9 @@ navigating to the file extensions option page (found in Tools -> Options
 with editor "Microsoft Visual C++". This will also enable display of
 variables in the "Auto" watch window.
 
-4. You should also add the contents of the file autoexp.snippet to the 
-[AutoExpand] and [Visualizer] sections of the file autoexp.dat found in 
+4. You should also add the contents of the files autoexp.expand and 
+autoexp.visualizer to the respective [AutoExpand] and [Visualizer]
+sections of the file autoexp.dat found in 
 <Visual Studio Installation Path>\Common7\Packages\Debugger.
 Please note that in a standard installation of Visual Studio, the
 section [AutoExpand] is at the beginning of that file, followed by

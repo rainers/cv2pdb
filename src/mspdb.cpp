@@ -13,7 +13,10 @@
 HMODULE modMsPdb;
 mspdb::fnPDBOpen2W *pPDBOpen2W;
 
-char* mspdb_dll = "mspdb80.dll";
+char* mspdb80_dll = "mspdb80.dll";
+char* mspdb100_dll = "mspdb100.dll";
+
+bool mspdb::DBI::isVS10 = false;
 
 bool getInstallDir(const char* version, char* installDir, DWORD size)
 {
@@ -46,15 +49,29 @@ bool tryLoadMsPdb(const char* version, const char* mspdb)
 bool initMsPdb()
 {
 	if (!modMsPdb)
-		modMsPdb = LoadLibraryA(mspdb_dll);
+		modMsPdb = LoadLibraryA(mspdb80_dll);
+
 	if (!modMsPdb)
-		tryLoadMsPdb("VisualStudio\\9.0", mspdb_dll);
+		tryLoadMsPdb("VisualStudio\\9.0", mspdb80_dll);
 	if (!modMsPdb)
-		tryLoadMsPdb("VisualStudio\\8.0", mspdb_dll);
+		tryLoadMsPdb("VisualStudio\\8.0", mspdb80_dll);
 	if (!modMsPdb)
-		tryLoadMsPdb("VCExpress\\9.0", mspdb_dll);
+		tryLoadMsPdb("VCExpress\\9.0", mspdb80_dll);
 	if (!modMsPdb)
-		tryLoadMsPdb("VCExpress\\8.0", mspdb_dll);
+		tryLoadMsPdb("VCExpress\\8.0", mspdb80_dll);
+
+#if 1
+	if (!modMsPdb)
+	{
+		modMsPdb = LoadLibraryA(mspdb100_dll);
+		if (!modMsPdb)
+			tryLoadMsPdb("VisualStudio\\10.0", mspdb100_dll);
+		if (!modMsPdb)
+			tryLoadMsPdb("VCExpress\\10.0", mspdb100_dll);
+		if (modMsPdb)
+			mspdb::DBI::isVS10 = true;
+	}
+#endif
 
 	if (!modMsPdb)
 		return false;

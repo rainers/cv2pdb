@@ -37,7 +37,7 @@ ADD = Makefile \
       src\dviewhelper\dviewhelper.vcproj \
       src\cv2pdb.sln
 
-DOC = VERSION README INSTALL LICENSE CHANGES TODO FEATURES autoexp.snippet
+DOC = VERSION README INSTALL LICENSE CHANGES TODO FEATURES autoexp.expand autoexp.visualizer
 
 BIN = bin\Release\cv2pdb.exe bin\Release\dviewhelper.dll
 

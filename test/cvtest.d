@@ -156,6 +156,41 @@ version(D2)
     }
 }
 
+class A
+{
+	static int outer_func(int x)
+	{
+		int inner_func(int y)
+		{
+			return x * y;
+		}
+		return inner_func(2);
+	}
+}
+
+A outer_func(int x)
+{
+	int inner_func(int y)
+	{
+		return x * y;
+	}
+	inner_func(3);
+	return new A;
+}
+
+int arrays()
+{
+	int[] iarr;
+	iarr ~= 4;
+	
+	void[] varr;
+	varr = new char[102];
+	
+	const void[] cvarr;
+	
+	return iarr.length;
+}
+
 int main2(char[][]argv)
 {
 	enum_name inst_enum = enum_name.kEnum2;
@@ -207,6 +242,10 @@ int main2(char[][]argv)
 int main(char[][]argv)
 {
 	long lng = 3;
+
+	arrays();
+	outer_func(3);
+	A.outer_func(3);
 
 	main2(argv);
 

@@ -90,3 +90,9 @@ Version history
   * added managed C++ project to integrate cv2pdb with CLR (thanks to Alexander Bothe)
   * dmd 2.043 uses different implementation of associative arrays, use command line
     option -D 2.043 or above to produce the respective debug info 
+
+2010-06-03 Version 0.13
+
+  * adapted to mspdb100.dll which comes with VS2010
+  * tweaked autoexp.dat modifications to be more stable with uninitialized data
+  * autoexp.snippet now split into two files: autoexp.expand and autoexp.visualizer

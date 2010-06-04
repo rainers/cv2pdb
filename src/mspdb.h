@@ -30,7 +30,6 @@ struct MRECmp2;
 struct PDB;
 struct Src;
 struct Mod;
-struct DBI;
 struct StreamCached;
 struct GSI;
 struct TPI;
@@ -41,17 +40,21 @@ struct EnumNameMap;
 #define PDBCommon PDB
 #define SrcCommon Src
 #define ModCommon Mod
-#define DBICommon DBI
 
 #define MREUtil2 MREUtil
 #define MREFile2 MREFile
 #define MREBag2 MREBag
 #define Mod2 Mod
-#define DBI2 DBI
 #define GSI2 GSI
 #define TPI2 TPI
 #define NameMap2 NameMap
 #define EnumNameMap2 EnumNameMap
+
+struct DBI;
+/*
+#define DBICommon DBI
+#define DBI2 DBI
+*/
 
 struct MREUtil {
 public: virtual int MREUtil::FRelease(void);
@@ -338,64 +341,100 @@ public: virtual int Mod::QueryLines2(long,unsigned char *,long *);
 };
 
 
-struct DBI {
-public: virtual unsigned long DBI::QueryImplementationVersion(void);
-public: virtual unsigned long DBI::QueryInterfaceVersion(void);
-public: virtual int DBICommon::OpenMod(char const *objName,char const *libName,struct Mod * *);
-public: virtual int DBI::DeleteMod(char const *);
-public: virtual int DBI2::QueryNextMod(struct Mod *,struct Mod * *);
-public: virtual int DBI::OpenGlobals(struct GSI * *);
-public: virtual int DBI::OpenPublics(struct GSI * *);
-public: virtual int DBI::AddSec(unsigned short sec,unsigned short flags,long offset,long cbseg);
-public: virtual int DBI2::QueryModFromAddr(unsigned short,long,struct Mod * *,unsigned short *,long *,long *);
-public: virtual int DBI::QuerySecMap(unsigned char *,long *);
-public: virtual int DBI::QueryFileInfo(unsigned char *,long *);
-public: virtual void DBI::DumpMods(void);
-public: virtual void DBI::DumpSecContribs(void);
-public: virtual void DBI::DumpSecMap(void);
-public: virtual int DBI2::Close(void);
-public: virtual int DBI::AddThunkMap(long *,unsigned int,long,struct SO *,unsigned int,unsigned short,long);
-public: virtual int DBI::AddPublic(char const *,unsigned short,long);
-public: virtual int DBI2::getEnumContrib(struct Enum * *);
-public: virtual int DBI::QueryTypeServer(unsigned char,struct TPI * *);
-public: virtual int DBI::QueryItsmForTi(unsigned long,unsigned char *);
-public: virtual int DBI::QueryNextItsm(unsigned char,unsigned char *);
-public: virtual int DBI::reinitialize(void); // returns 0
-public: virtual int DBI::SetLazyTypes(int);
-public: virtual int DBI::FindTypeServers(long *,char *);
-public: virtual void DBI::noop(void); // noop
-public: virtual int DBI::OpenDbg(enum DBGTYPE,struct Dbg * *);
-public: virtual int DBI::QueryDbgTypes(enum DBGTYPE *,long *);
-public: virtual int DBI::QueryAddrForSec(unsigned short *,long *,unsigned short,long,unsigned long,unsigned long);
-public: virtual int DBI::QuerySupportsEC(void);
-public: virtual int DBI2::QueryPdb(struct PDB * *);
-public: virtual int DBI::AddLinkInfo(struct LinkInfo *);
-public: virtual int DBI::QueryLinkInfo(struct LinkInfo *,long *);
-public: virtual unsigned long DBI::QueryAge(void)const ;
-public: virtual int DBI2::reinitialize2(void);  // returns 0
-public: virtual void DBI::FlushTypeServers(void);
-public: virtual int DBICommon::QueryTypeServerByPdb(char const *,unsigned char *);
-public: virtual int DBI2::OpenModW(unsigned short const *objName,unsigned short const *libName,struct Mod * *);
-public: virtual int DBI::DeleteModW(unsigned short const *);
-public: virtual int DBI::AddPublicW(unsigned short const *name,unsigned short sec,long off,unsigned long type);
-public: virtual int DBI::QueryTypeServerByPdbW(unsigned short const *,unsigned char *);
-public: virtual int DBI::AddLinkInfoW(struct LinkInfoW *);
-public: virtual int DBI::AddPublic2(char const *name,unsigned short sec,long off,unsigned long type);
-public: virtual unsigned short DBI::QueryMachineType(void)const ;
-public: virtual void DBI::SetMachineType(unsigned short);
-public: virtual void DBI::RemoveDataForRva(unsigned long,unsigned long);
-public: virtual int DBI::FStripped(void);
-public: virtual int DBI2::QueryModFromAddr2(unsigned short,long,struct Mod * *,unsigned short *,long *,long *,unsigned long *);
-public: virtual int DBI::QueryNoOfMods(long *);
-public: virtual int DBI2::QueryMods(struct Mod * *,long);
-public: virtual int DBI2::QueryImodFromAddr(unsigned short,long,unsigned short *,unsigned short *,long *,long *,unsigned long *);
-public: virtual int DBI2::OpenModFromImod(unsigned short,struct Mod * *);
-public: virtual int DBI::QueryHeader2(long,unsigned char *,long *);
-public: virtual int DBI::FAddSourceMappingItem(unsigned short const *,unsigned short const *,unsigned long);
-public: virtual int DBI::FSetPfnNotePdbUsed(void *,void (__cdecl*)(void *,unsigned short const *,int,int));
-public: virtual int DBI::FCTypes(void);
-public: virtual int DBI::QueryFileInfo2(unsigned char *,long *);
-public: virtual int DBI::FSetPfnQueryCallback(void *,int (__cdecl*(__cdecl*)(void *,enum DOVC))(void));
+struct DBI_part1 {
+public: virtual unsigned long QueryImplementationVersion(void);
+public: virtual unsigned long QueryInterfaceVersion(void);
+public: virtual int OpenMod(char const *objName,char const *libName,struct Mod * *);
+public: virtual int DeleteMod(char const *);
+public: virtual int QueryNextMod(struct Mod *,struct Mod * *);
+public: virtual int OpenGlobals(struct GSI * *);
+public: virtual int OpenPublics(struct GSI * *);
+public: virtual int AddSec(unsigned short sec,unsigned short flags,long offset,long cbseg);
+public: virtual int QueryModFromAddr(unsigned short,long,struct Mod * *,unsigned short *,long *,long *);
+public: virtual int QuerySecMap(unsigned char *,long *);
+public: virtual int QueryFileInfo(unsigned char *,long *);
+public: virtual void DumpMods(void);
+public: virtual void DumpSecContribs(void);
+public: virtual void DumpSecMap(void);
+public: virtual int Close(void);
+public: virtual int AddThunkMap(long *,unsigned int,long,struct SO *,unsigned int,unsigned short,long);
+public: virtual int AddPublic(char const *,unsigned short,long);
+public: virtual int getEnumContrib(struct Enum * *);
+public: virtual int QueryTypeServer(unsigned char,struct TPI * *);
+public: virtual int QueryItsmForTi(unsigned long,unsigned char *);
+public: virtual int QueryNextItsm(unsigned char,unsigned char *);
+public: virtual int reinitialize(void); // returns 0 (QueryLazyTypes in 10.0)
+public: virtual int SetLazyTypes(int);
+public: virtual int FindTypeServers(long *,char *);
+public: virtual void noop(void); // noop (_Reserved_was_QueryMreLog in 10.0)
+public: virtual int OpenDbg(enum DBGTYPE,struct Dbg * *);
+public: virtual int QueryDbgTypes(enum DBGTYPE *,long *);
+public: virtual int QueryAddrForSec(unsigned short *,long *,unsigned short,long,unsigned long,unsigned long);
+};
+struct DBI_part2 : public DBI_part1 {
+// in mspdb100.dll:
+public: virtual int QueryAddrForSecEx(unsigned short *,long *,unsigned short,long,unsigned long,unsigned long);
+};
+
+template<class BASE> 
+struct DBI_BASE : public BASE {
+public: virtual int QuerySupportsEC(void);
+public: virtual int QueryPdb(struct PDB * *);
+public: virtual int AddLinkInfo(struct LinkInfo *);
+public: virtual int QueryLinkInfo(struct LinkInfo *,long *);
+public: virtual unsigned long QueryAge(void)const ;
+public: virtual int reinitialize2(void);  // returns 0 (QueryLazyTypes in 10.0)
+public: virtual void FlushTypeServers(void);
+public: virtual int QueryTypeServerByPdb(char const *,unsigned char *);
+public: virtual int OpenModW(unsigned short const *objName,unsigned short const *libName,struct Mod * *);
+public: virtual int DeleteModW(unsigned short const *);
+public: virtual int AddPublicW(unsigned short const *name,unsigned short sec,long off,unsigned long type);
+public: virtual int QueryTypeServerByPdbW(unsigned short const *,unsigned char *);
+public: virtual int AddLinkInfoW(struct LinkInfoW *);
+public: virtual int AddPublic2(char const *name,unsigned short sec,long off,unsigned long type);
+public: virtual unsigned short QueryMachineType(void)const ;
+public: virtual void SetMachineType(unsigned short);
+public: virtual void RemoveDataForRva(unsigned long,unsigned long);
+public: virtual int FStripped(void);
+public: virtual int QueryModFromAddr2(unsigned short,long,struct Mod * *,unsigned short *,long *,long *,unsigned long *);
+public: virtual int QueryNoOfMods(long *);
+public: virtual int QueryMods(struct Mod * *,long);
+public: virtual int QueryImodFromAddr(unsigned short,long,unsigned short *,unsigned short *,long *,long *,unsigned long *);
+public: virtual int OpenModFromImod(unsigned short,struct Mod * *);
+public: virtual int QueryHeader2(long,unsigned char *,long *);
+public: virtual int FAddSourceMappingItem(unsigned short const *,unsigned short const *,unsigned long);
+public: virtual int FSetPfnNotePdbUsed(void *,void (__cdecl*)(void *,unsigned short const *,int,int));
+public: virtual int FCTypes(void);
+public: virtual int QueryFileInfo2(unsigned char *,long *);
+public: virtual int FSetPfnQueryCallback(void *,int (__cdecl*(__cdecl*)(void *,enum DOVC))(void));
+};
+
+struct DBI_VS9  : public DBI_BASE<DBI_part1> {};
+struct DBI_VS10 : public DBI_BASE<DBI_part2> {};
+
+struct DBI
+{
+    static bool isVS10;
+    DBI_VS9 vs9;
+
+    unsigned long QueryImplementationVersion() { return vs9.QueryImplementationVersion(); }
+    unsigned long QueryInterfaceVersion() { return vs9.QueryInterfaceVersion(); }
+    int Close() { return vs9.Close(); }
+    int OpenMod(char const *objName,char const *libName,struct Mod * *pmod) { return vs9.OpenMod(objName,libName,pmod); }
+    int AddSec(unsigned short sec,unsigned short flags,long offset,long cbseg) { return vs9.AddSec(sec,flags,offset,cbseg); }
+
+    int AddPublic2(char const *name,unsigned short sec,long off,unsigned long type)
+    {
+        if(isVS10)
+            return ((DBI_VS10*) &vs9)->AddPublic2(name, sec, off, type);
+        return vs9.AddPublic2(name, sec, off, type);
+    }
+    void SetMachineType(unsigned short type)
+    {
+        if(isVS10)
+            return ((DBI_VS10*) &vs9)->SetMachineType(type);
+        return vs9.SetMachineType(type);
+    }
 };
 
 struct StreamCached {
