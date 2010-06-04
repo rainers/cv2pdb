@@ -16,6 +16,8 @@
 #include <ctype.h>
 #include <assert.h>
 
+#include "symutil.h"
+
 using namespace std;
 
 typedef unsigned char ubyte;
@@ -493,13 +495,16 @@ void unittest()
 		string r = d.demangle(table[i][0]);
 		assert(r == table[i][1]);
 		//	"table entry #" + toString(i) + ": '" + name[0] + "' demangles as '" + r + "' but is expected to be '" + name[1] + "'");
-
 	}
+
+	const char s[] = "_D12intellisen\xd1" "11LibraryInfo14findDe\xeaitionMFKS\x80\x8f\xaf" "0SearchDataZA\x80\x91\x9d\x80\x8a\xbb" "8count\x80\x83\x90MFAyaP\x80\x8f\xaa" "9JSONscopeH\x80\x83\x93S3std4json\x80\x85\x98ValueZb";
+    char buf[512];
+    dsym2c((const BYTE*) s, sizeof(s) - 1, buf, sizeof(buf));
 }
 
 bool d_demangle(const char* name, char* demangled, int maxlen, bool plain)
 {
-	// static bool once; if(!once) unittest(); once = true;
+    static bool once; if(!once) { once = true; unittest(); }
 
 	Demangle d;
 	string r = d.demangle(name, plain);

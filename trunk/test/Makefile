@@ -6,7 +6,7 @@ SRC = cvtest.d
 DBGDIR = ..\bin\Debug
 RELDIR = ..\bin\Release
 
-DMD = c:\l\dmd-2.040\windows\bin\dmd.exe
+DMD = c:\l\dmd2\windows\bin\dmd.exe
 # DMD = c:\l\dmd-1.045\windows\bin\dmd.exe
 
 CV2PDB_DBG = $(DBGDIR)\cv2pdb.exe
@@ -23,7 +23,7 @@ rel_exe: $(RELDIR)\$(PROJECT).exe
 
 ######################
 $(DBGDIR)\$(PROJECT).exe : $(DBGDIR)\$(PROJECT)_cv.exe $(CV2PDB_DBG)
-	$(CV2PDB_DBG) $(DBGDIR)\$(PROJECT)_cv.exe $@
+	$(CV2PDB_DBG) -D2.043 $(DBGDIR)\$(PROJECT)_cv.exe $@
 
 $(DBGDIR)\$(PROJECT)_cv.exe : $(SRC) Makefile
 	$(DMD) -of$@ -g -unittest $(DFLAGS) @<<

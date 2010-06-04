@@ -1,0 +1,17 @@
+;; added to [AutoExpand] for cv2pdb - keep this line for uninstaller
+;; add DO NOT REMOVE to the line above after the '-' to not remove/update 
+;;  this section by the installer/uninstaller
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; load helper dll dviewhelper.dll to display D strings
+;;
+;; add the following lines to the [AutoExpand] section
+;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+object_viewhelper=$ADDIN(dviewhelper.dll,_DObjectView@28)
+string_viewhelper=$ADDIN(dviewhelper.dll,_DStringView@28)
+wstring_viewhelper=$ADDIN(dviewhelper.dll,_DWStringView@28)
+dstring_viewhelper=$ADDIN(dviewhelper.dll,_DDStringView@28)
+
+;; eo section AutoExpand for D variables ;;;;;;;;;;;;;;;;;;;;;;
+;; eo added for cv2pdb - keep this line for uninstaller

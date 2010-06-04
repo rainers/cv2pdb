@@ -12,6 +12,7 @@
 #include <direct.h>
 
 #define REMOVE_LF_DERIVED  1  // types wrong by DMD
+#define PRINT_INTERFACEVERSON 0
 
 static const int kIncomplete = 0x80;
 
@@ -125,9 +126,11 @@ bool CV2PDB::openPDB(const char* pdbname)
 	if (!pdb)
 		return setError("cannot create PDB file");
 
-	//printf("PDB::QueryInterfaceVersion() = %d\n", pdb->QueryInterfaceVersion());
-	//printf("PDB::QueryImplementationVersion() = %d\n", pdb->QueryImplementationVersion());
-	//printf("PDB::QueryPdbImplementationVersion() = %d\n", pdb->QueryPdbImplementationVersion());
+#if PRINT_INTERFACEVERSON
+	printf("PDB::QueryInterfaceVersion() = %d\n", pdb->QueryInterfaceVersion());
+	printf("PDB::QueryImplementationVersion() = %d\n", pdb->QueryImplementationVersion());
+	printf("PDB::QueryPdbImplementationVersion() = %d\n", pdb->QueryPdbImplementationVersion());
+#endif
 
 	rsds = (OMFSignatureRSDS *) new char[24 + strlen(pdbname) + 1]; // sizeof(OMFSignatureRSDS) without name
 	memcpy (rsds->Signature, "RSDS", 4);
@@ -139,9 +142,19 @@ bool CV2PDB::openPDB(const char* pdbname)
 	if (rc <= 0 || !dbi)
 		return setError("cannot create DBI");
 
+#if PRINT_INTERFACEVERSON
+	printf("DBI::QueryInterfaceVersion() = %d\n", dbi->QueryInterfaceVersion());
+	printf("DBI::QueryImplementationVersion() = %d\n", dbi->QueryImplementationVersion());
+#endif
+
 	rc = pdb->OpenTpi("", &tpi);
 	if (rc <= 0 || !tpi)
 		return setError("cannot create TPI");
+
+#if PRINT_INTERFACEVERSON
+	printf("TPI::QueryInterfaceVersion() = %d\n", tpi->QueryInterfaceVersion());
+	printf("TPI::QueryImplementationVersion() = %d\n", tpi->QueryImplementationVersion());
+#endif
 
 	return true;
 }
@@ -192,6 +205,15 @@ bool CV2PDB::createModules()
 					return setError("cannot create mod");
 				mod = modules[entry->iMod];
 			}
+#if PRINT_INTERFACEVERSON
+			static bool once;
+			if(!once)
+			{
+				printf("Mod::QueryInterfaceVersion() = %d\n", mod->QueryInterfaceVersion());
+				printf("Mod::QueryImplementationVersion() = %d\n", mod->QueryImplementationVersion());
+				once = true;
+			}
+#endif
 
 			for (int s = 0; s < module->cSeg; s++)
 			{
@@ -2501,7 +2523,9 @@ bool CV2PDB::writeSymbols(mspdb::Mod* mod, DWORD* data, int databytes, int prefi
 		data[3] = 1;
 	int rc = mod->AddSymbols((BYTE*) data, ((databytes + 3) / 4 + prefix) * 4);
 	if (rc <= 0)
-		return setError("cannot add symbols to module");
+		return setError(mspdb::DBI::isVS10
+                        ? "cannot add symbols to module, probably msobj100.dll missing"
+                        : "cannot add symbols to module, probably msobj80.dll missing");
 	return true;
 }
 
