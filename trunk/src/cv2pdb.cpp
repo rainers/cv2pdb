@@ -1776,8 +1776,18 @@ bool CV2PDB::initGlobalTypes()
 
 					if (oem->common.oemid == 0x42 && oem->common.id == 1)
 					{
-						const char* name = appendDynamicArray(oem->d_dyn_array.index_type, oem->d_dyn_array.elem_type);
-						len = addClass(dtype, 0, 0, kIncomplete, 0, 0, 0, name);
+						if(Dversion == 0) // in dmc, this is used for (u)int64
+						{
+							dtype->modifier_v2.id = LF_MODIFIER_V2;
+							dtype->modifier_v2.attribute = 0;
+							dtype->modifier_v2.type = 0x13;
+							len = sizeof(dtype->modifier_v2);
+						}
+						else
+						{
+							const char* name = appendDynamicArray(oem->d_dyn_array.index_type, oem->d_dyn_array.elem_type);
+							len = addClass(dtype, 0, 0, kIncomplete, 0, 0, 0, name);
+						}
 					}
 					else if (oem->common.oemid == 0x42 && oem->common.id == 3)
 					{
