@@ -96,3 +96,8 @@ Version history
   * adapted to mspdb100.dll which comes with VS2010
   * tweaked autoexp.dat modifications to be more stable with uninitialized data
   * autoexp.snippet now split into two files: autoexp.expand and autoexp.visualizer
+
+not released Version 0.14
+
+  * when a dynamic array type is detected for a DMC compiled executable (command
+    option -C is used), it is converted to int64 (fixing DMC bug)
