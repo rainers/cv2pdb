@@ -242,6 +242,7 @@ int main2(char[][]argv)
 int main(char[][]argv)
 {
 	long lng = 3;
+	ulong ulng = 4;
 
 	arrays();
 	outer_func(3);
@@ -323,3 +324,4 @@ void dmd_quirks()
 	long quirk_long; // written as delegate<void*,int>
 	ulong quirk_ulong; // written as int[]
 }
+

@@ -504,7 +504,9 @@ void unittest()
 
 bool d_demangle(const char* name, char* demangled, int maxlen, bool plain)
 {
+#ifdef _DEBUG
     static bool once; if(!once) { once = true; unittest(); }
+#endif
 
 	Demangle d;
 	string r = d.demangle(name, plain);
