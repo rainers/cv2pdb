@@ -14,7 +14,16 @@
 #define REMOVE_LF_DERIVED  1  // types wrong by DMD
 #define PRINT_INTERFACEVERSON 0
 
-static const int kIncomplete = 0x80;
+// class properties (also apply to struct,union and enum)
+static const int kPropPacked      = 0x01;
+static const int kPropHasCtorDtor = 0x02;
+static const int kPropHasOverOps  = 0x04;
+static const int kPropIsNested    = 0x08;
+static const int kPropHasNested   = 0x10;
+static const int kPropHasOverAsgn = 0x20;
+static const int kPropHasCasting  = 0x40;
+static const int kPropIncomplete  = 0x80;
+static const int kPropScoped      = 0x100;
 
 CV2PDB::CV2PDB(PEImage& image) 
 : img(image), pdb(0), dbi(0), libraries(0), rsds(0), modules(0), globmod(0)
@@ -75,7 +84,7 @@ bool CV2PDB::cleanup(bool commit)
 	delete [] pointerTypes;
 
 	for(int i = 0; i < srcLineSections; i++)
-	    delete [] srcLineStart[i];
+		delete [] srcLineStart[i];
 	delete [] srcLineStart;
 	srcLineStart = 0;
 	srcLineSections =  0;
@@ -279,7 +288,7 @@ bool CV2PDB::initSegMap()
 				if (rc <= 0)
 					return setError("cannot add section");
 				if (segMapDesc[s].frame > maxframe)
-				    maxframe = segMapDesc[s].frame;
+					maxframe = segMapDesc[s].frame;
 			}
 
 			segFrame2Index = new int[maxframe + 1];
@@ -384,13 +393,16 @@ static int copy_p2dsym(unsigned char* dp, int& dpos, const unsigned char* p, int
 }
 
 // if dfieldlist == 0, count fields
-int CV2PDB::addFields(codeview_reftype* dfieldlist, const codeview_reftype* fieldlist, int maxdlen)
+int CV2PDB::_doFields(int cmd, codeview_reftype* dfieldlist, const codeview_reftype* fieldlist, int arg)
 {
+	int maxdlen = (cmd == kCmdAdd ? arg : 0);
 	int len = fieldlist->fieldlist.len - 2;
 	const unsigned char* p = fieldlist->fieldlist.list;
 	unsigned char* dp = dfieldlist ? dfieldlist->fieldlist.list : 0;
 	int pos = 0, dpos = 0;
 	int leaf_len, value;
+	int nested_types = 0;
+	int test_nested_type = (cmd == kCmdNestedTypes ? arg : 0);
 
 	int cntFields = 0;
 	int prev = pos;
@@ -570,16 +582,22 @@ int CV2PDB::addFields(codeview_reftype* dfieldlist, const codeview_reftype* fiel
 				copy_p2dsym(dp, dpos, p, pos, maxdlen);
 			else
 				copylen = fieldtype->nesttype_v1.p_name.namelen + 1;
+			if(test_nested_type == 0 || test_nested_type == fieldtype->nesttype_v1.type)
+				nested_types++;
 			break;
 
 		case LF_NESTTYPE_V2:
 			copylen = sizeof(dfieldtype->nesttype_v2) - sizeof(dfieldtype->nesttype_v2.p_name);
 			copylen += fieldtype->nesttype_v2.p_name.namelen + 1;
+			if(test_nested_type == 0 || test_nested_type == fieldtype->nesttype_v1.type)
+				nested_types++;
 			break;
 
 		case LF_NESTTYPE_V3:
 			copylen = sizeof(dfieldtype->nesttype_v3) - sizeof(dfieldtype->nesttype_v3.name);
 			copylen += strlen(fieldtype->nesttype_v3.name) + 1;
+			if(test_nested_type == 0 || test_nested_type == fieldtype->nesttype_v1.type)
+				nested_types++;
 			break;
 
 		case LF_VFUNCTAB_V1:
@@ -659,12 +677,32 @@ int CV2PDB::addFields(codeview_reftype* dfieldlist, const codeview_reftype* fiel
 		pos += copylen;
 		cntFields++;
 	}
-	return dp ? dpos : cntFields;
+	switch(cmd)
+	{
+	case kCmdAdd:
+		return dpos;
+	case kCmdCount:
+		return cntFields;
+	case kCmdNestedTypes:
+		return nested_types;
+	}
+
+	return setError("_doFields: unknown command");
+}
+
+int CV2PDB::addFields(codeview_reftype* dfieldlist, const codeview_reftype* fieldlist, int maxdlen)
+{
+	return _doFields(kCmdAdd, dfieldlist, fieldlist, maxdlen);
 }
 
 int CV2PDB::countFields(const codeview_reftype* fieldlist)
 {
-	return addFields(0, fieldlist, 0);
+	return _doFields(kCmdCount, 0, fieldlist, 0);
+}
+
+int CV2PDB::countNestedTypes(const codeview_reftype* fieldlist, int type)
+{
+	return _doFields(kCmdNestedTypes, 0, fieldlist, type);
 }
 
 int CV2PDB::addAggregate(codeview_type* dtype, bool clss, int n_element, int fieldlist, int property, 
@@ -811,7 +849,7 @@ const codeview_type* CV2PDB::findCompleteClassType(const codeview_type* cvtype)
 		const codeview_type* type = (const codeview_type*)(typeData + offset[t]);
 		if (type->common.id == LF_CLASS_V1 || type->common.id == LF_STRUCTURE_V1)
 		{
-			if (!(type->struct_v1.property & kIncomplete))
+			if (!(type->struct_v1.property & kPropIncomplete))
 			{
 				int leaf_len = numeric_leaf(&value, &type->struct_v1.structlen);
 				if (pstrcmp((const BYTE*) &cvtype->struct_v1.structlen + cvleaf_len,
@@ -855,9 +893,33 @@ int CV2PDB::findMemberFunctionType(codeview_symbol* lastGProcSym, int thisPtrTyp
 	return lastGProcSym->proc_v2.proctype;
 }
 
+int CV2PDB::fixProperty(int type, int prop, int fieldType)
+{
+	const codeview_reftype* cv_fieldtype = (const codeview_reftype*) getTypeData(fieldType);
+	if(cv_fieldtype && countNestedTypes(cv_fieldtype, 0) > 0)
+		prop |= kPropHasNested;
+
+	// search types for field list with nested type
+	DWORD* offset = (DWORD*)(globalTypeHeader + 1);
+	BYTE* typeData = (BYTE*)(offset + globalTypeHeader->cTypes);
+	for (unsigned int t = 0; t < globalTypeHeader->cTypes; t++)
+	{
+		const codeview_reftype* cvtype = (const codeview_reftype*)(typeData + offset[t]);
+		if (cvtype->common.id == LF_FIELDLIST_V1 || cvtype->common.id == LF_FIELDLIST_V2)
+		{
+			if (countNestedTypes(cvtype, type) > 0)
+			{
+				prop |= kPropIsNested;
+				break;
+			}
+		}
+	}
+	return prop;
+}
+
 int CV2PDB::sizeofClassType(const codeview_type* cvtype)
 {
-	if (cvtype->struct_v1.property & kIncomplete)
+	if (cvtype->struct_v1.property & kPropIncomplete)
 		cvtype = findCompleteClassType(cvtype);
 
 	int value;
@@ -974,7 +1036,13 @@ int CV2PDB::translateType(int type)
 	if (oem->common.oemid == 0x42 && oem->common.id == 3)
 	{
 		if (oem->d_delegate.this_type == 0x403 && oem->d_delegate.func_type == 0x74)
-			return 0x76; // long
+			return translateType(0x13); // int64
+	}
+	if (oem->common.oemid == 0x42 && oem->common.id == 1 && Dversion == 0)
+	{
+		// C does not have D types, so this must be unsigned long
+		if (oem->d_dyn_array.index_type == 0x12 && oem->d_dyn_array.elem_type == 0x74)
+			return translateType(0x23); // unsigned int64
 	}
 
 	return type;
@@ -1373,7 +1441,7 @@ const char* CV2PDB::appendAssocArray(int keyType, int elemType)
 
 	// undefined struct aaA
 	dtype = (codeview_type*) (userTypes + cbUserTypes);
-	cbUserTypes += addClass(dtype, 0, 0, kIncomplete, 0, 0, 0, name);
+	cbUserTypes += addClass(dtype, 0, 0, kPropIncomplete, 0, 0, 0, name);
 	int aaAType = nextUserType++;
 
 	// pointer to aaA
@@ -1427,7 +1495,7 @@ const char* CV2PDB::appendAssocArray(int keyType, int elemType)
 	int fieldListType = nextUserType++;
 
 	dtype = (codeview_type*) (userTypes + cbUserTypes);
-    cbUserTypes += addClass(dtype, len2 == 0 ? 4 : 5, fieldListType, 0, 0, 0, off, name);
+	cbUserTypes += addClass(dtype, len2 == 0 ? 4 : 5, fieldListType, 0, 0, 0, off, name);
 	addUdtSymbol(nextUserType, name);
 	int completeAAAType = nextUserType++;
 
@@ -1694,12 +1762,15 @@ int CV2PDB::appendTypedef(int type, const char* name)
 
 void CV2PDB::appendTypedefs()
 {
+	if(Dversion == 0)
+		return;
+
 	appendTypedef(0x10, "byte");
 	appendTypedef(0x20, "ubyte");
 	appendTypedef(0x21, "ushort");
 	appendTypedef(0x75, "uint");
-	appendTypedef(0x1002, "dlong"); // instead of "long"
-	appendTypedef(0x1003, "ulong");
+	appendTypedef(0x13, "dlong"); // instead of "long"
+	appendTypedef(0x23, "ulong");
 	appendTypedef(0x42, "real");
 	// no imaginary types
 	appendTypedef(0x71, "wchar");
@@ -1786,18 +1857,18 @@ bool CV2PDB::initGlobalTypes()
 						else
 						{
 							const char* name = appendDynamicArray(oem->d_dyn_array.index_type, oem->d_dyn_array.elem_type);
-							len = addClass(dtype, 0, 0, kIncomplete, 0, 0, 0, name);
+							len = addClass(dtype, 0, 0, kPropIncomplete, 0, 0, 0, name);
 						}
 					}
 					else if (oem->common.oemid == 0x42 && oem->common.id == 3)
 					{
 						const char* name = appendDelegate(oem->d_delegate.this_type, oem->d_delegate.func_type);
-						len = addClass(dtype, 0, 0, kIncomplete, 0, 0, 0, name);
+						len = addClass(dtype, 0, 0, kPropIncomplete, 0, 0, 0, name);
 					}
 					else if (oem->common.oemid == 0x42 && oem->common.id == 2)
 					{
 						const char* name = appendAssocArray(oem->d_assoc_array.key_type, oem->d_assoc_array.elem_type);
-						len = addClass(dtype, 0, 0, kIncomplete, 0, 0, 0, name);
+						len = addClass(dtype, 0, 0, kPropIncomplete, 0, 0, 0, name);
 					}
 					else
 					{
@@ -1840,7 +1911,8 @@ bool CV2PDB::initGlobalTypes()
 						if(const codeview_type* td = getTypeData(type->struct_v1.fieldlist))
 							if(td->common.id == LF_FIELDLIST_V1 || td->common.id == LF_FIELDLIST_V2)
 								dtype->struct_v2.n_element = countFields((const codeview_reftype*)td);
-					dtype->struct_v2.property = type->struct_v1.property | 0x200;
+					dtype->struct_v2.property = fixProperty(t + 0x1000, type->struct_v1.property, 
+					                                        type->struct_v1.fieldlist) | 0x200;
 #if REMOVE_LF_DERIVED
 					dtype->struct_v2.derived = 0;
 #else
@@ -1869,7 +1941,7 @@ bool CV2PDB::initGlobalTypes()
 					dtype->union_v2.id = v3 ? LF_UNION_V3 : LF_UNION_V2;
 					dtype->union_v2.count = type->union_v1.count;
 					dtype->union_v2.fieldlist = type->struct_v1.fieldlist;
-					dtype->union_v2.property = type->struct_v1.property;
+					dtype->union_v2.property = fixProperty(t + 0x1000, type->struct_v1.property, type->struct_v1.fieldlist);
 					leaf_len = numeric_leaf(&value, &type->union_v1.un_len);
 					memcpy (&dtype->union_v2.un_len, &type->union_v1.un_len, leaf_len);
 					len = pstrcpy_v(v3, (BYTE*)      &dtype->union_v2.un_len + leaf_len,
@@ -1931,9 +2003,12 @@ bool CV2PDB::initGlobalTypes()
 					dtype->enumeration_v2.count = type->enumeration_v1.count;
 					dtype->enumeration_v2.type = translateType(type->enumeration_v1.type);
 					dtype->enumeration_v2.fieldlist = type->enumeration_v1.fieldlist;
-					dtype->enumeration_v2.property = type->enumeration_v1.property;
+					dtype->enumeration_v2.property = fixProperty(t + 0x1000, type->enumeration_v1.property, type->enumeration_v1.fieldlist);
 					len = pstrcpy_v (v3, (BYTE*) &dtype->enumeration_v2.p_name, (BYTE*) &type->enumeration_v1.p_name);
 					len += sizeof(dtype->enumeration_v2) - sizeof(dtype->enumeration_v2.p_name);
+					if(dtype->enumeration_v2.fieldlist && v3)
+						if(!findUdtSymbol(t + 0x1000))
+							addUdtSymbol(t + 0x1000, (char*) &dtype->enumeration_v2.p_name);
 					break;
 
 				case LF_FIELDLIST_V1:
@@ -2203,7 +2278,7 @@ bool CV2PDB::addSrcLines()
 					int seg = sourceLine->Seg;
 					int cnt = sourceLine->cLnOff;
 					if(cnt <= 0)
-					    continue;
+						continue;
 					int segoff = lnSegStartEnd[2*s];
 					// lnSegStartEnd[2*s + 1] only spans until the first byte of the last source line
 					int segend = getNextSrcLine(seg, sourceLine->offset[cnt-1]);
@@ -2450,7 +2525,7 @@ int CV2PDB::copySymbols(BYTE* srcSymbols, int srcSize, BYTE* destSymbols, int de
 				// dmd does not add a string, but it's not obvious to detect whether it exists or not
 				if (dsym->procref_v1.len != sizeof(dsym->procref_v1) - 4)
 					break;
-        			
+					
 				dsym->procref_v1.p_name.namelen = 0;
 				memset (dsym->procref_v1.p_name.name, 0, 3);  // also 4-byte alignment assumed
 				destlength += 4;
@@ -2483,6 +2558,19 @@ int CV2PDB::copySymbols(BYTE* srcSymbols, int srcSize, BYTE* destSymbols, int de
 		destSize += destlength;
 	}
 	return destSize;
+}
+
+codeview_symbol* CV2PDB::findUdtSymbol(int type)
+{
+	type = translateType(type);
+	for(int p = 0; p < cbUdtSymbols; )
+	{
+		codeview_symbol* sym = (codeview_symbol*) (udtSymbols + cbUdtSymbols);
+		if(sym->common.id == S_UDT_V1 && sym->udt_v1.type == type)
+			return sym;
+		p += sym->common.len + 2;
+	}
+	return 0;
 }
 
 bool CV2PDB::addUdtSymbol(int type, const char* name)
@@ -2534,8 +2622,8 @@ bool CV2PDB::writeSymbols(mspdb::Mod* mod, DWORD* data, int databytes, int prefi
 	int rc = mod->AddSymbols((BYTE*) data, ((databytes + 3) / 4 + prefix) * 4);
 	if (rc <= 0)
 		return setError(mspdb::DBI::isVS10
-                        ? "cannot add symbols to module, probably msobj100.dll missing"
-                        : "cannot add symbols to module, probably msobj80.dll missing");
+		                ? "cannot add symbols to module, probably msobj100.dll missing"
+		                : "cannot add symbols to module, probably msobj80.dll missing");
 	return true;
 }
 

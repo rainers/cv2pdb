@@ -34,8 +34,11 @@ public:
 	const BYTE* getLibrary(int i);
 	bool initSegMap();
 
+    enum { kCmdAdd, kCmdCount, kCmdNestedTypes };
+	int _doFields(int cmd, codeview_reftype* dfieldlist, const codeview_reftype* fieldlist, int arg);
 	int addFields(codeview_reftype* dfieldlist, const codeview_reftype* fieldlist, int maxdlen);
 	int countFields(const codeview_reftype* fieldlist);
+    int countNestedTypes(const codeview_reftype* fieldlist, int type);
 
 	int addAggregate(codeview_type* dtype, bool clss, int n_element, int fieldlist, int property, 
 	                 int derived, int vshape, int structlen, const char*name);
@@ -58,6 +61,8 @@ public:
 	const codeview_type* findCompleteClassType(const codeview_type* cvtype);
 
 	int findMemberFunctionType(codeview_symbol* lastGProcSym, int thisPtrType);
+
+    int fixProperty(int type, int prop, int fieldType);
 
 	int sizeofClassType(const codeview_type* cvtype);
 	int sizeofBasicType(int type);
@@ -93,6 +98,7 @@ public:
 	bool addSrcLines();
 	bool addPublics();
 
+	codeview_symbol* findUdtSymbol(int type);
 	bool addUdtSymbol(int type, const char* name);
 
 	// returns new destSize
