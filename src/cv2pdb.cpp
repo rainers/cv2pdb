@@ -7,23 +7,13 @@
 #include "cv2pdb.h"
 #include "PEImage.h"
 #include "symutil.h"
+#include "cvutil.h"
 
 #include <stdio.h>
 #include <direct.h>
 
 #define REMOVE_LF_DERIVED  1  // types wrong by DMD
 #define PRINT_INTERFACEVERSON 0
-
-// class properties (also apply to struct,union and enum)
-static const int kPropPacked      = 0x01;
-static const int kPropHasCtorDtor = 0x02;
-static const int kPropHasOverOps  = 0x04;
-static const int kPropIsNested    = 0x08;
-static const int kPropHasNested   = 0x10;
-static const int kPropHasOverAsgn = 0x20;
-static const int kPropHasCasting  = 0x40;
-static const int kPropIncomplete  = 0x80;
-static const int kPropScoped      = 0x100;
 
 CV2PDB::CV2PDB(PEImage& image) 
 : img(image), pdb(0), dbi(0), libraries(0), rsds(0), modules(0), globmod(0)
@@ -33,13 +23,16 @@ CV2PDB::CV2PDB(PEImage& image)
 , globalSymbols(0), cbGlobalSymbols(0), staticSymbols(0), cbStaticSymbols(0)
 , udtSymbols(0), cbUdtSymbols(0), allocUdtSymbols(0)
 , srcLineStart(0), srcLineSections(0)
-, pointerTypes(0), objectType(0)
+, pointerTypes(0)
 , Dversion(2)
+, classEnumType(0), ifaceEnumType(0), cppIfaceEnumType(0), structEnumType(0)
+, classBaseType(0), ifaceBaseType(0), cppIfaceBaseType(0), structBaseType(0)
 {
 	memset(typedefs, 0, sizeof(typedefs));
 	memset(translatedTypedefs, 0, sizeof(translatedTypedefs));
 	cntTypedefs = 0;
 
+	addClassTypeEnum = true;
 	useGlobalMod = true;
 	thisIsNotRef = true;
 	v3 = true;
@@ -114,9 +107,7 @@ bool CV2PDB::cleanup(bool commit)
 	segMap = 0;
 	segMapDesc = 0;
 	globalTypeHeader = 0;
-	objectType = 0;
 	pointerTypes = 0;
-	objectType = 0;
 	memset(typedefs, 0, sizeof(typedefs));
 	memset(translatedTypedefs, 0, sizeof(translatedTypedefs));
 	cntTypedefs = 0;
@@ -303,74 +294,9 @@ bool CV2PDB::initSegMap()
 
 int CV2PDB::numeric_leaf(int* value, const void* leaf)
 {
-	unsigned short int type = *(const unsigned short int*) leaf;
-	leaf = (const unsigned short int*) leaf + 2;
-	int length = 2;
-
-	*value = 0;
-	switch (type)
-	{
-	case LF_CHAR:
-		length += 1;
-		*value = *(const char*)leaf;
-		break;
-
-	case LF_SHORT:
-		length += 2;
-		*value = *(const short*)leaf;
-		break;
-
-	case LF_USHORT:
-		length += 2;
-		*value = *(const unsigned short*)leaf;
-		break;
-
-	case LF_LONG:
-	case LF_ULONG:
-		length += 4;
-		*value = *(const int*)leaf;
-		break;
-
-	case LF_COMPLEX64:
-	case LF_QUADWORD:
-	case LF_UQUADWORD:
-	case LF_REAL64:
-		length += 8;
-		break;
-
-	case LF_COMPLEX32:
-	case LF_REAL32:
-		length += 4;
-		break;
-
-	case LF_REAL48:
-		length += 6;
-		break;
-
-	case LF_COMPLEX80:
-	case LF_REAL80:
-		length += 10;
-		break;
-
-	case LF_COMPLEX128:
-	case LF_REAL128:
-		length += 16;
-		break;
-
-	case LF_VARSTRING:
-		length += 2 + *(const unsigned short*)leaf;
-		break;
-
-	default:
-		if (type < LF_NUMERIC)
-			*value = type;
-		else
-		{
-			setError("unsupported numeric leaf");
-			length = 0;
-		}
-		break;
-	}
+	int length = ::numeric_leaf(value, leaf);
+	if(length == 0)
+		setError("unsupported numeric leaf");
 	return length;
 }
 
@@ -402,6 +328,7 @@ int CV2PDB::_doFields(int cmd, codeview_reftype* dfieldlist, const codeview_reft
 	int pos = 0, dpos = 0;
 	int leaf_len, value;
 	int nested_types = 0;
+	int base_classes = 0;
 	int test_nested_type = (cmd == kCmdNestedTypes ? arg : 0);
 
 	int cntFields = 0;
@@ -482,6 +409,7 @@ int CV2PDB::_doFields(int cmd, codeview_reftype* dfieldlist, const codeview_reft
 			break;
 
 		case LF_BCLASS_V1:
+			base_classes++;
 			if (dp)
 			{
 				dfieldtype->bclass_v2.id = LF_BCLASS_V2;
@@ -515,6 +443,7 @@ int CV2PDB::_doFields(int cmd, codeview_reftype* dfieldlist, const codeview_reft
 			break;
 
 		case LF_BCLASS_V2:
+			base_classes++;
 			leaf_len = numeric_leaf(&value, &fieldtype->bclass_v2.offset);
 			copylen = sizeof(dfieldtype->bclass_v2) - 2 + leaf_len;
 			break;
@@ -532,6 +461,17 @@ int CV2PDB::_doFields(int cmd, codeview_reftype* dfieldlist, const codeview_reft
 				copy_p2dsym(dp, dpos, p, pos, maxdlen);
 			else
 				copylen = fieldtype->method_v1.p_name.namelen + 1;
+
+			if(cmd == kCmdOffsetFirstVirtualMethod)
+				if(const codeview_type* cvtype = getTypeData(fieldtype->method_v1.mlist))
+					if(cvtype->common.id == LF_METHODLIST_V1 && cvtype->common.len > 2)
+					{
+						// just check the first entry
+						const unsigned short *pattr = (const unsigned short*)(&cvtype->common + 1);
+						int mode =(*pattr >> 2) & 7;
+						if(mode == 4 || mode == 6)
+							return *(const unsigned*)(&pattr[2]);
+					}
 			break;
 
 		case LF_METHOD_V2:
@@ -584,6 +524,8 @@ int CV2PDB::_doFields(int cmd, codeview_reftype* dfieldlist, const codeview_reft
 				copylen = fieldtype->nesttype_v1.p_name.namelen + 1;
 			if(test_nested_type == 0 || test_nested_type == fieldtype->nesttype_v1.type)
 				nested_types++;
+			if(cmd == kCmdHasClassTypeEnum && p2ccmp(fieldtype->nesttype_v1.p_name, CLASSTYPEENUM_TYPE))
+				return true;
 			break;
 
 		case LF_NESTTYPE_V2:
@@ -591,6 +533,8 @@ int CV2PDB::_doFields(int cmd, codeview_reftype* dfieldlist, const codeview_reft
 			copylen += fieldtype->nesttype_v2.p_name.namelen + 1;
 			if(test_nested_type == 0 || test_nested_type == fieldtype->nesttype_v1.type)
 				nested_types++;
+			if(cmd == kCmdHasClassTypeEnum && p2ccmp(fieldtype->nesttype_v2.p_name, CLASSTYPEENUM_TYPE))
+				return true;
 			break;
 
 		case LF_NESTTYPE_V3:
@@ -598,6 +542,8 @@ int CV2PDB::_doFields(int cmd, codeview_reftype* dfieldlist, const codeview_reft
 			copylen += strlen(fieldtype->nesttype_v3.name) + 1;
 			if(test_nested_type == 0 || test_nested_type == fieldtype->nesttype_v1.type)
 				nested_types++;
+			if(cmd == kCmdHasClassTypeEnum && strcmp(fieldtype->nesttype_v3.name, CLASSTYPEENUM_TYPE) == 0)
+				return true;
 			break;
 
 		case LF_VFUNCTAB_V1:
@@ -640,6 +586,7 @@ int CV2PDB::_doFields(int cmd, codeview_reftype* dfieldlist, const codeview_reft
 			// necessary to convert this info? no data associated with it, so it might not be used
 		case LF_VBCLASS_V1:
 		case LF_IVBCLASS_V1:
+			base_classes++;
 			if (dp)
 			{
 				dfieldtype->vbclass_v2.id = fieldtype->common.id == LF_VBCLASS_V1 ? LF_VBCLASS_V2 : LF_IVBCLASS_V2;
@@ -656,6 +603,7 @@ int CV2PDB::_doFields(int cmd, codeview_reftype* dfieldlist, const codeview_reft
 
 		case LF_VBCLASS_V2:
 		case LF_IVBCLASS_V2:
+			base_classes++;
 			leaf_len = numeric_leaf(&value, &fieldtype->vbclass_v2.vbpoff);
 			leaf_len += numeric_leaf(&value, (char*) &fieldtype->vbclass_v2.vbpoff + leaf_len);
 			copylen = sizeof(fieldtype->vbclass_v2) - sizeof(fieldtype->vbclass_v2.vbpoff) + leaf_len;
@@ -685,6 +633,12 @@ int CV2PDB::_doFields(int cmd, codeview_reftype* dfieldlist, const codeview_reft
 		return cntFields;
 	case kCmdNestedTypes:
 		return nested_types;
+	case kCmdCountBaseClasses:
+		return base_classes;
+	case kCmdOffsetFirstVirtualMethod:
+		return -1;
+	case kCmdHasClassTypeEnum:
+		return false;
 	}
 
 	return setError("_doFields: unknown command");
@@ -735,6 +689,24 @@ int CV2PDB::addStruct(codeview_type* dtype, int n_element, int fieldlist, int pr
                       int derived, int vshape, int structlen, const char*name)
 {
 	return addAggregate(dtype, false, n_element, fieldlist, property, derived, vshape, structlen, name);
+}
+
+int CV2PDB::addEnum(codeview_type* dtype, int count, int fieldlist, int property, 
+                    int type, const char*name)
+{
+	dtype->enumeration_v2.id = (v3 ? LF_ENUM_V3 : LF_ENUM_V2);
+	dtype->enumeration_v2.count = count;
+	dtype->enumeration_v2.fieldlist = fieldlist;
+	dtype->enumeration_v2.property = property;
+	dtype->enumeration_v2.type = type;
+	int len = cstrcpy_v(v3, (BYTE*)(&dtype->enumeration_v2.p_name), name);
+	len += sizeof (dtype->enumeration_v2) - sizeof(dtype->enumeration_v2.p_name);
+
+	unsigned char* p = (unsigned char*) dtype;
+	for (; len & 3; len++)
+		p[len] = 0xf4 - (len & 3);
+	dtype->enumeration_v2.len = len - 2;
+	return len;
 }
 
 int CV2PDB::addPointerType(codeview_type* dtype, int type, int attr)
@@ -793,12 +765,46 @@ int CV2PDB::addFieldNestedType(codeview_fieldtype* dfieldtype, int type, const c
 	return len;
 }
 
+int CV2PDB::addFieldEnumerate(codeview_fieldtype* dfieldtype, const char* name, int val)
+{
+	dfieldtype->enumerate_v1.id = v3 ? LF_ENUMERATE_V3 : LF_ENUMERATE_V1;
+	dfieldtype->enumerate_v1.attribute = 0;
+	//assert(val < LF_NUMERIC);
+	dfieldtype->enumerate_v1.value = val;
+	int len = cstrcpy_v(v3, (BYTE*)(&dfieldtype->enumerate_v1 + 1), name);
+	len += sizeof (dfieldtype->enumerate_v1);
+
+	unsigned char* p = (unsigned char*) dfieldtype;
+	for (; len & 3; len++)
+		p[len] = 0xf4 - (len & 3);
+	return len;
+}
+
 void CV2PDB::checkUserTypeAlloc(int size, int add)
 {
 	if (cbUserTypes + size >= allocUserTypes)
 	{
 		allocUserTypes += add;
 		userTypes = (BYTE*) realloc(userTypes, allocUserTypes);
+	}
+}
+
+void CV2PDB::writeUserTypeLen(codeview_type* type, int len)
+{
+	unsigned char* p = (unsigned char*) type;
+	for (; len & 3; len++)
+		p[len] = 0xf4 - (len & 3);
+
+	type->common.len = len - 2;
+	cbUserTypes += len;
+}
+
+void CV2PDB::checkGlobalTypeAlloc(int size, int add)
+{
+	if (cbGlobalTypes + size > allocGlobalTypes)
+	{
+		allocGlobalTypes += size + add;
+		globalTypes = (unsigned char*) realloc(globalTypes, allocGlobalTypes);
 	}
 }
 
@@ -824,7 +830,7 @@ const codeview_type* CV2PDB::getUserTypeData(int type)
 		return 0;
 
 	int pos = 0;
-	while(type > 0)
+	while(type > 0 && pos < cbUserTypes)
 	{
 		const codeview_type* ptype = (codeview_type*)(userTypes + pos);
 		int len = ptype->common.len + 2;
@@ -834,28 +840,58 @@ const codeview_type* CV2PDB::getUserTypeData(int type)
 	return (codeview_type*)(userTypes + pos);
 }
 
-const codeview_type* CV2PDB::findCompleteClassType(const codeview_type* cvtype)
+const codeview_type* CV2PDB::getConvertedTypeData(int type)
 {
-	if (!globalTypeHeader)
+	type -= 0x1000;
+	if (type < 0 || type >= nextUserType - 0x1000)
 		return 0;
 
-	int value;
-	int cvleaf_len = numeric_leaf(&value, &cvtype->struct_v1.structlen);
-
-	DWORD* offset = (DWORD*)(globalTypeHeader + 1);
-	BYTE* typeData = (BYTE*)(offset + globalTypeHeader->cTypes);
-	for (unsigned int t = 0; t < globalTypeHeader->cTypes; t++)
+	int pos = 4;
+	while(type > 0 && pos < cbGlobalTypes)
 	{
-		const codeview_type* type = (const codeview_type*)(typeData + offset[t]);
-		if (type->common.id == LF_CLASS_V1 || type->common.id == LF_STRUCTURE_V1)
+		const codeview_type* ptype = (codeview_type*)(globalTypes + pos);
+		int len = ptype->common.len + 2;
+		pos += len;
+		type--;
+	}
+	return (codeview_type*)(globalTypes + pos);
+}
+
+const codeview_type* CV2PDB::findCompleteClassType(const codeview_type* cvtype, int* ptype)
+{
+	bool cstr;
+	const BYTE* pname = getStructName(cvtype, cstr);
+	if(!pname)
+		return 0;
+
+	if(globalTypeHeader)
+	{
+		DWORD* offset = (DWORD*)(globalTypeHeader + 1);
+		BYTE* typeData = (BYTE*)(offset + globalTypeHeader->cTypes);
+		for (unsigned int t = 0; t < globalTypeHeader->cTypes; t++)
 		{
-			if (!(type->struct_v1.property & kPropIncomplete))
+			const codeview_type* type = (const codeview_type*)(typeData + offset[t]);
+			if (isCompleteStruct(type, pname, cstr))
 			{
-				int leaf_len = numeric_leaf(&value, &type->struct_v1.structlen);
-				if (pstrcmp((const BYTE*) &cvtype->struct_v1.structlen + cvleaf_len,
-					        (const BYTE*)   &type->struct_v1.structlen + leaf_len) == 0)
-					return type;
+				if(ptype)
+					*ptype = t;
+				return type;
 			}
+		}
+	}
+	if(userTypes)
+	{
+		int t = globalTypeHeader->cTypes;
+		for(int pos = 0; pos < cbUserTypes; t++)
+		{
+			const codeview_type* type = (codeview_type*)(userTypes + pos);
+			if (isCompleteStruct(type, pname, cstr))
+			{
+				if(ptype)
+					*ptype = t;
+				return type;
+			}
+			pos += type->common.len + 2;
 		}
 	}
 	return cvtype;
@@ -919,7 +955,7 @@ int CV2PDB::fixProperty(int type, int prop, int fieldType)
 
 int CV2PDB::sizeofClassType(const codeview_type* cvtype)
 {
-	if (cvtype->struct_v1.property & kPropIncomplete)
+	if (getStructProperty(cvtype) & kPropIncomplete)
 		cvtype = findCompleteClassType(cvtype);
 
 	int value;
@@ -1371,7 +1407,7 @@ const char* CV2PDB::appendDynamicArray(int indexType, int elemType)
 		char helpertype[64];
 		strcat(strcpy(helpertype, name), "_viewhelper");
 		dtype = (codeview_type*) (userTypes + cbUserTypes);
-		cbUserTypes += addClass(dtype, 0, helpfieldlistType, 0, 0, 0, 0, helpertype);
+		cbUserTypes += addClass(dtype, 0, helpfieldlistType, 0, 0, 0, 4, helpertype);
 		dstringType = nextUserType++;
 		addUdtSymbol(dstringType, helpertype);
 	}
@@ -1609,7 +1645,7 @@ const char* CV2PDB::appendDelegate(int thisType, int funcType)
 	return name;
 }
 
-int CV2PDB::appendObjectType (int object_derived_type)
+int CV2PDB::appendObjectType (int object_type, int enumType, const char* classSymbol)
 {
 	checkUserTypeAlloc();
 
@@ -1618,7 +1654,7 @@ int CV2PDB::appendObjectType (int object_derived_type)
 	codeview_type* dtype;
 
 	int viewHelperType = 0;
-	bool addViewHelper = true;
+	bool addViewHelper = object_type == kClassTypeObject;
 	if(addViewHelper)
 	{
 		rdtype = (codeview_reftype*) (userTypes + cbUserTypes);
@@ -1664,18 +1700,23 @@ int CV2PDB::appendObjectType (int object_derived_type)
 		rdtype->fieldlist.len += addFieldMember(dfieldtype, 1, 0, viewHelperType, "__viewhelper");
 		numElem++;
 	}
+	if(addClassTypeEnum)
+	{
+		dfieldtype = (codeview_fieldtype*)(rdtype->fieldlist.list + rdtype->fieldlist.len - 2);
+		rdtype->fieldlist.len += addFieldNestedType(dfieldtype, enumType, CLASSTYPEENUM_TYPE);
+		numElem++;
+	}
 
 	cbUserTypes += rdtype->common.len + 2;
 	int fieldListType = nextUserType++;
 
-#define OBJECT_SYMBOL "object@Object"
-
 	dtype = (codeview_type*) (userTypes + cbUserTypes);
-	cbUserTypes += addClass(dtype, numElem, fieldListType, 0, object_derived_type, vtableType, 4, OBJECT_SYMBOL);
-	objectType = nextUserType++;
+	int prop = addClassTypeEnum ? kPropHasNested : 0;
+	cbUserTypes += addClass(dtype, numElem, fieldListType, prop, 0, vtableType, 4, classSymbol);
+	int objType = nextUserType++;
 
-	addUdtSymbol(objectType, OBJECT_SYMBOL);
-	return objectType;
+	addUdtSymbol(objType, classSymbol);
+	return objType;
 }
 
 int CV2PDB::appendPointerType(int pointedType, int attr)
@@ -1727,6 +1768,124 @@ int CV2PDB::appendComplex(int cplxtype, int basetype, int elemsize, const char* 
 	return classType;
 }
 
+int CV2PDB::appendEnumerator(const char* typeName, const char* enumName, int enumValue, int prop)
+{
+	codeview_reftype* rdtype;
+	codeview_type* dtype;
+
+	checkUserTypeAlloc();
+
+	// nextUserType: field list (size, array)
+	rdtype = (codeview_reftype*) (userTypes + cbUserTypes);
+	rdtype->fieldlist.id = LF_FIELDLIST_V2;
+
+	// member type re
+	codeview_fieldtype* dfieldtype = (codeview_fieldtype*)rdtype->fieldlist.list;
+	int len1 = addFieldEnumerate(dfieldtype, enumName, enumValue);
+	
+	rdtype->fieldlist.len = len1 + 2;
+	cbUserTypes += rdtype->fieldlist.len + 2;
+	int fieldlistType = nextUserType++;
+
+	dtype = (codeview_type*) (userTypes + cbUserTypes);
+	cbUserTypes += addEnum(dtype, 1, fieldlistType, prop, 0x74, typeName);
+	int enumType = nextUserType++;
+
+	addUdtSymbol(enumType, typeName);
+	return enumType;
+}
+
+int CV2PDB::getBaseClass(const codeview_type* cvtype)
+{
+	if (getStructProperty(cvtype) & kPropIncomplete)
+		cvtype = findCompleteClassType(cvtype);
+
+	const codeview_reftype* fieldlist = (const codeview_reftype*) getConvertedTypeData(getStructFieldlist(cvtype));
+	if(!fieldlist || (fieldlist->common.id != LF_FIELDLIST_V1 && fieldlist->common.id != LF_FIELDLIST_V2))
+		return 0;
+
+	codeview_fieldtype* fieldtype = (codeview_fieldtype*)(fieldlist->fieldlist.list);
+	if(fieldtype->common.id == LF_BCLASS_V1)
+		return fieldtype->bclass_v1.type;
+	if(fieldtype->common.id == LF_BCLASS_V2)
+		return fieldtype->bclass_v2.type;
+	return 0;
+}
+
+int CV2PDB::countBaseClasses(const codeview_type* cvtype)
+{
+	if (getStructProperty(cvtype) & kPropIncomplete)
+		cvtype = findCompleteClassType(cvtype);
+
+	const codeview_reftype* fieldlist = (const codeview_reftype*) getConvertedTypeData(getStructFieldlist(cvtype));
+	if(!fieldlist || (fieldlist->common.id != LF_FIELDLIST_V1 && fieldlist->common.id != LF_FIELDLIST_V2))
+		return 0;
+
+	return _doFields(kCmdCountBaseClasses, 0, fieldlist, 0);
+}
+
+bool CV2PDB::derivesFromObject(const codeview_type* cvtype)
+{
+	if(cmpStructName(cvtype, (const BYTE*) OBJECT_SYMBOL, true))
+		return true;
+
+	int baseType = getBaseClass(cvtype);
+	const codeview_type* basetype = getTypeData(baseType);
+	if(!basetype)
+		return false;
+
+	return derivesFromObject(basetype);
+}
+
+bool CV2PDB::isCppInterface(const codeview_type* cvtype)
+{
+	// check whether the first virtual function is at offset 0 (C++) or 4 (D)
+
+	if (getStructProperty(cvtype) & kPropIncomplete)
+		cvtype = findCompleteClassType(cvtype);
+
+	const codeview_reftype* fieldlist = (const codeview_reftype*) getTypeData(getStructFieldlist(cvtype));
+	if(!fieldlist || (fieldlist->common.id != LF_FIELDLIST_V1 && fieldlist->common.id != LF_FIELDLIST_V2))
+		return false;
+
+	codeview_fieldtype* fieldtype = (codeview_fieldtype*)(fieldlist->fieldlist.list);
+	const codeview_type* basetype = 0;
+	if(fieldtype->common.id == LF_BCLASS_V1)
+		basetype = getTypeData(fieldtype->bclass_v1.type);
+	if(fieldtype->common.id == LF_BCLASS_V2)
+		basetype = getTypeData(fieldtype->bclass_v2.type);
+	if(basetype)
+		return isCppInterface(basetype);
+
+	int off = _doFields(kCmdOffsetFirstVirtualMethod, 0, fieldlist, 0);
+	return off == 0;
+}
+
+void CV2PDB::ensureUDT(int type, const codeview_type* cvtype)
+{
+	if (getStructProperty(cvtype) & kPropIncomplete)
+		cvtype = findCompleteClassType(cvtype, &type);
+
+	if(!findUdtSymbol(type + 0x1000))
+	{
+		char name[300];
+		int value, leaf_len = numeric_leaf(&value, &cvtype->struct_v1.structlen);
+		pstrcpy_v(true, (BYTE*) name, (const BYTE*)  &cvtype->struct_v1.structlen + leaf_len);
+
+		codeview_reftype* rdtype = (codeview_reftype*) (userTypes + cbUserTypes);
+		rdtype->fieldlist.id = LF_FIELDLIST_V2;
+		int helpfieldlistType = nextUserType++;
+		rdtype->fieldlist.len = 2;
+		cbUserTypes += rdtype->fieldlist.len + 2;
+
+		codeview_type*dtype = (codeview_type*) (userTypes + cbUserTypes);
+		cbUserTypes += addClass(dtype, 0, helpfieldlistType, 0, 0, 0, 4, name);
+		int viewHelperType = nextUserType++;
+		// addUdtSymbol(viewHelperType, "object_viewhelper");
+		addUdtSymbol(viewHelperType, name);
+	}
+}
+
 int CV2PDB::appendTypedef(int type, const char* name)
 {
 	checkUserTypeAlloc();
@@ -1749,8 +1908,7 @@ int CV2PDB::appendTypedef(int type, const char* name)
 	dtype->enumeration_v2.property = 0x200;
 	int len = cstrcpy_v (v3, (BYTE*) &dtype->enumeration_v2.p_name, name);
 	len += sizeof(dtype->enumeration_v2) - sizeof(dtype->enumeration_v2.p_name);
-	dtype->enumeration_v2.len = len - 2;
-	cbUserTypes += len;
+	writeUserTypeLen(dtype, len);
 
 	typedefs[cntTypedefs] = type;
 	translatedTypedefs[cntTypedefs] = nextUserType;
@@ -1809,6 +1967,20 @@ bool CV2PDB::initGlobalTypes()
 			nextUserType = globalTypeHeader->cTypes + 0x1000;
 
 			appendTypedefs();
+			if(Dversion > 0)
+			{
+				if(addClassTypeEnum)
+				{
+					classEnumType    = appendEnumerator("__ClassType",    CLASSTYPEENUM_NAME, kClassTypeObject,   kPropIsNested);
+					ifaceEnumType    = appendEnumerator("__IfaceType",    CLASSTYPEENUM_NAME, kClassTypeIface,    kPropIsNested);
+					cppIfaceEnumType = appendEnumerator("__CppIfaceType", CLASSTYPEENUM_NAME, kClassTypeCppIface, kPropIsNested);
+					structEnumType   = appendEnumerator("__StructType",   CLASSTYPEENUM_NAME, kClassTypeStruct,   kPropIsNested);
+					
+					ifaceBaseType    = appendObjectType (kClassTypeIface,    ifaceEnumType, IFACE_SYMBOL);
+					cppIfaceBaseType = appendObjectType (kClassTypeCppIface, cppIfaceEnumType, CPPIFACE_SYMBOL);
+				}
+				classBaseType = appendObjectType (kClassTypeObject, classEnumType, OBJECT_SYMBOL);
+			}
 
 			for (unsigned int t = 0; t < globalTypeHeader->cTypes && !hadError(); t++)
 			{
@@ -1817,11 +1989,7 @@ bool CV2PDB::initGlobalTypes()
 				int leaf_len, value;
 
 				int len = type->common.len + 2;
-				if (cbGlobalTypes + len + 1000 > allocGlobalTypes)
-				{
-					allocGlobalTypes += len + 1000;
-					globalTypes = (unsigned char*) realloc(globalTypes, allocGlobalTypes);
-				}
+				checkGlobalTypeAlloc(len + 1000);
 
 				unsigned int clsstype;
 				codeview_type* dtype = (codeview_type*) (globalTypes + cbGlobalTypes);
@@ -1931,6 +2099,7 @@ bool CV2PDB::initGlobalTypes()
 #endif
 					len += leaf_len + sizeof(dtype->struct_v2) - sizeof(type->struct_v2.structlen);
 
+					ensureUDT(t, type);
 					// remember type index of derived list for object.Object
 					if (Dversion > 0 && dtype->struct_v2.derived)
 						if (memcmp((char*) &type->struct_v1.structlen + leaf_len, "\x0dobject.Object", 14) == 0)
@@ -2089,23 +2258,146 @@ bool CV2PDB::initGlobalTypes()
 				cbGlobalTypes += len;
 			}
 
-#if 1
+#if 0
 			if(Dversion > 0)
-				appendObjectType (object_derived_type);
+				appendObjectType (object_derived_type, 0, OBJECT_SYMBOL);
 #endif
 #if 1
-			if (cbGlobalTypes + cbUserTypes > allocGlobalTypes)
-			{
-				allocGlobalTypes += cbUserTypes + 1000;
-				globalTypes = (unsigned char*) realloc(globalTypes, allocGlobalTypes);
-			}
+			checkGlobalTypeAlloc(cbUserTypes);
 
 			memcpy (globalTypes + cbGlobalTypes, userTypes, cbUserTypes);
 			cbGlobalTypes += cbUserTypes;
 #endif
+			if(addClassTypeEnum)
+				insertClassTypeEnums();
 		}
 	}
 	return !hadError();
+}
+
+bool CV2PDB::hasClassTypeEnum(const codeview_type* fieldlist)
+{
+	const codeview_reftype* rfieldlist = (const codeview_reftype*) fieldlist;
+	return _doFields(kCmdHasClassTypeEnum, 0, rfieldlist, 0) != 0;
+}
+
+int CV2PDB::appendClassTypeEnum(const codeview_type* fieldlist, int type, const char* name)
+{
+	BYTE data[200];
+	int len = addFieldNestedType((codeview_fieldtype*) data, type, name);
+
+	int fieldlen = fieldlist->common.len + 2;
+	int off = (unsigned char*) fieldlist - globalTypes;
+	checkGlobalTypeAlloc(len);
+
+	int copyoff = off + fieldlen;
+	memmove(globalTypes + copyoff + len, globalTypes + copyoff, cbGlobalTypes - copyoff);
+	memcpy(globalTypes + copyoff, data, len);
+	cbGlobalTypes += len;
+
+	codeview_type* nfieldlist = (codeview_type*) (globalTypes + off);
+	nfieldlist->common.len = fieldlen + len - 2;
+	return len;
+}
+
+int CV2PDB::insertBaseClass(const codeview_type* fieldlist, int type)
+{
+	codeview_fieldtype cvtype;
+	cvtype.bclass_v2.id = LF_BCLASS_V2;
+	cvtype.bclass_v2.type = type;
+	cvtype.bclass_v2.attribute = 3; // public
+	cvtype.bclass_v2.offset = 0;
+	int len = sizeof(cvtype.bclass_v2);
+	unsigned char* p = (unsigned char*) &cvtype;
+	for (; len & 3; len++)
+		p[len] = 0xf4 - (len & 3);
+
+	int fieldlen = fieldlist->common.len + 2;
+	int off = (unsigned char*) fieldlist - globalTypes;
+	checkGlobalTypeAlloc(len);
+
+	int copyoff = off + 4;
+	memmove(globalTypes + copyoff + len, globalTypes + copyoff, cbGlobalTypes - copyoff);
+	memcpy(globalTypes + copyoff, &cvtype, len);
+	cbGlobalTypes += len;
+
+	codeview_type* nfieldlist = (codeview_type*) (globalTypes + off);
+	nfieldlist->common.len = fieldlen + len - 2;
+	return len;
+}
+
+bool CV2PDB::insertClassTypeEnums()
+{
+	int pos = 4; // skip prefix
+	for (unsigned int t = 0; pos < cbGlobalTypes && t < globalTypeHeader->cTypes; t++)
+	{
+		codeview_type* type = (codeview_type*)(globalTypes + pos);
+		int typelen = type->common.len + 2;
+	
+		switch(type->common.id)
+		{
+		case LF_STRUCTURE_V3:
+		case LF_STRUCTURE_V2:
+		case LF_CLASS_V3:
+		case LF_CLASS_V2:
+			if(const codeview_type* fieldlist = getConvertedTypeData(type->struct_v2.fieldlist))
+			{
+				if(!hasClassTypeEnum(fieldlist))
+				{
+					int enumtype = 0;
+					int basetype = 0;
+					const char* name;
+
+					if(type->common.id == LF_STRUCTURE_V2 || type->common.id == LF_STRUCTURE_V3)
+					{
+						enumtype = structEnumType;
+						basetype = structBaseType;
+						name = "__StructType";
+					}
+					else if(derivesFromObject(type))
+					{
+						enumtype = classEnumType;
+						basetype = classBaseType;
+						name = "__ClassType";
+					}
+					else if(isCppInterface(type))
+					{
+						enumtype = cppIfaceEnumType;
+						basetype = cppIfaceBaseType;
+						name = "__CppIfaceType";
+					}
+					else
+					{
+						enumtype = ifaceEnumType;
+						basetype = ifaceBaseType;
+						name = "__IfaceType";
+					}
+					if(basetype && !getBaseClass(type))
+					{
+						type->struct_v2.n_element++;
+						// appending can realloc globalTypes, changing its address!
+						int flpos = (unsigned char*) fieldlist - globalTypes;
+						int len = insertBaseClass(fieldlist, basetype);
+						if(fieldlist < type)
+							pos += len;
+						type = (codeview_type*)(globalTypes + pos);
+						fieldlist = (codeview_type*)(globalTypes + flpos);
+					}
+					if(enumtype)
+					{
+						type->struct_v2.n_element++;
+						// appending can realloc globalTypes, changing its address!
+						int len = appendClassTypeEnum(fieldlist, enumtype, name);
+						if(fieldlist < type)
+							pos += len;
+					}
+				}
+			}
+			break;
+		}
+		pos += typelen;
+	}
+	return true;
 }
 
 bool CV2PDB::addTypes()
@@ -2458,6 +2750,7 @@ int CV2PDB::copySymbols(BYTE* srcSymbols, int srcSize, BYTE* destSymbols, int de
 				dsym->common.id = S_END_V1;
 				dsym->common.len = destlength - 2;
 			}
+			else
 #endif
 			if (p2ccmp(dsym->stack_v1.p_name, "this"))
 			{
@@ -2485,9 +2778,11 @@ int CV2PDB::copySymbols(BYTE* srcSymbols, int srcSize, BYTE* destSymbols, int de
 					if (type >= 0x1000 && pointerTypes[type - 0x1000])
 						type = pointerTypes[type - 0x1000];
 				}
+				dsym->stack_v1.symtype = translateType(type);
 			}
 			else if(Dversion == 0)
 			{
+				// remove function scope from variable name
 				int p = -1;
 				for(int i = 0; i < dsym->stack_v1.p_name.namelen; i++)
 					if(dsym->stack_v1.p_name.name[i] == ':')
@@ -2502,8 +2797,18 @@ int CV2PDB::copySymbols(BYTE* srcSymbols, int srcSize, BYTE* destSymbols, int de
 						destSymbols[destSize + destlength] = 0;
 					dsym->stack_v1.len = destlength - 2;
 				}
+				dsym->stack_v1.symtype = translateType(type);
 			}
-			dsym->stack_v1.symtype = translateType(type);
+			else
+			{
+				dsym->stack_v2.id = v3 ? S_BPREL_V3 : S_BPREL_V1;
+				dsym->stack_v2.offset = sym->stack_v1.offset;
+				dsym->stack_v2.symtype = translateType(type);
+				destlength = pstrcpy_v (v3, (BYTE*) &dsym->stack_v2.p_name, 
+				                            (BYTE*) &sym->stack_v1.p_name);
+				destlength += sizeof(dsym->stack_v2) - sizeof(dsym->stack_v2.p_name);
+				dsym->stack_v2.len = destlength - 2;
+			}
 			//sym->stack_v1.symtype = 0x1012;
 			break;
 		case S_ENDARG_V1:
@@ -2563,9 +2868,23 @@ int CV2PDB::copySymbols(BYTE* srcSymbols, int srcSize, BYTE* destSymbols, int de
 codeview_symbol* CV2PDB::findUdtSymbol(int type)
 {
 	type = translateType(type);
+	for(int p = 0; p < cbGlobalSymbols; )
+	{
+		codeview_symbol* sym = (codeview_symbol*) (globalSymbols + p);
+		if(sym->common.id == S_UDT_V1 && sym->udt_v1.type == type)
+			return sym;
+		p += sym->common.len + 2;
+	}
+	for(int p = 0; p < cbStaticSymbols; )
+	{
+		codeview_symbol* sym = (codeview_symbol*) (staticSymbols + p);
+		if(sym->common.id == S_UDT_V1 && sym->udt_v1.type == type)
+			return sym;
+		p += sym->common.len + 2;
+	}
 	for(int p = 0; p < cbUdtSymbols; )
 	{
-		codeview_symbol* sym = (codeview_symbol*) (udtSymbols + cbUdtSymbols);
+		codeview_symbol* sym = (codeview_symbol*) (udtSymbols + p);
 		if(sym->common.id == S_UDT_V1 && sym->udt_v1.type == type)
 			return sym;
 		p += sym->common.len + 2;
@@ -2644,9 +2963,6 @@ bool CV2PDB::addSymbols(int iMod, BYTE* symbols, int cb, bool addGlobals)
 
 bool CV2PDB::addSymbols()
 {
-	if (!initGlobalSymbols())
-		return false;
-
 	int prefix = 4;
 	DWORD* data = 0;
 	int databytes = 0;

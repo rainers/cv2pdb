@@ -106,3 +106,16 @@ Version history
     translated back to the correct types if command option -C is used
   * now adding properties "has nested type" and "is nested type" to class/struct/union/enum types
   * better support for enumerators: now added as user defined types (DMD patch needed)
+
+2010-08-08 Version 0.15
+
+  * thanks to patches by Z3N, the resulting pdb is now usable by more debuggers 
+  * now uses shared file access to executable
+  * incomplete structs/classes are now added as user defined types to avoid confusing
+    debugger for following symbols
+  * fixed name demangling of very long names
+  * added name demangling support for @safe/@trusted/@property/pure/nothrow/ref
+  * base classes are added to D/cpp-interfaces to allow viewing the virtual function 
+    table pointer
+  * structs, classes and interfaces now have an internal qualifier attached that allows
+    the preview in autoexp.dat to show better info for structs and interfaces

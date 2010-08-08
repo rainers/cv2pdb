@@ -217,13 +217,25 @@ internal@aaA<*,*> {
 	)
 }
 
-; display null references for class objects
+; display null references and class name for class objects
 *@* {
 	preview(
 		#( 
 			#if (&$e == 0) ( "null" )
-			#else ( 
+			#elif ($e.__classtype == 1) ( ;;; classes
 				#( "[", [$e.__viewhelper], "] ", [$e,!] ) 
+			)
+			#elif ($e.__classtype == 2) ( ;;; DInterface
+				#( "[D-Interface ", [**(object_viewhelper**)&$e], "] " ) 
+			)
+			#elif ($e.__classtype == 3) ( ;;; CppInterface
+				#( "[C++Interface]") 
+			)
+			#elif ($e.__classtype == 4) ( ;;; Struct
+				#( [$e,!] ) 
+			)
+			#elif (1) (
+				#( [$e,!] ) 
 			)
 		)
 	)

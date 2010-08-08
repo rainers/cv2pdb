@@ -34,7 +34,15 @@ public:
 	const BYTE* getLibrary(int i);
 	bool initSegMap();
 
-    enum { kCmdAdd, kCmdCount, kCmdNestedTypes };
+	enum 
+	{ 
+		kCmdAdd, 
+		kCmdCount, 
+		kCmdNestedTypes, 
+		kCmdOffsetFirstVirtualMethod,
+		kCmdHasClassTypeEnum,
+		kCmdCountBaseClasses
+	};
 	int _doFields(int cmd, codeview_reftype* dfieldlist, const codeview_reftype* fieldlist, int arg);
 	int addFields(codeview_reftype* dfieldlist, const codeview_reftype* fieldlist, int maxdlen);
 	int countFields(const codeview_reftype* fieldlist);
@@ -46,6 +54,8 @@ public:
 	                                   int derived, int vshape, int structlen, const char*name);
 	int addStruct(codeview_type* dtype, int n_element, int fieldlist, int property, 
 	                                    int derived, int vshape, int structlen, const char*name);
+	int addEnum(codeview_type* dtype, int count, int fieldlist, int property, 
+	                                  int type, const char*name);
 
 	int addPointerType(codeview_type* dtype, int type, int attr = 0x800A);
 	int addPointerType(unsigned char* dtype, int type, int attr = 0x800A);
@@ -53,16 +63,22 @@ public:
 	int addFieldMember(codeview_fieldtype* dfieldtype, int attr, int offset, int type, const char* name);
 	int addFieldStaticMember(codeview_fieldtype* dfieldtype, int attr, int type, const char* name);
 	int addFieldNestedType(codeview_fieldtype* dfieldtype, int type, const char* name);
+	int addFieldEnumerate(codeview_fieldtype* dfieldtype, const char* name, int val);
 
 	void checkUserTypeAlloc(int size = 1000, int add = 10000);
+	void checkGlobalTypeAlloc(int size, int add = 1000);
+	void writeUserTypeLen(codeview_type* type, int len);
 
 	const codeview_type* getTypeData(int type);
 	const codeview_type* getUserTypeData(int type);
-	const codeview_type* findCompleteClassType(const codeview_type* cvtype);
+	const codeview_type* getConvertedTypeData(int type);
+	const codeview_type* findCompleteClassType(const codeview_type* cvtype, int* ptype = 0);
 
 	int findMemberFunctionType(codeview_symbol* lastGProcSym, int thisPtrType);
 
-    int fixProperty(int type, int prop, int fieldType);
+	int fixProperty(int type, int prop, int fieldType);
+	bool derivesFromObject(const codeview_type* cvtype);
+	bool isCppInterface(const codeview_type* cvtype);
 
 	int sizeofClassType(const codeview_type* cvtype);
 	int sizeofBasicType(int type);
@@ -70,6 +86,8 @@ public:
 
 	// to be used when writing new type only to avoid double translation
 	int translateType(int type);
+	int getBaseClass(const codeview_type* cvtype);
+	int countBaseClasses(const codeview_type* cvtype);
 
 	bool nameOfBasicType(int type, char* name, int maxlen);
 	bool nameOfType(int type, char* name, int maxlen);
@@ -85,11 +103,16 @@ public:
 	const char* appendDynamicArray(int indexType, int elemType);
 	const char* appendAssocArray(int keyType, int elemType);
 	const char* appendDelegate(int thisType, int funcType);
-	int appendObjectType (int object_derived_type);
-	int appendPointerType(int pointedType, int attr);
-	int appendTypedef(int type, const char* name);
-	int appendComplex(int cplxtype, int basetype, int elemsize, const char* name);
+	int  appendObjectType (int object_derived_type, int enumType, const char* classSymbol);
+	int  appendPointerType(int pointedType, int attr);
+	int  appendTypedef(int type, const char* name);
+	int  appendComplex(int cplxtype, int basetype, int elemsize, const char* name);
 	void appendTypedefs();
+	int  appendEnumerator(const char* typeName, const char* enumName, int enumValue, int prop);
+	int  appendClassTypeEnum(const codeview_type* fieldlist, int type, const char* name);
+	bool hasClassTypeEnum(const codeview_type* fieldlist);
+	bool insertClassTypeEnums();
+	int  insertBaseClass(const codeview_type* fieldlist, int type);
 
 	bool initGlobalTypes();
 	bool initGlobalSymbols();
@@ -100,6 +123,7 @@ public:
 
 	codeview_symbol* findUdtSymbol(int type);
 	bool addUdtSymbol(int type, const char* name);
+	void ensureUDT(int type, const codeview_type* cvtype);
 
 	// returns new destSize
 	int copySymbols(BYTE* srcSymbols, int srcSize, BYTE* destSymbols, int destSize);
@@ -160,11 +184,22 @@ public:
 	int nextUserType;
 	int objectType;
 
+	int classEnumType;
+	int ifaceEnumType;
+	int cppIfaceEnumType;
+	int structEnumType;
+
+	int classBaseType;
+	int ifaceBaseType;
+	int cppIfaceBaseType;
+	int structBaseType;
+
 	// D named types
 	int typedefs[20];
 	int translatedTypedefs[20];
 	int cntTypedefs;
 
+	bool addClassTypeEnum;
 	bool useGlobalMod;
 	bool thisIsNotRef;
 	bool v3;

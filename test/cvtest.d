@@ -9,9 +9,10 @@ import std.stdio;
 enum enum_name
 {
 	kEnum1 = 1,
-	kEnum2,
+	kEnum2 = cast(uint) 2,
 	kEnum3,
 	kEnum500 = 500,
+	E_NOTIMPL     = cast(int)0x80004001,
 };
 
 // field type LF_MEMBER_V1
@@ -144,6 +145,34 @@ class class_with_struct_member
 	this() { s1 = new struc; }
 };
 
+interface iface
+{
+	void foo();
+}
+
+interface iface2 : iface
+{
+	void foo2();
+}
+
+class iface_impl : iface2
+{
+	void foo() {}
+	void foo2() {}
+}
+
+interface IUnknown
+{
+	void addref();
+	void release();
+}
+
+class CUnknown : IUnknown
+{
+	void addref() {}
+	void release() {}
+}
+
 version(D2)
 {
     string stringMixin = "int a = 0;
@@ -202,10 +231,23 @@ int main2(char[][]argv)
 	class_outer inst_outer = new class_outer;
 	class_outer.class_inner inst_inner = inst_outer.inner; // = new class_outer.class_inner(inst_outer);
 	struct_name inst_struct;
+	struct_name* pinst_struct;
+	pinst_struct = &inst_struct;
 	inst_struct.member = 1;
 	struct_name.static_member = 3;
 	this_is_a_rather_long_classname_to_test_what_happens_if_the_classname_gets_longer_than_the_limit_imposed_by_the_old_codeview_format_which_limits_the_length_of_names_to_tw0_hundred_and_fifty_five_characters_because_it_uses_pascal_strings_with_a_length_byte_and_chars_appended long_class_name;
+	int this_is_a_rather_long_varname_to_test_what_happens_if_the_classname_gets_longer_than_the_limit_imposed_by_the_old_codeview_format_which_limits_the_length_of_names_to_tw0_hundred_and_fifty_five_characters_because_it_uses_pascal_strings_with_a_length_byte_and_chars_appended = 1;
+	int *plongname = &this_is_a_rather_long_varname_to_test_what_happens_if_the_classname_gets_longer_than_the_limit_imposed_by_the_old_codeview_format_which_limits_the_length_of_names_to_tw0_hundred_and_fifty_five_characters_because_it_uses_pascal_strings_with_a_length_byte_and_chars_appended;
 	
+	iface_impl impl = new iface_impl;
+	iface face = impl;
+	iface_impl nimpl = cast(iface_impl) face;
+	
+	CUnknown unkn = new CUnknown;
+	IUnknown iunkn = unkn;
+	CUnknown nunkn = cast(CUnknown) iunkn;
+	
+	FILE stdfile;
 	inst_member.member1 = 2;
 
 	union_name inst_union;
@@ -260,6 +302,12 @@ int main(char[][]argv)
 	int_arr[17] = 28;
 	int_arr[45] = 91;
 
+	float f = 2.4;
+	double d = 2.4;
+	if(d == f)
+		d = 0;
+	assert(2.4 == 2.4f);
+	
 	struct ab {
 		int a;
 		int b;
@@ -286,7 +334,9 @@ int main(char[][]argv)
 
 	int[] dynint_arr;
 	dynint_arr ~= 12;
-	return dynint_arr.length;
+
+	return enum_name.E_NOTIMPL;
+	//return dynint_arr.length;
 }
 
 // alias invariant(char)[] string;

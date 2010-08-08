@@ -202,8 +202,26 @@ public:
 		case 'W':				// Windows function
 		case 'V':				// Pascal function
 		case 'R':				// C++ function
-			{	char mc = name[ni - 1];
+			{
+			char mc = name[ni - 1];
 			string args;
+			string prop;
+			while(name[ni] == 'N')
+			{
+				switch(name[ni+1])
+				{
+				case 'a': prop += "pure ";      break;
+				case 'b': prop += "nothrow ";   break;
+				case 'c': prop += "ref ";       break;
+				case 'd': prop += "@property "; break;
+				case 'e': prop += "@trusted ";  break;
+				case 'f': prop += "@safe ";     break;
+				default:
+					goto no_prop;
+				}
+				ni += 2;
+			}
+		no_prop:
 
 			while (1)
 			{
@@ -260,9 +278,9 @@ public:
 				default:  assert(0);
 				}
 				p += parseType() + " " + identifier + "(" + args + ")";
-				return p;
+				return prop + p;
 			}
-			p = parseType() +
+			p = prop + parseType() +
 				(isdelegate ? " delegate(" : " function(") + args + ")";
 			isdelegate = 0;
 			goto L1;
@@ -504,7 +522,7 @@ void unittest()
 
 bool d_demangle(const char* name, char* demangled, int maxlen, bool plain)
 {
-#ifdef _DEBUG
+#if 0 // && def _DEBUG
     static bool once; if(!once) { once = true; unittest(); }
 #endif
 
