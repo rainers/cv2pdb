@@ -182,6 +182,14 @@
 				>
 			</File>
 			<File
+				RelativePath=".\cvutil.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\cvutil.h"
+				>
+			</File>
+			<File
 				RelativePath=".\demangle.cpp"
 				>
 			</File>

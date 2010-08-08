@@ -142,6 +142,9 @@ int main(int argc, char** argv)
 	if (!cv2pdb.initSegMap())
 		fatal("%s: %s", argv[1], cv2pdb.getLastError());
 
+	if (!cv2pdb.initGlobalSymbols())
+		fatal("%s: %s", argv[1], cv2pdb.getLastError());
+
 	if (!cv2pdb.initGlobalTypes())
 		fatal("%s: %s", argv[1], cv2pdb.getLastError());
 

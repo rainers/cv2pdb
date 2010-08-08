@@ -11,7 +11,7 @@
 
 struct p_string;
 
-int dsym2c(const BYTE* p, BYTE len, char* cname, int maxclen);
+int dsym2c(const BYTE* p, int len, char* cname, int maxclen);
 
 char* p2c(const BYTE* p, int idx = 0);
 char* p2c(const p_string& p, int idx = 0);
@@ -23,6 +23,7 @@ bool p2ccmp(const BYTE* pp, const char* cp);
 bool p2ccmp(const p_string& pp, const char* cp);
 int pstrcpy_v(bool v3, BYTE* d, const BYTE* s);
 int cstrcpy_v(bool v3, BYTE* d, const char* s);
+bool dstrcmp(const BYTE* s1, bool cstr1, const BYTE* s2, bool cstr2);
 
 extern char dotReplacementChar;
 

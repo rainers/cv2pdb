@@ -15,6 +15,7 @@ extern "C" {
 #include <fcntl.h>
 #include <ctype.h>
 #include <direct.h>
+#include <share.h>
 #include <sys/stat.h>
 
 ///////////////////////////////////////////////////////////////////////
@@ -42,7 +43,7 @@ bool PEImage::load(const char* iname)
 	if (fd != -1)
 		return setError("file already open");
 
-	fd = open(iname, O_RDONLY | O_BINARY);
+	fd = sopen(iname, O_RDONLY | O_BINARY, SH_DENYWR);
 	if (fd == -1) 
 		return setError("Can't open file");
 
@@ -156,9 +157,14 @@ bool PEImage::replaceDebugSection (const void* data, int datalen)
 	memcpy(dbgDir, &debugdir, sizeof(debugdir));
 
 	dbgDir->PointerToRawData = sec[s].PointerToRawData;
+#if 0
 	dbgDir->AddressOfRawData = sec[s].PointerToRawData;
 	dbgDir->SizeOfData = sec[s].SizeOfRawData;
-	
+#else // suggested by Z3N
+	dbgDir->AddressOfRawData = sec[s].VirtualAddress;
+	dbgDir->SizeOfData = sec[s].SizeOfRawData - sizeof(IMAGE_DEBUG_DIRECTORY);
+#endif
+
 	free_aligned(dump_base);
 	dump_base = newdata;
 	dump_total_len += fill + xdatalen;

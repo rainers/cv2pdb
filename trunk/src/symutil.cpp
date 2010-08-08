@@ -15,20 +15,23 @@ extern "C" {
 
 char dotReplacementChar = '@';
 
-int dsym2c(const BYTE* p, BYTE len, char* cname, int maxclen)
+int dsym2c(const BYTE* p, int len, char* cname, int maxclen)
 {
+	const BYTE* end = p + len;
 	int zlen, zpos, cpos = 0;
 
 	// decompress symbol
-	while (len-- > 0)
+	while (p < end)
 	{
 		int ch = *p++;
+		if(ch == 0)
+			break;
 		if (ch == 0x80)
 		{
-			if (len-- <= 0)
+			if (p >= end)
 				break;
 			zlen = *p++ & 0x7f;
-			if (len-- <= 0)
+			if (p >= end)
 				break;
 			zpos = *p++ & 0x7f;
 			if (zpos > cpos)
@@ -62,10 +65,28 @@ int dsym2c(const BYTE* p, BYTE len, char* cname, int maxclen)
 	return cpos;
 }
 
+int pstrlen(const BYTE* &p)
+{
+	int len = *p++;
+	if(len == 0xff && *p == 0)
+	{
+		len = p[1] | (p[2] << 8);
+		p += 3;
+	}
+	return len;
+}
+
+int dstrlen(const BYTE* &p, bool cstr)
+{
+	if(cstr)
+		return strlen((const char*)p);
+	return pstrlen(p);
+}
+
 char* p2c(const BYTE* p, int idx)
 {
 	static char cname[4][2560];
-	int len = *p++;
+	int len = pstrlen(p);
 
 #if 1
 	memcpy(cname[idx], p, len);
@@ -83,15 +104,20 @@ char* p2c(const p_string& p, int idx)
 
 int p2ccpy(char* p, const BYTE* s)
 {
-	memcpy(p, s + 1, *s);
-	p[*s] = 0;
-	return *s + 1;
+	int len = pstrlen(s);
+	memcpy(p, s, len);
+	p[len] = 0;
+	return len + 1;
 }
 
 int pstrcpy(BYTE* p, const BYTE* s)
 {
-	int len = *p = *s;
-	for(int i = 1; i <= len; i++)
+	const BYTE* src = s;
+	int len = pstrlen(s);
+	for(int i = 0; i <= s - src; i++)
+		*p++ = src[i];
+
+	for(int i = 0; i < len; i++)
 		if (s[i] == '.')
 		{
 			//p[i++] = ':';
@@ -99,7 +125,25 @@ int pstrcpy(BYTE* p, const BYTE* s)
 		}
 		else
 			p[i] = s[i];
-	return len + 1; // *(BYTE*) memcpy (p, s, *s + 1) + 1;
+	return len + src - s; // *(BYTE*) memcpy (p, s, *s + 1) + 1;
+}
+
+int dmemcmp(const void* v1, const void* v2, int len)
+{
+	const BYTE* p1 = (const BYTE*) v1;
+	const BYTE* p2 = (const BYTE*) v2;
+	for(int i = 0; i < len; i++)
+	{
+		int b1 = p1[i];
+		int b2 = p2[i];
+		if(b1 == '.')
+			b1 = dotReplacementChar;
+		if(b2 == '.')
+			b2 = dotReplacementChar;
+		if(b1 != b2)
+			return b2 - b1;
+	}
+	return 0;
 }
 
 int pstrcpy(p_string& p, const p_string& s)
@@ -109,21 +153,34 @@ int pstrcpy(p_string& p, const p_string& s)
 
 int pstrcmp(const BYTE* p1, const BYTE* p2)
 {
-	if (*p1 != *p2)
-		return *p2 - *p1;
-	return memcmp(p1 + 1, p2 + 1, *p1);
+	int len1 = pstrlen(p1);
+	int len2 = pstrlen(p2);
+	if (len1 != len2)
+		return len2 - len1;
+	return dmemcmp(p1, p2, len1);
 }
 
 bool p2ccmp(const BYTE* pp, const char* cp)
 {
 	int len = strlen(cp);
-	if (len != *pp)
+	int plen = pstrlen(pp);
+	if (len != plen)
 		return false;
-	return memcmp(pp + 1, cp, len) == 0;
+	return dmemcmp(pp, cp, len) == 0;
 }
+
 bool p2ccmp(const p_string& pp, const char* cp)
 {
 	return p2ccmp(&pp.namelen, cp);
+}
+
+bool dstrcmp(const BYTE* s1, bool cstr1, const BYTE* s2, bool cstr2)
+{
+	int len1 = dstrlen(s1, cstr1);
+	int len2 = dstrlen(s2, cstr2);
+	if(len1 != len2)
+		return false;
+	return dmemcmp(s1, s2, len1) == 0;
 }
 
 int pstrcpy_v(bool v3, BYTE* d, const BYTE* s)
@@ -131,7 +188,7 @@ int pstrcpy_v(bool v3, BYTE* d, const BYTE* s)
 	if (!v3)
 		return pstrcpy(d, s);
 
-	int len = *s++;
+	int len = pstrlen(s);
 	int clen = dsym2c(s, len, (char*) d, 1000) + 1;
 
 	return clen;
