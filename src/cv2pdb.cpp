@@ -1872,6 +1872,8 @@ void CV2PDB::ensureUDT(int type, const codeview_type* cvtype)
 		int value, leaf_len = numeric_leaf(&value, &cvtype->struct_v1.structlen);
 		pstrcpy_v(true, (BYTE*) name, (const BYTE*)  &cvtype->struct_v1.structlen + leaf_len);
 
+		checkUserTypeAlloc();
+
 		codeview_reftype* rdtype = (codeview_reftype*) (userTypes + cbUserTypes);
 		rdtype->fieldlist.id = LF_FIELDLIST_V2;
 		int helpfieldlistType = nextUserType++;
