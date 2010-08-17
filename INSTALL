@@ -22,7 +22,7 @@ from VS2010. They should be accessible through the PATH environment variable.
 
 Installation
 ------------
-You might want to consider installing Visual D (www.dsource.org/project/visuald)
+You might want to consider installing Visual D (www.dsource.org/projects/visuald)
 instead of cv2pdb. Visual D provides both project and language integration
 into Visual Studio and comes with an installer that includes cv2pdb.
 
