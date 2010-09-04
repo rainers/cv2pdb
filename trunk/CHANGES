@@ -124,4 +124,8 @@ Version history
 
   * fixed crash when working with -C (introduced in last version)
 
+2010-09-04 Version 0.17
+
+  * fixed crash that could occur for user-defined types longer than 90 characters
+
 
