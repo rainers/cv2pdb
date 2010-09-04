@@ -2896,12 +2896,13 @@ codeview_symbol* CV2PDB::findUdtSymbol(int type)
 
 bool CV2PDB::addUdtSymbol(int type, const char* name)
 {
-	if (cbUdtSymbols + 100 > allocUdtSymbols)
+	if (cbUdtSymbols + 300 > allocUdtSymbols)
 	{
-		allocUdtSymbols += 1000;
+		allocUdtSymbols += 5000;
 		udtSymbols = (BYTE*) realloc(udtSymbols, allocUdtSymbols);
 	}
 
+	// no need to convert to udt_v2/udt_v3, the debugger is fine with it.
 	codeview_symbol* sym = (codeview_symbol*) (udtSymbols + cbUdtSymbols);
 	sym->udt_v1.id = S_UDT_V1;
 	sym->udt_v1.type = translateType(type);
