@@ -13,6 +13,8 @@ struct p_string;
 
 int dsym2c(const BYTE* p, int len, char* cname, int maxclen);
 
+int pstrmemlen(const BYTE* p);
+int pstrlen(const BYTE* &p);
 char* p2c(const BYTE* p, int idx = 0);
 char* p2c(const p_string& p, int idx = 0);
 int p2ccpy(char* p, const BYTE* s);
