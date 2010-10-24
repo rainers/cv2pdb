@@ -76,6 +76,13 @@ int pstrlen(const BYTE* &p)
 	return len;
 }
 
+int pstrmemlen(const BYTE* p)
+{
+    const BYTE* q = p;
+    int len = pstrlen(p);
+    return len + (p - q);
+}
+
 int dstrlen(const BYTE* &p, bool cstr)
 {
 	if(cstr)
@@ -198,9 +205,10 @@ int cstrcpy_v(bool v3, BYTE* d, const char* s)
 {
 	int len = strlen(s);
 	if(!v3)
-		*d++ = len;
-	else
+	{
 		assert(len < 256);
+		*d++ = len;
+	}
 
 	memcpy(d, s, len + 1);
 	return len + 1;

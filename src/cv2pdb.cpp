@@ -312,9 +312,11 @@ int CV2PDB::copy_leaf(unsigned char* dp, int& dpos, const unsigned char* p, int&
 
 static int copy_p2dsym(unsigned char* dp, int& dpos, const unsigned char* p, int& pos, int maxdlen)
 {
-	int len = dsym2c(p + pos + 1, p[pos], (char*) dp + dpos, maxdlen - dpos) + 1;
-	dpos += len;
-	pos += p[pos] + 1;
+	const BYTE* q = p + pos;
+	int plen = pstrlen(q);
+	int len = dsym2c(q, plen, (char*) dp + dpos, maxdlen - dpos);
+	dpos += len + 1;
+	pos = q - p + len;
 	return len;
 }
 
@@ -366,7 +368,7 @@ int CV2PDB::_doFields(int cmd, codeview_reftype* dfieldlist, const codeview_reft
 			else
 			{
 				leaf_len = numeric_leaf(&value, &fieldtype->enumerate_v1.value);
-				copylen = 2 + 2 + leaf_len + p[pos + 4 + leaf_len] + 1; // id,attr,value,name
+				copylen = 2 + 2 + leaf_len + pstrmemlen(p + pos + 4 + leaf_len); // id,attr,value,name
 			}
 			break;
 
@@ -392,14 +394,14 @@ int CV2PDB::_doFields(int cmd, codeview_reftype* dfieldlist, const codeview_reft
 			else
 			{
 				leaf_len = numeric_leaf(&value, &fieldtype->member_v1.offset);
-				copylen = leaf_len + p[pos + leaf_len] + 1; // value,name
+				copylen = leaf_len + pstrmemlen(p + pos + leaf_len); // value,name
 			}
 			break;
 
 		case LF_MEMBER_V2:
 			leaf_len = numeric_leaf(&value, &fieldtype->member_v1.offset);
 			copylen = sizeof(dfieldtype->member_v2) - sizeof(dfieldtype->member_v2.offset);
-			copylen += leaf_len + p[pos + copylen + leaf_len] + 1; // value,name
+			copylen += leaf_len + pstrmemlen(p + pos + copylen + leaf_len); // value,name
 			break;
 
 		case LF_MEMBER_V3:
@@ -460,7 +462,7 @@ int CV2PDB::_doFields(int cmd, codeview_reftype* dfieldlist, const codeview_reft
 			if (v3 && dp)
 				copy_p2dsym(dp, dpos, p, pos, maxdlen);
 			else
-				copylen = fieldtype->method_v1.p_name.namelen + 1;
+				copylen = pstrmemlen(&fieldtype->method_v1.p_name.namelen);
 
 			if(cmd == kCmdOffsetFirstVirtualMethod)
 				if(const codeview_type* cvtype = getTypeData(fieldtype->method_v1.mlist))
@@ -476,7 +478,7 @@ int CV2PDB::_doFields(int cmd, codeview_reftype* dfieldlist, const codeview_reft
 
 		case LF_METHOD_V2:
 			copylen = sizeof(dfieldtype->method_v2) - sizeof(dfieldtype->method_v2.p_name);
-			copylen += fieldtype->method_v2.p_name.namelen + 1;
+			copylen += pstrmemlen(&fieldtype->method_v2.p_name.namelen);
 			break;
 
 		case LF_METHOD_V3:
@@ -496,12 +498,12 @@ int CV2PDB::_doFields(int cmd, codeview_reftype* dfieldlist, const codeview_reft
 			if (v3 && dp)
 				copy_p2dsym(dp, dpos, p, pos, maxdlen);
 			else
-				copylen = fieldtype->stmember_v1.p_name.namelen + 1;
+				copylen = pstrmemlen(&fieldtype->stmember_v1.p_name.namelen);
 			break;
 
 		case LF_STMEMBER_V2:
 			copylen = sizeof(dfieldtype->stmember_v2) - sizeof(dfieldtype->stmember_v2.p_name);
-			copylen += fieldtype->stmember_v2.p_name.namelen + 1;
+			copylen += pstrmemlen(&fieldtype->stmember_v2.p_name.namelen);
 			break;
 
 		case LF_STMEMBER_V3:
@@ -521,7 +523,7 @@ int CV2PDB::_doFields(int cmd, codeview_reftype* dfieldlist, const codeview_reft
 			if (v3 && dp)
 				copy_p2dsym(dp, dpos, p, pos, maxdlen);
 			else
-				copylen = fieldtype->nesttype_v1.p_name.namelen + 1;
+				copylen = pstrmemlen(&fieldtype->nesttype_v1.p_name.namelen);
 			if(test_nested_type == 0 || test_nested_type == fieldtype->nesttype_v1.type)
 				nested_types++;
 			if(cmd == kCmdHasClassTypeEnum && p2ccmp(fieldtype->nesttype_v1.p_name, CLASSTYPEENUM_TYPE))
@@ -530,7 +532,7 @@ int CV2PDB::_doFields(int cmd, codeview_reftype* dfieldlist, const codeview_reft
 
 		case LF_NESTTYPE_V2:
 			copylen = sizeof(dfieldtype->nesttype_v2) - sizeof(dfieldtype->nesttype_v2.p_name);
-			copylen += fieldtype->nesttype_v2.p_name.namelen + 1;
+			copylen += pstrmemlen(&fieldtype->nesttype_v2.p_name.namelen);
 			if(test_nested_type == 0 || test_nested_type == fieldtype->nesttype_v1.type)
 				nested_types++;
 			if(cmd == kCmdHasClassTypeEnum && p2ccmp(fieldtype->nesttype_v2.p_name, CLASSTYPEENUM_TYPE))
@@ -563,10 +565,10 @@ int CV2PDB::_doFields(int cmd, codeview_reftype* dfieldlist, const codeview_reft
 
 			// throw away friend function declarations, there is no v3 replacement and the debugger won't need them
 		case LF_FRIENDFCN_V1:
-			pos += sizeof(fieldtype->friendfcn_v1) + fieldtype->friendfcn_v1.p_name.namelen - 1;
+			pos += sizeof(fieldtype->friendfcn_v1) + pstrmemlen(&fieldtype->friendfcn_v1.p_name.namelen) - 2;
 			continue;
 		case LF_FRIENDFCN_V2:
-			copylen = sizeof(fieldtype->friendfcn_v2) + fieldtype->friendfcn_v2.p_name.namelen - 1;
+			copylen = sizeof(fieldtype->friendfcn_v2) + pstrmemlen(&fieldtype->friendfcn_v2.p_name.namelen) - 2;
 			continue;
 
 		case LF_FRIENDCLS_V1:

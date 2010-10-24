@@ -128,4 +128,7 @@ Version history
 
   * fixed crash that could occur for user-defined types longer than 90 characters
 
+2010-10-24 Version 0.18
+
+  * fixed error with nested types longer than 255 characters
 
