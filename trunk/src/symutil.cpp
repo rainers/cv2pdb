@@ -196,7 +196,7 @@ int pstrcpy_v(bool v3, BYTE* d, const BYTE* s)
 		return pstrcpy(d, s);
 
 	int len = pstrlen(s);
-	int clen = dsym2c(s, len, (char*) d, 1000) + 1;
+	int clen = dsym2c(s, len, (char*) d, kMaxNameLen) + 1;
 
 	return clen;
 }
