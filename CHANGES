@@ -131,4 +131,5 @@ Version history
 2010-10-24 Version 0.18
 
   * fixed error with nested types longer than 255 characters
+  * more fixes for names longer than 300 characters
 

@@ -1388,7 +1388,7 @@ const char* CV2PDB::appendDynamicArray(int indexType, int elemType)
 
 	checkUserTypeAlloc();
 
-	static char name[256];
+	static char name[kMaxNameLen];
 	nameOfDynamicArray(indexType, elemType, name, sizeof(name));
 
 	// nextUserType: pointer to elemType
@@ -1406,7 +1406,7 @@ const char* CV2PDB::appendDynamicArray(int indexType, int elemType)
 		rdtype->fieldlist.len = 2;
 		cbUserTypes += rdtype->fieldlist.len + 2;
 
-		char helpertype[64];
+		char helpertype[kMaxNameLen];
 		strcat(strcpy(helpertype, name), "_viewhelper");
 		dtype = (codeview_type*) (userTypes + cbUserTypes);
 		cbUserTypes += addClass(dtype, 0, helpfieldlistType, 0, 0, 0, 4, helpertype);
@@ -1466,10 +1466,10 @@ const char* CV2PDB::appendAssocArray(int keyType, int elemType)
 
 	checkUserTypeAlloc();
 
-	static char name[256];
+	static char name[kMaxNameLen];
 #if 1
-	char keyname[256];
-	char elemname[256];
+	char keyname[kMaxNameLen];
+	char elemname[kMaxNameLen];
 	if(!nameOfType(keyType, keyname, sizeof(keyname)))
 		return false;
 	if(!nameOfType(elemType, elemname, sizeof(elemname)))
@@ -1635,7 +1635,7 @@ const char* CV2PDB::appendDelegate(int thisType, int funcType)
 	rdtype->fieldlist.len = len1 + len2 + 2;
 	cbUserTypes += rdtype->fieldlist.len + 2;
 
-	static char name[256];
+	static char name[kMaxNameLen];
 	nameOfDelegate(thisType, funcType, name, sizeof(name));
 
 	// nextUserType + 3: struct delegate<>
@@ -1870,7 +1870,7 @@ void CV2PDB::ensureUDT(int type, const codeview_type* cvtype)
 
 	if(!findUdtSymbol(type + 0x1000))
 	{
-		char name[300];
+		char name[kMaxNameLen];
 		int value, leaf_len = numeric_leaf(&value, &cvtype->struct_v1.structlen);
 		pstrcpy_v(true, (BYTE*) name, (const BYTE*)  &cvtype->struct_v1.structlen + leaf_len);
 
@@ -2625,7 +2625,7 @@ bool CV2PDB::addPublics()
 				case S_GDATA_V1:
 				case S_LDATA_V1:
 				case S_PUB_V1:
-					char symname[2000];
+					char symname[kMaxNameLen];
 					dsym2c((BYTE*)sym->data_v1.p_name.name, sym->data_v1.p_name.namelen, symname, sizeof(symname));
 					int type = translateType(sym->data_v1.symtype);
 					if (mod)

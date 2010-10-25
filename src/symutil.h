@@ -11,6 +11,8 @@
 
 struct p_string;
 
+static const int kMaxNameLen = 4096;
+
 int dsym2c(const BYTE* p, int len, char* cname, int maxclen);
 
 int pstrmemlen(const BYTE* p);
