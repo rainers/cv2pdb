@@ -39,6 +39,7 @@ static const int kPropIncomplete  = 0x80;
 static const int kPropScoped      = 0x100;
 
 bool isStruct(const codeview_type* cvtype);
+bool isClass(const codeview_type* cvtype);
 int getStructProperty(const codeview_type* cvtype);
 int getStructFieldlist(const codeview_type* cvtype);
 bool isCompleteStruct(const codeview_type* type, const BYTE* name, bool cstr);

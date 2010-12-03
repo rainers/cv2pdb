@@ -1863,6 +1863,13 @@ bool CV2PDB::isCppInterface(const codeview_type* cvtype)
 	return off == 0;
 }
 
+bool CV2PDB::isClassType(int type)
+{
+    if(const codeview_type* cvt = getTypeData(type))
+        return isClass(cvt);
+    return false;
+}
+
 void CV2PDB::ensureUDT(int type, const codeview_type* cvtype)
 {
 	if (getStructProperty(cvtype) & kPropIncomplete)
@@ -2125,7 +2132,7 @@ bool CV2PDB::initGlobalTypes()
 				case LF_POINTER_V1:
 					dtype->pointer_v2.id = LF_POINTER_V2;
 					dtype->pointer_v2.datatype = translateType(type->pointer_v1.datatype);
-					if (Dversion > 0 && type->pointer_v1.datatype >= 0x1000
+					if (Dversion > 0 && isClassType(type->pointer_v1.datatype)
 					                 && (type->pointer_v1.attribute & 0xE0) == 0)
 					{
 						if (thisIsNotRef) // const pointer for this

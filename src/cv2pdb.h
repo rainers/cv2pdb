@@ -79,6 +79,7 @@ public:
 	int fixProperty(int type, int prop, int fieldType);
 	bool derivesFromObject(const codeview_type* cvtype);
 	bool isCppInterface(const codeview_type* cvtype);
+	bool isClassType(int type);
 
 	int sizeofClassType(const codeview_type* cvtype);
 	int sizeofBasicType(int type);
