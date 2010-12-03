@@ -21,6 +21,18 @@ bool isStruct(const codeview_type* cvtype)
 	return false;
 }
 
+bool isClass(const codeview_type* cvtype)
+{
+	switch(cvtype->common.id)
+	{
+	case LF_CLASS_V1:
+	case LF_CLASS_V2:
+	case LF_CLASS_V3:
+		return true;
+	}
+	return false;
+}
+
 int getStructProperty(const codeview_type* cvtype)
 {
 	switch(cvtype->common.id)

@@ -207,6 +207,17 @@ A outer_func(int x)
 	return new A;
 }
 
+void voidpointers(ubyte* p)
+{
+	void* vp = cast(void*) p;
+	const(void)* const_vp = cast(const(void)*) p;
+	const(void*) const_vp2 = cast(const(void*)) p;
+
+	int* ip = cast(int*) p;
+	const(int)* const_ip = cast(const(int)*) p;
+	const(int*) const_ip2 = cast(const(int*)) p;
+}
+
 int arrays()
 {
 	int[] iarr;
@@ -286,6 +297,7 @@ int main(char[][]argv)
 	long lng = 3;
 	ulong ulng = 4;
 
+	voidpointers(null);
 	arrays();
 	outer_func(3);
 	A.outer_func(3);

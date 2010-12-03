@@ -133,3 +133,7 @@ Version history
   * fixed error with nested types longer than 255 characters
   * more fixes for names longer than 300 characters
 
+2010-12-03 Version 0.19
+
+  * now converting only class pointers to references, not pointers to structs or void
+
