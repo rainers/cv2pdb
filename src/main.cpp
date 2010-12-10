@@ -91,7 +91,7 @@ int main(int argc, char** argv)
 	}
 
 	PEImage img;
-	double Dversion = 2;
+	double Dversion = 2.043;
 
 	while (argc > 1 && argv[1][0] == '-')
 	{
