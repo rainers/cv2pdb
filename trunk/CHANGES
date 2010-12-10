@@ -136,4 +136,5 @@ Version history
 2010-12-03 Version 0.19
 
   * now converting only class pointers to references, not pointers to structs or void
-
+  * changed default D-version to 2.043 to create correct associative array type 
+    information for recent compilers by default
