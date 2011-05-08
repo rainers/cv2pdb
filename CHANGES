@@ -148,5 +148,5 @@ Version history
 2010-05-08 Version 0.21
 
   * fixed decoding of compressed symbols
-  * added command line switch 
+  * added command line switch -n to disable symbol demangling 
   * fixed crash with more than 32767 types
