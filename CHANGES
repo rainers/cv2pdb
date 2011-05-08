@@ -2,7 +2,7 @@
 This is the CHANGES file for cv2pdb, a 
 converter of DMD CodeView debug information to PDB files
 
-Copyright (c) 2009 by Rainer Schuetze, All Rights Reserved
+Copyright (c) 2009-2010 by Rainer Schuetze, All Rights Reserved
 
 Version history
 ---------------
@@ -133,8 +133,20 @@ Version history
   * fixed error with nested types longer than 255 characters
   * more fixes for names longer than 300 characters
 
-2010-12-03 Version 0.19
+2010-12-10 Version 0.19
 
   * now converting only class pointers to references, not pointers to structs or void
   * changed default D-version to 2.043 to create correct associative array type 
     information for recent compilers by default
+
+2010-12-30 Version 0.20
+
+  * fixed another issue with user defined type names longer than 300 characters
+  * now corrects the debug info when dmc/optlink emits multiple struct definitions,
+    but only one UDT record.
+
+2010-05-08 Version 0.21
+
+  * fixed decoding of compressed symbols
+  * added command line switch 
+  * fixed crash with more than 32767 types

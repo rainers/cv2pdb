@@ -18,7 +18,141 @@
 
 #include "symutil.h"
 
-using namespace std;
+#define USE_STDSTRING 1
+
+#if USE_STDSTRING
+typedef std::string string; //using namespace std;
+#else
+static const int maxLen = 4096;
+
+struct stringpool
+{
+	stringpool() : _first(0) {}
+
+	char* get()
+	{
+		if(!_first)
+			return new char[maxLen];
+		char* p = _first;
+		_first = *(char**) _first;
+		return p;
+	}
+	void put(char* p)
+	{
+		*(char**)p = _first;
+		_first = p;
+	}
+	
+	char* _first;
+};
+stringpool pool;
+
+#define string _string // fool debugger to not use visualizers for std::string
+
+struct string
+{
+	string() : _p(0), _len(0), _const(false) { _p = pool.get(); }
+	//string(const char* p) : _cp(p), _len(strlen(p)), _const(true) {}
+	//string(const string& s) : _p(s.p), _len(s._len), _const(true) {}
+	string(const char* p, size_t len) : _cp(p), _len(len), _const(true) {}
+	template<int N> string(const char (&p)[N]) : _cp(p), _len(N-1), _const(true) {}
+	~string() { if(!_const) pool.put(_p); }
+
+	size_t length() const { return _len; }
+
+	char operator[] (size_t idx) const
+	{ 
+		return _p[idx];
+	}
+	string substr(size_t pos, size_t len) const
+	{
+		return string(_p + pos, len);
+	}
+
+	template<int N> string operator+(const char (&p)[N])
+	{
+		assert(!_const);
+		assert(_len + N-1 < maxLen);
+
+		memcpy(_p + _len, p, N-1);
+		return string(_p, _len + N-1);
+	}
+	string operator+(string s)
+	{
+		assert(!_const);
+		assert(_len + s._len < maxLen);
+
+		memcpy(_p + _len, s._p, s._len);
+		return string(_p, _len + s._len);
+	}
+	template<int N> string operator+=(const char (&p)[N])
+	{
+		assert(!_const);
+		assert(_len + N-1 < maxLen);
+		memcpy(_p + _len, p, N-1);
+		_len += N - 1;
+		return *this;
+	}
+	string operator+=(const string& s) 
+	{ 
+		assert(!_const);
+		assert(_len + s._len < maxLen);
+		memcpy(_p + _len, s._p, s._len);
+		_len += s._len;
+		return *this;
+	}
+	string operator+=(char c) 
+	{ 
+		assert(!_const);
+		assert(_len < maxLen);
+		_p[_len++] = c;
+		return *this;
+	}
+	template<int N>string operator=(const char (&p)[N]) 
+	{
+		_len = N-1;
+		memcpy(_p, p, _len);
+		_const = true;
+		return *this;
+	}
+	string operator=(const string& s) 
+	{
+		assert(!_const);
+		_len = s._len;
+		memcpy(_p, s._p, _len);
+		return *this;
+	}
+	bool operator==(const string& s) const
+	{
+		return _len == s._len && memcmp(_p, s._p, _len) == 0;
+	}
+
+	const char* c_str()
+	{
+		assert(!_const);
+		assert(_len < maxLen);
+		_p[_len] = 0;
+		return _p;
+	}
+
+	union
+	{
+		const char* _cp;
+		char* _p;
+	};
+	size_t _len;
+	bool _const;
+};
+
+template<int N> string operator+(const char (&p)[N], string s)
+{
+	assert(!s._const);
+	assert(s._len + N-1 < maxLen);
+	memmove(s._p + N - 1, s._p, s._len);
+	memcpy(s._p, p, N-1);
+	return string(s._p, s._len + N-1);
+}
+#endif
 
 typedef unsigned char ubyte;
 typedef long double real;
@@ -38,7 +172,6 @@ class Demangle
 public:
 	size_t ni;
 	string name;
-	string (Demangle::*fparseTemplateInstanceName)();
 	
 	static void error()
 	{
@@ -88,7 +221,7 @@ public:
 			ni += 3;
 			try
 			{
-				result = parseTemplateInstanceName(); // (this->*fparseTemplateInstanceName)();
+				result = parseTemplateInstanceName();
 				if (ni != nisave + i)
 					err = true;
 			}
@@ -281,7 +414,7 @@ public:
 				return prop + p;
 			}
 			p = prop + parseType() +
-				(isdelegate ? " delegate(" : " function(") + args + ")";
+				(isdelegate ? string(" delegate(") : string(" function(")) + args + ")";
 			isdelegate = 0;
 			goto L1;
 			}
@@ -454,8 +587,6 @@ public:
 			goto Lnot;
 		}
 
-		// fparseTemplateInstanceName = &parseTemplateInstanceName;
-
 		try
 		{
 			string result = parseQualifiedName();
@@ -522,12 +653,13 @@ void unittest()
 
 bool d_demangle(const char* name, char* demangled, int maxlen, bool plain)
 {
-#if 0 // && def _DEBUG
+#ifdef _DEBUG
     static bool once; if(!once) { once = true; unittest(); }
 #endif
 
 	Demangle d;
-	string r = d.demangle(name, plain);
+	string nm(name, strlen(name));
+	string r = d.demangle(nm, plain);
 	if (r.length == 0)
 		return false;
 	strncpy(demangled, r.c_str(), maxlen);

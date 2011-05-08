@@ -1875,12 +1875,15 @@ void CV2PDB::ensureUDT(int type, const codeview_type* cvtype)
 	if (getStructProperty(cvtype) & kPropIncomplete)
 		cvtype = findCompleteClassType(cvtype, &type);
 
-	if(!findUdtSymbol(type + 0x1000))
-	{
-		char name[kMaxNameLen];
-		int value, leaf_len = numeric_leaf(&value, &cvtype->struct_v1.structlen);
-		pstrcpy_v(true, (BYTE*) name, (const BYTE*)  &cvtype->struct_v1.structlen + leaf_len);
+	if(findUdtSymbol(type + 0x1000))
+		return;
 
+	char name[kMaxNameLen];
+	int value, leaf_len = numeric_leaf(&value, &cvtype->struct_v1.structlen);
+	pstrcpy_v(true, (BYTE*) name, (const BYTE*)  &cvtype->struct_v1.structlen + leaf_len);
+
+	if (getStructProperty(cvtype) & kPropIncomplete)
+	{
 		checkUserTypeAlloc();
 
 		codeview_reftype* rdtype = (codeview_reftype*) (userTypes + cbUserTypes);
@@ -1895,6 +1898,8 @@ void CV2PDB::ensureUDT(int type, const codeview_type* cvtype)
 		// addUdtSymbol(viewHelperType, "object_viewhelper");
 		addUdtSymbol(viewHelperType, name);
 	}
+	else
+		addUdtSymbol(type + 0x1000, name);
 }
 
 int CV2PDB::appendTypedef(int type, const char* name)
@@ -1916,7 +1921,7 @@ int CV2PDB::appendTypedef(int type, const char* name)
 	dtype->enumeration_v2.type = basetype;
 	dtype->enumeration_v2.fieldlist = fieldlistType;
 	dtype->enumeration_v2.count = 0;
-	dtype->enumeration_v2.property = 0x200;
+	dtype->enumeration_v2.property = kPropReserved2;
 	int len = cstrcpy_v (v3, (BYTE*) &dtype->enumeration_v2.p_name, name);
 	len += sizeof(dtype->enumeration_v2) - sizeof(dtype->enumeration_v2.p_name);
 	writeUserTypeLen(dtype, len);
@@ -2091,7 +2096,7 @@ bool CV2PDB::initGlobalTypes()
 							if(td->common.id == LF_FIELDLIST_V1 || td->common.id == LF_FIELDLIST_V2)
 								dtype->struct_v2.n_element = countFields((const codeview_reftype*)td);
 					dtype->struct_v2.property = fixProperty(t + 0x1000, type->struct_v1.property, 
-					                                        type->struct_v1.fieldlist) | 0x200;
+					                                        type->struct_v1.fieldlist) | kPropReserved2;
 #if REMOVE_LF_DERIVED
 					dtype->struct_v2.derived = 0;
 #else
@@ -2903,11 +2908,37 @@ codeview_symbol* CV2PDB::findUdtSymbol(int type)
 	return 0;
 }
 
+codeview_symbol* CV2PDB::findUdtSymbol(const char* name)
+{
+	for(int p = 0; p < cbGlobalSymbols; )
+	{
+		codeview_symbol* sym = (codeview_symbol*) (globalSymbols + p);
+        if(sym->common.id == S_UDT_V1 && p2ccmp(sym->udt_v1.p_name, name))
+			return sym;
+		p += sym->common.len + 2;
+	}
+	for(int p = 0; p < cbStaticSymbols; )
+	{
+		codeview_symbol* sym = (codeview_symbol*) (staticSymbols + p);
+		if(sym->common.id == S_UDT_V1 && p2ccmp(sym->udt_v1.p_name, name))
+			return sym;
+		p += sym->common.len + 2;
+	}
+	for(int p = 0; p < cbUdtSymbols; )
+	{
+		codeview_symbol* sym = (codeview_symbol*) (udtSymbols + p);
+		if(sym->common.id == S_UDT_V1 && p2ccmp(sym->udt_v1.p_name, name))
+			return sym;
+		p += sym->common.len + 2;
+	}
+	return 0;
+}
+
 bool CV2PDB::addUdtSymbol(int type, const char* name)
 {
-	if (cbUdtSymbols + 300 > allocUdtSymbols)
+	if (cbUdtSymbols + 100 + kMaxNameLen > allocUdtSymbols)
 	{
-		allocUdtSymbols += 5000;
+		allocUdtSymbols += kMaxNameLen + 5000;
 		udtSymbols = (BYTE*) realloc(udtSymbols, allocUdtSymbols);
 	}
 

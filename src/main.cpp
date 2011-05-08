@@ -6,6 +6,7 @@
 
 #include "PEImage.h"
 #include "cv2pdb.h"
+#include "symutil.h"
 
 #include <direct.h>
 
@@ -81,12 +82,12 @@ int main(int argc, char** argv)
 	if (argc < 2)
 	{
 		printf("Convert DMD CodeView debug information to PDB files, Version %g\n", VERSION);
-		printf("Copyright (c) 2009-2010 by Rainer Schuetze, All Rights Reserved\n");
+		printf("Copyright (c) 2009-2011 by Rainer Schuetze, All Rights Reserved\n");
 		printf("\n");
 		printf("License for redistribution is given by the Artistic License 2.0\n");
 		printf("see file LICENSE for further details\n");
 		printf("\n");
-		printf("usage: %s [-Dversion|-C] <exe-file> [new-exe-file] [pdb-file]\n", argv[0]);
+		printf("usage: %s [-Dversion|-C|-n] <exe-file> [new-exe-file] [pdb-file]\n", argv[0]);
 		return -1;
 	}
 
@@ -103,6 +104,8 @@ int main(int argc, char** argv)
 			Dversion = strtod (argv[0] + 2, 0);
 		else if (argv[0][1] == 'C')
 			Dversion = 0;
+		else if (argv[0][1] == 'n')
+			demangleSymbols = false;
 		else
 			fatal("unknwon option: %s", argv[0]);
 	}

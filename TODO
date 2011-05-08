@@ -2,7 +2,7 @@
 This is the TODO file for cv2pdb, a 
 converter of DMD CodeView debug information to PDB files
 
-Copyright (c) 2009 by Rainer Schuetze, All Rights Reserved
+Copyright (c) 2009-2010 by Rainer Schuetze, All Rights Reserved
 
 There are some quirks that you might run into when using 
 Visual Studio to debug D programs. These will hopefully be removed 

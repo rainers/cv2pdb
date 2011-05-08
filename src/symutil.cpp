@@ -14,6 +14,7 @@ extern "C" {
 #include <assert.h>
 
 char dotReplacementChar = '@';
+bool demangleSymbols = true;
 
 int dsym2c(const BYTE* p, int len, char* cname, int maxclen)
 {
@@ -26,6 +27,33 @@ int dsym2c(const BYTE* p, int len, char* cname, int maxclen)
 		int ch = *p++;
 		if(ch == 0)
 			break;
+		if ((ch & 0xc0) == 0xc0)
+		{
+			zlen = (ch & 0x7) + 1;
+			zpos = ((ch >> 3) & 7) + 1; // + zlen;
+			if (zpos > cpos)
+				break;
+			for (int z = 0; z < zlen; z++)
+				cname[cpos + z] = cname[cpos - zpos + z];
+			cpos += zlen;
+		}
+		else if (ch >= 0x80)
+		{
+			if (p >= end)
+				break;
+			int ch2 = *p++;
+			zlen = (ch2 & 0x7f) | ((ch & 0x38) << 4);
+			if (p >= end)
+				break;
+			int ch3 = *p++;
+			zpos = (ch3 & 0x7f) | ((ch & 7) << 7);
+			if (zpos > cpos)
+				break;
+			for(int z = 0; z < zlen; z++)
+				cname[cpos + z] = cname[cpos - zpos + z];
+			cpos += zlen;
+		}
+#if 0
 		if (ch == 0x80)
 		{
 			if (p >= end)
@@ -48,13 +76,15 @@ int dsym2c(const BYTE* p, int len, char* cname, int maxclen)
 				cname[cpos + z] = cname[cpos - zpos + z];
 			cpos += zlen;
 		}
+#endif
 		else
 			cname[cpos++] = ch;
 	}
 
 	cname[cpos] = 0;
-	if (cname[0] == '_' && cname[1] == 'D' && isdigit(cname[2]))
-		d_demangle(cname, cname, maxclen, true);
+	if(demangleSymbols)
+		if (cname[0] == '_' && cname[1] == 'D' && isdigit(cname[2]))
+			d_demangle(cname, cname, maxclen, true);
 
 #if 1
 	for(int i = 0; i < cpos; i++)

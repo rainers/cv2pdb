@@ -30,5 +30,6 @@ int cstrcpy_v(bool v3, BYTE* d, const char* s);
 bool dstrcmp(const BYTE* s1, bool cstr1, const BYTE* s2, bool cstr2);
 
 extern char dotReplacementChar;
+extern bool demangleSymbols;
 
 #endif //__SYMUTIL_H__

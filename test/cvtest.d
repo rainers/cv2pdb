@@ -231,8 +231,18 @@ int arrays()
 	return iarr.length;
 }
 
+enum { Forward, Accept, Reject }
+alias int Action;
+
+Action convertEnum()
+{
+	return Accept;
+}
+
 int main2(char[][]argv)
 {
+	convertEnum();
+	
 	enum_name inst_enum = enum_name.kEnum2;
 	class_member inst_member = new class_member;
 	base_class inst_base = new base_class;
