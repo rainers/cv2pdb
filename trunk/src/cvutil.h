@@ -28,6 +28,7 @@ enum
 };
 
 // class properties (also apply to struct,union and enum)
+static const int kPropNone        = 0x00;
 static const int kPropPacked      = 0x01;
 static const int kPropHasCtorDtor = 0x02;
 static const int kPropHasOverOps  = 0x04;
@@ -37,6 +38,7 @@ static const int kPropHasOverAsgn = 0x20;
 static const int kPropHasCasting  = 0x40;
 static const int kPropIncomplete  = 0x80;
 static const int kPropScoped      = 0x100;
+static const int kPropReserved2   = 0x200;
 
 bool isStruct(const codeview_type* cvtype);
 bool isClass(const codeview_type* cvtype);

@@ -123,6 +123,7 @@ public:
 	bool addPublics();
 
 	codeview_symbol* findUdtSymbol(int type);
+	codeview_symbol* findUdtSymbol(const char* name);
 	bool addUdtSymbol(int type, const char* name);
 	void ensureUDT(int type, const codeview_type* cvtype);
 
