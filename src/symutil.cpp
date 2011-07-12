@@ -33,6 +33,8 @@ int dsym2c(const BYTE* p, int len, char* cname, int maxclen)
 			zpos = ((ch >> 3) & 7) + 1; // + zlen;
 			if (zpos > cpos)
 				break;
+			if (cpos + zlen >= maxclen)
+				break;
 			for (int z = 0; z < zlen; z++)
 				cname[cpos + z] = cname[cpos - zpos + z];
 			cpos += zlen;
@@ -48,6 +50,8 @@ int dsym2c(const BYTE* p, int len, char* cname, int maxclen)
 			int ch3 = *p++;
 			zpos = (ch3 & 0x7f) | ((ch & 7) << 7);
 			if (zpos > cpos)
+				break;
+			if (cpos + zlen >= maxclen)
 				break;
 			for(int z = 0; z < zlen; z++)
 				cname[cpos + z] = cname[cpos - zpos + z];

@@ -150,3 +150,8 @@ Version history
   * fixed decoding of compressed symbols
   * added command line switch -n to disable symbol demangling 
   * fixed crash with more than 32767 types
+
+unreleased Version 0.22
+
+  * added command line switch -s to specify the replacement character for '.' in symbols
+  * fixed another crash where compressed symbols expand to more than 4096 characters
