@@ -87,7 +87,7 @@ int main(int argc, char** argv)
 		printf("License for redistribution is given by the Artistic License 2.0\n");
 		printf("see file LICENSE for further details\n");
 		printf("\n");
-		printf("usage: %s [-Dversion|-C|-n] <exe-file> [new-exe-file] [pdb-file]\n", argv[0]);
+		printf("usage: %s [-Dversion|-C|-n|-sC] <exe-file> [new-exe-file] [pdb-file]\n", argv[0]);
 		return -1;
 	}
 
@@ -106,8 +106,10 @@ int main(int argc, char** argv)
 			Dversion = 0;
 		else if (argv[0][1] == 'n')
 			demangleSymbols = false;
+		else if (argv[0][1] == 's' && argv[0][2])
+			dotReplacementChar = argv[0][2];
 		else
-			fatal("unknwon option: %s", argv[0]);
+			fatal("unknown option: %s", argv[0]);
 	}
 
 	if (!img.load(argv[1]))
