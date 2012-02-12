@@ -50,5 +50,6 @@ const BYTE* getStructName(const codeview_type* cvtype, bool &cstr);
 bool cmpStructName(const codeview_type* cvtype, const BYTE* name, bool cstr);
 
 int numeric_leaf(int* value, const void* leaf);
+int write_numeric_leaf(int value, void* leaf);
 
 #endif // __CVUTIL_H__

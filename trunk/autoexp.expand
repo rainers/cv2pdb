@@ -9,9 +9,24 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 object_viewhelper=$ADDIN(dviewhelper.dll,_DObjectView@28)
-string_viewhelper=$ADDIN(dviewhelper.dll,_DStringView@28)
-wstring_viewhelper=$ADDIN(dviewhelper.dll,_DWStringView@28)
-dstring_viewhelper=$ADDIN(dviewhelper.dll,_DDStringView@28)
+string=$ADDIN(dviewhelper.dll,_DStringView@28)
+wstring=$ADDIN(dviewhelper.dll,_DWStringView@28)
+dstring=$ADDIN(dviewhelper.dll,_DDStringView@28)
+char[]=$ADDIN(dviewhelper.dll,_DStringView@28)
+wchar[]=$ADDIN(dviewhelper.dll,_DWStringView@28)
+dchar[]=$ADDIN(dviewhelper.dll,_DDStringView@28)
+const(char)[]=$ADDIN(dviewhelper.dll,_DStringView@28)
+const(wchar)[]=$ADDIN(dviewhelper.dll,_DWStringView@28)
+const(dchar)[]=$ADDIN(dviewhelper.dll,_DDStringView@28)
+const(char[])=$ADDIN(dviewhelper.dll,_DStringView@28)
+const(wchar[])=$ADDIN(dviewhelper.dll,_DWStringView@28)
+const(dchar[])=$ADDIN(dviewhelper.dll,_DDStringView@28)
+immutable(char)[]=$ADDIN(dviewhelper.dll,_DStringView@28)
+immutable(wchar)[]=$ADDIN(dviewhelper.dll,_DWStringView@28)
+immutable(dchar)[]=$ADDIN(dviewhelper.dll,_DDStringView@28)
+immutable(char[])=$ADDIN(dviewhelper.dll,_DStringView@28)
+immutable(wchar[])=$ADDIN(dviewhelper.dll,_DWStringView@28)
+immutable(dchar[])=$ADDIN(dviewhelper.dll,_DDStringView@28)
 
 ;; eo section AutoExpand for D variables ;;;;;;;;;;;;;;;;;;;;;;
 ;; eo added for cv2pdb - keep this line for uninstaller

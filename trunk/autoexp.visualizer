@@ -9,50 +9,17 @@
 ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-; string, wstring and dstring use __viewhelper
-string|wstring|dstring {
-
-	preview ( 
-		#if ($e.ptr == 0) ( "null" )
-		#else ( 
-			#( "[", $e.length, "] ", [$e.__viewhelper] )
-		)
-	)
-	stringview ( 
-		#if ($e.ptr == 0) ( "null" )
-		#else ( 
-			#( [$e.ptr, s] )
-		)
-	)
-	children (
-		#(
-			length: [$e.length, i],
-			data: [$e.ptr]
-		)
-	)
+; strings not as dynamic arrays, use dviewhelper instead
+char[]|const(char)[]|immutable(char)[] {
+	preview ( [(string)$e] )
+}
+		
+wchar[]|const(wchar)[]|immutable(wchar)[] {
+	preview ( [(wstring)$e] )
 }
 
-; strings as dynamic arrays of char (no __viewhelper, check -D option for cv2pdb!)
-const char[]|char[]|const wchar[]|wchar[]|const dchar[]|dchar[] {
-
-	preview ( 
-		#if ($e.ptr == 0) ( "null" )
-		#else ( 
-			#( "[", $e.length, "] ", [$e.ptr] )
-		)
-	)
-	stringview ( 
-		#if ($e.ptr == 0) ( "null" )
-		#else ( 
-			#( [$e.ptr, s] )
-		)
-	)
-	children (
-		#(
-			length: [$e.length, i],
-			data: [$e.ptr]
-		)
-	)
+dchar[]|const(dchar)[]|immutable(dchar)[] {
+	preview ( [(dstring)$e] )
 }
 
 const void[]|void[] {

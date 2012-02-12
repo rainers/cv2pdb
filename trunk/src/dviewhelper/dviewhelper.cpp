@@ -25,12 +25,27 @@ extern "C" {
 struct DEBUGHELPER
 {
 	DWORD dwVersion;
-	BOOL      (WINAPI *ReadDebuggeeMemory)(DEBUGHELPER *pThis, DWORD dwAddr, DWORD nWant, VOID* pWhere, DWORD *nGot);
+	HRESULT   (WINAPI *ReadDebuggeeMemory)(DEBUGHELPER *pThis, DWORD dwAddr, DWORD nWant, VOID* pWhere, DWORD *nGot);
 	// from here only when dwVersion >= 0x20000
 	DWORDLONG (WINAPI *GetRealAddress)(DEBUGHELPER *pThis);
-	BOOL      (WINAPI *ReadDebuggeeMemoryEx)(DEBUGHELPER *pThis, DWORDLONG qwAddr, DWORD nWant, VOID* pWhere, DWORD *nGot);
+	HRESULT   (WINAPI *ReadDebuggeeMemoryEx)(DEBUGHELPER *pThis, DWORDLONG qwAddr, DWORD nWant, VOID* pWhere, DWORD *nGot);
 	int       (WINAPI *GetProcessorType)(DEBUGHELPER *pThis);
 };
+
+// possible processor types
+typedef enum _MPT {
+    mptix86 = 0,    // Intel X86
+    mptia64 = 1,   // Intel Merced
+    mptamd64 = 2,   // AMD64
+    mptUnknown = 3   // Unknown
+} MPT;
+
+HRESULT readMem(DEBUGHELPER *pHelper, DWORDLONG qwAddr, DWORD nWant, VOID* pWhere, DWORD *nGot)
+{
+    if(pHelper->dwVersion < 0x20000)
+        return pHelper->ReadDebuggeeMemory(pHelper, (DWORD)qwAddr, nWant, pWhere, nGot);
+    return pHelper->ReadDebuggeeMemoryEx(pHelper, qwAddr, nWant, pWhere, nGot);
+}
 
 struct DString
 {
@@ -43,26 +58,46 @@ struct DString
 HRESULT WINAPI StringView(DWORD dwAddress, DEBUGHELPER *pHelper, int nBase, BOOL bUniStrings, 
                           char *pResult, size_t max, DWORD sizePerChar)
 {
+    DWORDLONG qwAddress = dwAddress; 
+    if(pHelper->dwVersion >= 0x20000)
+        qwAddress = pHelper->GetRealAddress(pHelper);
+
+    int proc = 0;
+    if(pHelper->dwVersion >= 0x20000)
+        proc = pHelper->GetProcessorType(pHelper);
+    int sizeOfPtr = proc == 0 ? 4 : 8;
+
 	// Get the string struct
-	DString dstr;
+    char strdata[16];
 	DWORD read;
-	if (pHelper->ReadDebuggeeMemory(pHelper, dwAddress, sizeof(dstr), &dstr, &read) != S_OK) 
+	if (readMem(pHelper, qwAddress, 2*sizeOfPtr, strdata, &read) != S_OK) 
 	{
-		strncpy(pResult,"Cannot access struct", max);
-		return S_OK;
+	    strncpy(pResult,"Cannot access struct", max);
+	    return S_OK;
 	}
-	if (dstr.length == 0) 
+    DWORDLONG length, data;
+    if(sizeOfPtr > 4)
+    {
+        length = *(DWORDLONG*) strdata;
+        data = *(DWORDLONG*) (strdata + sizeOfPtr);
+    }
+    else
+    {
+        length = *(DWORD*) strdata;
+        data = *(DWORD*) (strdata + sizeOfPtr);
+    }
+	if (length == 0) 
 	{
 		strncpy(pResult,"\"\"", max);
 		return S_OK;
 	}
 
 	char* pData = pResult + 1;
-	DWORD cnt = (dstr.length < max - 3 ? dstr.length : max - 3);
+	DWORD cnt = (length < max - 3 ? (DWORD)length : max - 3);
 	if (sizePerChar * cnt > max)
 		pData = new char[sizePerChar * cnt];
 
-	if (pHelper->ReadDebuggeeMemory(pHelper, dstr.data, sizePerChar * cnt, pData, &read) != S_OK) 
+	if (readMem(pHelper, data, sizePerChar * cnt, pData, &read) != S_OK) 
 	{
 		strncpy(pResult,"Cannot access data", max);
 	}

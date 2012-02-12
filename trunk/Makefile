@@ -21,6 +21,8 @@ SRC = src\cv2pdb.cpp \
       src\cv2pdb.h \
       src\demangle.cpp \
       src\demangle.h \
+      src\dwarf2pdb.cpp \
+      src\dwarf.h \
       src\LastError.h \
       src\main.cpp \
       src\mscvpdb.h \

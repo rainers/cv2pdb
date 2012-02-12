@@ -81,8 +81,8 @@ int main(int argc, char** argv)
 {
 	if (argc < 2)
 	{
-		printf("Convert DMD CodeView debug information to PDB files, Version %g\n", VERSION);
-		printf("Copyright (c) 2009-2011 by Rainer Schuetze, All Rights Reserved\n");
+		printf("Convert DMD CodeView/DWARF debug information to PDB files, Version %g\n", VERSION);
+		printf("Copyright (c) 2009-2012 by Rainer Schuetze, All Rights Reserved\n");
 		printf("\n");
 		printf("License for redistribution is given by the Artistic License 2.0\n");
 		printf("see file LICENSE for further details\n");
@@ -106,6 +106,8 @@ int main(int argc, char** argv)
 			Dversion = 0;
 		else if (argv[0][1] == 'n')
 			demangleSymbols = false;
+		else if (argv[0][1] == 'e')
+			useTypedefEnum = true;
 		else if (argv[0][1] == 's' && argv[0][2])
 			dotReplacementChar = argv[0][2];
 		else
@@ -114,12 +116,12 @@ int main(int argc, char** argv)
 
 	if (!img.load(argv[1]))
 		fatal("%s: %s", argv[1], img.getLastError());
-	if (img.countCVEntries() == 0)
+    if (img.countCVEntries() == 0 && !img.hasDWARF())
 		fatal("%s: no codeview debug entries found", argv[1]);
 
 	CV2PDB cv2pdb(img);
-	cv2pdb.initLibraries();
 	cv2pdb.Dversion = Dversion;
+	cv2pdb.initLibraries();
 
 	char* outname = argv[1];
 	if (argc > 2 && argv[2][0])
@@ -144,32 +146,55 @@ int main(int argc, char** argv)
 	if(!cv2pdb.openPDB(pdbname))
 		fatal("%s: %s", pdbname, cv2pdb.getLastError());
 
-	if (!cv2pdb.initSegMap())
-		fatal("%s: %s", argv[1], cv2pdb.getLastError());
+    if(img.hasDWARF())
+    {
+        if(!cv2pdb.relocateDebugLineInfo())
+		    fatal("%s: %s", argv[1], cv2pdb.getLastError());
 
-	if (!cv2pdb.initGlobalSymbols())
-		fatal("%s: %s", argv[1], cv2pdb.getLastError());
+        if(!cv2pdb.createDWARFModules())
+		    fatal("%s: %s", pdbname, cv2pdb.getLastError());
 
-	if (!cv2pdb.initGlobalTypes())
-		fatal("%s: %s", argv[1], cv2pdb.getLastError());
+        if(!cv2pdb.addDWARFTypes())
+		    fatal("%s: %s", pdbname, cv2pdb.getLastError());
 
-	if (!cv2pdb.createModules())
-		fatal("%s: %s", pdbname, cv2pdb.getLastError());
+        if(!cv2pdb.addDWARFLines())
+		    fatal("%s: %s", pdbname, cv2pdb.getLastError());
 
-	if (!cv2pdb.addTypes())
-		fatal("%s: %s", pdbname, cv2pdb.getLastError());
+	    if (!cv2pdb.addDWARFPublics())
+		    fatal("%s: %s", pdbname, cv2pdb.getLastError());
 
-	if (!cv2pdb.addSymbols())
-		fatal("%s: %s", pdbname, cv2pdb.getLastError());
+	    if (!cv2pdb.writeDWARFImage(outname))
+		    fatal("%s: %s", outname, cv2pdb.getLastError());
+    }
+    else
+    {
+	    if (!cv2pdb.initSegMap())
+		    fatal("%s: %s", argv[1], cv2pdb.getLastError());
 
-	if (!cv2pdb.addSrcLines())
-		fatal("%s: %s", pdbname, cv2pdb.getLastError());
+	    if (!cv2pdb.initGlobalSymbols())
+		    fatal("%s: %s", argv[1], cv2pdb.getLastError());
 
-	if (!cv2pdb.addPublics())
-		fatal("%s: %s", pdbname, cv2pdb.getLastError());
+	    if (!cv2pdb.initGlobalTypes())
+		    fatal("%s: %s", argv[1], cv2pdb.getLastError());
 
-	if (!cv2pdb.writeImage(outname))
-		fatal("%s: %s", outname, cv2pdb.getLastError());
+	    if (!cv2pdb.createModules())
+		    fatal("%s: %s", pdbname, cv2pdb.getLastError());
+
+	    if (!cv2pdb.addTypes())
+		    fatal("%s: %s", pdbname, cv2pdb.getLastError());
+
+	    if (!cv2pdb.addSymbols())
+		    fatal("%s: %s", pdbname, cv2pdb.getLastError());
+
+	    if (!cv2pdb.addSrcLines())
+		    fatal("%s: %s", pdbname, cv2pdb.getLastError());
+
+	    if (!cv2pdb.addPublics())
+		    fatal("%s: %s", pdbname, cv2pdb.getLastError());
+
+	    if (!cv2pdb.writeImage(outname))
+		    fatal("%s: %s", outname, cv2pdb.getLastError());
+    }
 
 	return 0;
 }

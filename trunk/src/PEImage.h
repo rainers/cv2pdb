@@ -14,6 +14,8 @@
 struct OMFDirHeader;
 struct OMFDirEntry;
 
+#define IMGHDR(x) (hdr32 ? hdr32->x : hdr64->x)
+
 class PEImage : public LastError
 {
 public:
@@ -57,8 +59,12 @@ public:
 	bool load(const char* iname);
 	bool save(const char* oname);
 
-	bool replaceDebugSection (const void* data, int datalen);
-	bool initPtr(bool initDbgDir);
+	bool replaceDebugSection (const void* data, int datalen, bool initCV);
+	bool initCVPtr(bool initDbgDir);
+	bool initDWARFPtr(bool initDbgDir);
+
+    bool hasDWARF() const { return debug_line != 0; }
+    bool isX64() const { return hdr64 != 0; }
 
 	int countCVEntries() const;
 	OMFDirEntry* getCVEntry(int i) const;
@@ -69,18 +75,40 @@ public:
 	static void* alloc_aligned(unsigned int size, unsigned int align, unsigned int alignoff = 0);
 	static void free_aligned(void* p);
 
+    int countSections() const { return IMGHDR(FileHeader.NumberOfSections); }
+    int findSection(unsigned int off) const;
+    const IMAGE_SECTION_HEADER& getSection(int s) const { return sec[s]; }
+    unsigned long long getImageBase() const { return IMGHDR(OptionalHeader.ImageBase); }
+
 private:
 	int fd;
 	void* dump_base;
 	int dump_total_len;
 
+    // codeview
 	IMAGE_DOS_HEADER *dos;
-	IMAGE_NT_HEADERS32* hdr;
+	IMAGE_NT_HEADERS32* hdr32;
+	IMAGE_NT_HEADERS64* hdr64;
 	IMAGE_SECTION_HEADER* sec;
 	IMAGE_DEBUG_DIRECTORY* dbgDir;
 	OMFDirHeader* dirHeader;
 	OMFDirEntry* dirEntry;
 	
+public:
+    //dwarf
+    char* debug_aranges;
+    char* debug_pubnames;
+    char* debug_pubtypes;
+    char* debug_info;     unsigned long debug_info_length;
+    char* debug_abbrev;   unsigned long debug_abbrev_length;
+    char* debug_line;     unsigned long debug_line_length;
+    char* debug_frame;
+    char* debug_str;
+    char* debug_loc;
+    char* debug_ranges;   unsigned long debug_ranges_length;
+    char* reloc;          unsigned long reloc_length;
+
+    int codeSegment;
 	int cv_base;
 };
 
