@@ -184,6 +184,10 @@
 				>
 			</File>
 			<File
+				RelativePath=".\cv2pdb.h"
+				>
+			</File>
+			<File
 				RelativePath=".\cvutil.cpp"
 				>
 			</File>
@@ -197,6 +201,10 @@
 			</File>
 			<File
 				RelativePath=".\demangle.h"
+				>
+			</File>
+			<File
+				RelativePath=".\dwarf2pdb.cpp"
 				>
 			</File>
 			<File

@@ -1,6 +1,6 @@
 
 This is the README file for cv2pdb, a 
-converter of DMD CodeView debug information to PDB files
+converter of DMD CodeView/DWARF debug information to PDB files
 
 Copyright (c) 2009-2010 by Rainer Schuetze, All Rights Reserved
 
@@ -14,6 +14,7 @@ converted debug information, like WinDbg or DMC.
 Features
 --------
 * conversion of DMD CodeView information to PDB file
+* conversion of DWARF information to PDB file
 * converted line number info allows setting breakpoints
 * display of variables, fields and objects in watch, local and auto window and in data tooltips
 * generates generic debug info for dynamic arrays, associative arrays and delegates
@@ -31,6 +32,14 @@ The file demangle.cpp is an adaption of denangle.d to C++ distributed with
 the DMD compiler. It is placed into the Public Domain.
 
 The file mscvpdb.h is taken from the WINE-project (http://www.winehq.org)
+and is distributed under the terms of the GNU Lesser General Public
+License as published by the Free Software Foundation; either
+version 2.1 of the License, or (at your option) any later version.
+See the file header for more details and 
+http://www.gnu.org/licenses/lgpl.html for the full license.
+
+The file dwarf.h is taken from the libdwarf project 
+(http://reality.sgiweb.org/davea/dwarf.html)
 and is distributed under the terms of the GNU Lesser General Public
 License as published by the Free Software Foundation; either
 version 2.1 of the License, or (at your option) any later version.

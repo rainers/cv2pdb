@@ -19,6 +19,8 @@ int pstrmemlen(const BYTE* p);
 int pstrlen(const BYTE* &p);
 char* p2c(const BYTE* p, int idx = 0);
 char* p2c(const p_string& p, int idx = 0);
+int c2p(const char* c, BYTE* p); // return byte len
+int c2p(const char* c, p_string& p);
 int p2ccpy(char* p, const BYTE* s);
 int pstrcpy(BYTE* p, const BYTE* s);
 int pstrcpy(p_string& p, const p_string& s);
@@ -31,5 +33,6 @@ bool dstrcmp(const BYTE* s1, bool cstr1, const BYTE* s2, bool cstr2);
 
 extern char dotReplacementChar;
 extern bool demangleSymbols;
+extern bool useTypedefEnum;
 
 #endif //__SYMUTIL_H__

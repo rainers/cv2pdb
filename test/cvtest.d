@@ -87,6 +87,8 @@ class class_outer
 
 // LF_ARRAY_V1
 long[4] global_fixed_array;
+__gshared long[4] gshared_fixed_array = [ 1, 2, 3, 4 ];
+__gshared string gshared_bss_string;
 
 // OEM types;
 long[] global_oem_long_dynarray;
@@ -218,7 +220,7 @@ void voidpointers(ubyte* p)
 	const(int*) const_ip2 = cast(const(int*)) p;
 }
 
-int arrays()
+size_t arrays()
 {
 	int[] iarr;
 	iarr ~= 4;
@@ -228,7 +230,28 @@ int arrays()
 	
 	const void[] cvarr;
 	
+	int[7] xarr = [ 1, 2, 3, 4, 5, 6, 7 ];
+	string[7] sarr = [ "a", "b", "c", "d", "e", "f", "g" ];
+	wstring[7] wsarr = [ "a", "b", "c", "d", "e", "f", "g" ];
+	dstring[7] dsarr = [ "a", "b", "c", "d", "e", "f", "g" ];
+
 	return iarr.length;
+}
+
+size_t lexical_scope()
+{
+	int[10] arr1;
+	for(int i = 0; i < 10; i++)
+		arr1[i] = i;
+
+	for(int i = 0; i < 10; i++)
+		arr1[i] += i;
+
+	foreach(i; "hello")
+		if(i == 'e')
+			break;
+
+	return arr1.length;
 }
 
 enum { Forward, Accept, Reject }
@@ -250,7 +273,7 @@ int main2(char[][]argv)
 	class_method inst_method = new class_method;
 	class_staticmember inst_staticmember = new class_staticmember;
 	class_outer inst_outer = new class_outer;
-	class_outer.class_inner inst_inner = inst_outer.inner; // = new class_outer.class_inner(inst_outer);
+	class_outer.class_inner inst_inner = /*inst_outer.inner; // =*/ inst_outer.new class_inner;
 	struct_name inst_struct;
 	struct_name* pinst_struct;
 	pinst_struct = &inst_struct;
@@ -266,7 +289,7 @@ int main2(char[][]argv)
 	
 	CUnknown unkn = new CUnknown;
 	IUnknown iunkn = unkn;
-	CUnknown nunkn = cast(CUnknown) iunkn;
+//	CUnknown nunkn = cast(CUnknown) iunkn;
 	
 	FILE stdfile;
 	inst_member.member1 = 2;
@@ -309,8 +332,14 @@ int main(char[][]argv)
 
 	voidpointers(null);
 	arrays();
+	lexical_scope();
+
 	outer_func(3);
 	A.outer_func(3);
+
+	global_fixed_array[1] = 3;
+	gshared_fixed_array[0] = 3;
+	gshared_bss_string = "bss";
 
 	main2(argv);
 
@@ -351,7 +380,7 @@ int main(char[][]argv)
 
 	(new Test).test();
 
-	dmd_quirks();
+	basictypes();
 	strings();
 
 	int[] dynint_arr;
@@ -365,7 +394,7 @@ int main(char[][]argv)
 
 class Test
 {
-	int test()
+	size_t test()
 	{
 		class_outer clss = new class_outer;
 
@@ -384,16 +413,60 @@ class Test
 
 int strings()
 {
-	string cs = "char string";
+	string empty;
+	string  cs = "char string";
 	wstring ws = "wchar string"w;
 	dstring ds = "dchar string"d;
+
+	immutable(char)[]  ics = cs;
+	immutable(wchar)[] iws = ws;
+	immutable(dchar)[] ids = ds;
+
+	char[]  mcs = cs.dup;
+	wchar[] mws = ws.dup;
+	dchar[] mds = ds.dup;
+
+	const(char)[]  ccs = cs;
+	const(wchar)[] cws = ws;
+	const(dchar)[] cds = ds;
+
+	immutable char[]  i2cs = cs;
+	immutable wchar[] i2ws = ws;
+	immutable dchar[] i2ds = ds;
+
+	const char[]  c2cs = cs;
+	const wchar[] c2ws = ws;
+	const dchar[] c2ds = ds;
 
 	return 0;
 }
 
-void dmd_quirks()
+double basictypes()
 {
+	// basic types
+	char c;
+	wchar wc;
+	dchar dc;
+	byte b;
+	ubyte ub;
+	short s;
+	ushort us;
+	int i;
+	uint ui;
 	long quirk_long; // written as delegate<void*,int>
 	ulong quirk_ulong; // written as int[]
+
+	float f;
+	double d;
+	real r;
+
+	ifloat iflt;
+	idouble id;
+	ireal ir;
+	cfloat cf;
+	cdouble cd;
+	creal cr;
+
+	return f + d + r + cf.im;
 }
 

@@ -1,8 +1,8 @@
 
 This is the CHANGES file for cv2pdb, a 
-converter of DMD CodeView debug information to PDB files
+converter of DMD CodeView/DWARF debug information to PDB files
 
-Copyright (c) 2009-2010 by Rainer Schuetze, All Rights Reserved
+Copyright (c) 2009-2012 by Rainer Schuetze, All Rights Reserved
 
 Version history
 ---------------
@@ -155,3 +155,10 @@ unreleased Version 0.22
 
   * added command line switch -s to specify the replacement character for '.' in symbols
   * fixed another crash where compressed symbols expand to more than 4096 characters
+
+2012-02-12 Version 0.23
+
+  * disabled named enumerator for D basic types to avoid debugger troubles displaying arrays
+  * added command line switch -e to enable using named enumerator for D basic types
+  * added DWARF support
+  * added x64 support

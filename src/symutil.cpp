@@ -15,6 +15,7 @@ extern "C" {
 
 char dotReplacementChar = '@';
 bool demangleSymbols = true;
+bool useTypedefEnum = false;
 
 int dsym2c(const BYTE* p, int len, char* cname, int maxclen)
 {
@@ -141,6 +142,28 @@ char* p2c(const BYTE* p, int idx)
 char* p2c(const p_string& p, int idx)
 {
 	return p2c(&p.namelen, idx);
+}
+
+int c2p(const char* c, BYTE* p)
+{
+    BYTE* q = p;
+    int len = strlen(c);
+    if(len > 255)
+    {
+        *p++ = 0xff;
+        *p++ = 0;
+        *p++ = len & 0xff;
+        *p++ = len >> 8;
+    }
+    else
+        *p++ = len;
+    memcpy(p, c, len);
+    return p + len - q;
+}
+
+int c2p(const char* c, p_string& p)
+{
+	return c2p(c, &p.namelen);
 }
 
 int p2ccpy(char* p, const BYTE* s)
