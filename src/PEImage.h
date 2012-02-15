@@ -22,21 +22,21 @@ public:
 	PEImage(const char* iname = 0);
 	~PEImage();
 
-	template<class P> P* DP(int off) 
+	template<class P> P* DP(int off) const
 	{
 		return (P*) ((char*) dump_base + off); 
 	}
-	template<class P> P* DPV(int off, int size) 
+	template<class P> P* DPV(int off, int size) const
 	{ 
 		if(off < 0 || off + size > dump_total_len)
 			return 0;
 		return (P*) ((char*) dump_base + off); 
 	}
-	template<class P> P* DPV(int off) 
+	template<class P> P* DPV(int off) const
 	{
 		return DPV<P>(off, sizeof(P));
 	}
-	template<class P> P* CVP(int off) 
+	template<class P> P* CVP(int off) const
 	{
 		return DPV<P>(cv_base + off, sizeof(P));
 	}
@@ -77,6 +77,7 @@ public:
 
     int countSections() const { return IMGHDR(FileHeader.NumberOfSections); }
     int findSection(unsigned int off) const;
+    int findSymbol(const char* name, unsigned long& off) const;
     const IMAGE_SECTION_HEADER& getSection(int s) const { return sec[s]; }
     unsigned long long getImageBase() const { return IMGHDR(OptionalHeader.ImageBase); }
 

@@ -5,7 +5,6 @@
 // see file LICENSE for further details
 //
 // todo:
-//  tls vars
 //  display associative array
 //  64 bit:
 //   - arguments passed by register
@@ -139,6 +138,7 @@ struct DWARF_InfoData
     int hasChild;
 
     const char* name;
+    const char* linkage_name;
     const char* dir;
     unsigned long byte_size;
     unsigned long sibling;
@@ -150,6 +150,7 @@ struct DWARF_InfoData
     unsigned long containing_type;
     unsigned long specification;
     unsigned long inlined;
+    unsigned long external;
     unsigned long long location; // first 8 bytes
     unsigned long long member_location; // first 8 bytes
     unsigned long locationlist; // offset into debug_loc
@@ -432,6 +433,7 @@ bool CV2PDB::readDWARFInfoData(DWARF_InfoData& id, DWARF_CompilationUnit* cu, un
         id.hasChild = hasChild;
 
         id.name = 0;
+        id.linkage_name = 0;
         id.dir  = 0;
         id.byte_size = 0;
         id.sibling = 0;
@@ -443,6 +445,7 @@ bool CV2PDB::readDWARFInfoData(DWARF_InfoData& id, DWARF_CompilationUnit* cu, un
         id.containing_type = 0;
         id.specification = 0;
         id.inlined = 0;
+        id.external = 0;
         id.member_location = 0;
         id.location = 0;
         id.locationlist = 0;
@@ -500,12 +503,14 @@ bool CV2PDB::readDWARFInfoData(DWARF_InfoData& id, DWARF_CompilationUnit* cu, un
         case DW_AT_sibling:   id.sibling = data; break;
         case DW_AT_encoding:  id.encoding = data; break;
         case DW_AT_name:      id.name = str; break;
+        case DW_AT_MIPS_linkage_name: id.linkage_name = str; break;
         case DW_AT_comp_dir:  id.dir  = str; break;
         case DW_AT_low_pc:    id.pclo = addr; break;
         case DW_AT_high_pc:   id.pchi = addr; break;
         case DW_AT_ranges:    id.ranges = data; break;
         case DW_AT_type:      id.type = data; break;
         case DW_AT_inline:    id.inlined = data; break;
+        case DW_AT_external:  id.external = data; break;
         case DW_AT_upper_bound: id.upper_bound = data; break;
         case DW_AT_lower_bound: id.lower_bound = data; break;
         case DW_AT_containing_type: id.containing_type = data; break;
@@ -1236,29 +1241,38 @@ bool CV2PDB::iterateDWARFDebugInfo(int op)
     #endif
                     break;
 
+                case DW_TAG_variable:
+                    if(id.name)
+                    {
+                        int seg = -1;
+                        unsigned long segOff;
+                        if(id.location == 0 && id.external && id.linkage_name)
+                        {
+                            seg = img.findSymbol(id.linkage_name, segOff);
+                        }
+                        else
+                        {
+                            int cvid;
+                            segOff = decodeLocation(id.location, cvid);
+                            if(cvid == S_GDATA_V2)
+                                seg = img.findSection(segOff);
+                            if(seg >= 0)
+                                segOff -= img.getImageBase() + img.getSection(seg).VirtualAddress;
+                        }
+                        if(seg >= 0)
+                        {
+                            int type = getTypeByDWARFOffset(cu, id.type);
+                            appendGlobalVar(id.name, type, seg + 1, segOff);
+                            int rc = mod->AddPublic2(id.name, seg + 1, segOff, type);
+                        }
+                    }
+                    break;
                 case DW_TAG_formal_parameter:
                 case DW_TAG_unspecified_parameters:
                 case DW_TAG_inheritance:
                 case DW_TAG_member:
                 case DW_TAG_inlined_subroutine:
                 case DW_TAG_lexical_block:
-                case DW_TAG_variable:
-                    if(id.name)
-                    {
-                        int cvid, off = decodeLocation(id.location, cvid);
-                        if(cvid == S_GDATA_V2)
-                        {
-                            int seg = img.findSection(off);
-                            if(seg >= 0)
-                            {
-                                int segOff = img.getImageBase() + img.getSection(seg).VirtualAddress;
-                                int type = getTypeByDWARFOffset(cu, id.type);
-                                appendGlobalVar(id.name, type, seg + 1, off - segOff);
-                                int rc = mod->AddPublic2(id.name, seg + 1, off - segOff, type);
-                            }
-                        }
-                    }
-                    break;
                 default:
                     break;
                 }
