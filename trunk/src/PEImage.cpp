@@ -285,7 +285,7 @@ bool PEImage::initDWARFPtr(bool initDbgDir)
     dbgDir = 0;
     sec = hdr32 ? IMAGE_FIRST_SECTION(hdr32) : IMAGE_FIRST_SECTION(hdr64);
     int nsec = IMGHDR(FileHeader.NumberOfSections);
-    const char* strtable = DPV<char>(IMGHDR(FileHeader.PointerToSymbolTable) + IMGHDR(FileHeader.NumberOfSymbols * IMAGE_SIZEOF_SYMBOL));
+    const char* strtable = DPV<char>(IMGHDR(FileHeader.PointerToSymbolTable) + IMGHDR(FileHeader.NumberOfSymbols) * IMAGE_SIZEOF_SYMBOL);
     for(int s = 0; s < nsec; s++)
     {
         const char* name = (const char*) sec[s].Name;
@@ -332,6 +332,24 @@ int PEImage::findSection(unsigned int off) const
 	for(int s = 0; s < nsec; s++)
         if(sec[s].VirtualAddress <= off && off < sec[s].VirtualAddress + sec[s].Misc.VirtualSize)
             return s;
+    return -1;
+}
+
+int PEImage::findSymbol(const char* name, unsigned long& off) const
+{
+    IMAGE_SYMBOL* symtable = DPV<IMAGE_SYMBOL>(IMGHDR(FileHeader.PointerToSymbolTable));
+    int syms = IMGHDR(FileHeader.NumberOfSymbols);
+    const char* strtable = (const char*) (symtable + syms);
+    for(int i = 0; i < syms; i++)
+    {
+        IMAGE_SYMBOL* sym = symtable + i;
+        const char* symname = sym->N.Name.Short == 0 ? strtable + sym->N.Name.Long : (char*)sym->N.ShortName;
+        if(strcmp(symname, name) == 0 || (symname[0] == '_' && strcmp(symname + 1, name) == 0))
+        {
+            off = sym->Value;
+            return sym->SectionNumber;
+        }
+    }
     return -1;
 }
 

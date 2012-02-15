@@ -27,7 +27,7 @@ class base_class
 	int base_member;
 };
 
-class derived_class : public base_class
+class derived_class : base_class
 {
 	int derived_member;
 	int a1_1234;
