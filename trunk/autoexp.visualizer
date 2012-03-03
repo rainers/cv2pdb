@@ -182,6 +182,12 @@ internal@aaA<*,*> {
 	preview(
 		#( "<", $e.key, ", ", $e.value, ">" )
 	)
+	children (
+		#(
+			key: [$e.key],
+			value: [$e.value]
+		)
+	)
 }
 
 ; display null references and class name for class objects
