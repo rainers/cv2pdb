@@ -103,16 +103,16 @@ bool PEImage::replaceDebugSection (const void* data, int datalen, bool initCV)
 {
 	// append new debug directory to data
 	IMAGE_DEBUG_DIRECTORY debugdir;
-    if(dbgDir)
-        debugdir = *dbgDir;
-    else
-        memset(&debugdir, 0, sizeof(debugdir));
+	if(dbgDir)
+		debugdir = *dbgDir;
+	else
+		memset(&debugdir, 0, sizeof(debugdir));
 	int xdatalen = datalen + sizeof(debugdir);
 
 	// assume there is place for another section because of section alignment
 	int s;
 	DWORD lastVirtualAddress = 0;
-    int cntSections = countSections();
+	int cntSections = countSections();
 	for(s = 0; s < cntSections; s++)
 	{
 		if (strcmp ((char*) sec [s].Name, ".debug") == 0)
@@ -128,7 +128,7 @@ bool PEImage::replaceDebugSection (const void* data, int datalen, bool initCV)
 		lastVirtualAddress = sec [s].VirtualAddress + sec[s].Misc.VirtualSize;
 	}
 
-    int align = IMGHDR(OptionalHeader.FileAlignment);
+	int align = IMGHDR(OptionalHeader.FileAlignment);
 	int align_len = xdatalen;
 	int fill = 0;
 
@@ -142,7 +142,7 @@ bool PEImage::replaceDebugSection (const void* data, int datalen, bool initCV)
 		return setError("cannot alloc new image");
 
 	int salign_len = xdatalen;
-    align = IMGHDR(OptionalHeader.SectionAlignment);
+	align = IMGHDR(OptionalHeader.SectionAlignment);
 	if (align > 0)
 	{
 		lastVirtualAddress = ((lastVirtualAddress + align - 1) / align) * align;
@@ -165,17 +165,17 @@ bool PEImage::replaceDebugSection (const void* data, int datalen, bool initCV)
 	IMGHDR(OptionalHeader.SizeOfImage) = sec[s].VirtualAddress + salign_len;
 
 	IMGHDR(OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_DEBUG].VirtualAddress) = lastVirtualAddress + datalen;
-    IMGHDR(OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_DEBUG].Size) = sizeof(IMAGE_DEBUG_DIRECTORY);
+	IMGHDR(OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_DEBUG].Size) = sizeof(IMAGE_DEBUG_DIRECTORY);
 
 	// append debug data chunk to existing file image
 	memcpy(newdata, dump_base, dump_total_len);
 	memset(newdata + dump_total_len, 0, fill);
 	memcpy(newdata + dump_total_len + fill, data, datalen);
 
-    if(!dbgDir)
-    {
-        debugdir.Type = 2;
-    }
+	if(!dbgDir)
+	{
+		debugdir.Type = 2;
+	}
 	dbgDir = (IMAGE_DEBUG_DIRECTORY*) (newdata + dump_total_len + fill + datalen);
 	memcpy(dbgDir, &debugdir, sizeof(debugdir));
 
@@ -208,26 +208,26 @@ bool PEImage::initCVPtr(bool initDbgDir)
 	hdr64 = DPV<IMAGE_NT_HEADERS64> (dos->e_lfanew);
 	if(!hdr32)
 		return setError("no optional header found");
-    if(hdr32->FileHeader.Machine == IMAGE_FILE_MACHINE_AMD64 ||
-       hdr32->FileHeader.Machine == IMAGE_FILE_MACHINE_IA64)
-        hdr32 = 0;
-    else
-        hdr64 = 0;
+	if(hdr32->FileHeader.Machine == IMAGE_FILE_MACHINE_AMD64 ||
+	   hdr32->FileHeader.Machine == IMAGE_FILE_MACHINE_IA64)
+		hdr32 = 0;
+	else
+		hdr64 = 0;
 
-    if(IMGHDR(Signature) != IMAGE_NT_SIGNATURE)
-	    return setError("optional header does not have PE signature");
-    if(IMGHDR(FileHeader.SizeOfOptionalHeader) < sizeof(IMAGE_OPTIONAL_HEADER32))
-	    return setError("optional header too small");
+	if(IMGHDR(Signature) != IMAGE_NT_SIGNATURE)
+		return setError("optional header does not have PE signature");
+	if(IMGHDR(FileHeader.SizeOfOptionalHeader) < sizeof(IMAGE_OPTIONAL_HEADER32))
+		return setError("optional header too small");
 
-    sec = hdr32 ? IMAGE_FIRST_SECTION(hdr32) : IMAGE_FIRST_SECTION(hdr64);
+	sec = hdr32 ? IMAGE_FIRST_SECTION(hdr32) : IMAGE_FIRST_SECTION(hdr64);
 
-    if(IMGHDR(OptionalHeader.NumberOfRvaAndSizes) <= IMAGE_DIRECTORY_ENTRY_DEBUG)
-	    return setError("too few entries in data directory");
+	if(IMGHDR(OptionalHeader.NumberOfRvaAndSizes) <= IMAGE_DIRECTORY_ENTRY_DEBUG)
+		return setError("too few entries in data directory");
 
-    if(IMGHDR(OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_DEBUG].Size) != 0x1c)
-	    return setError("unexpected size of DEBUG data directory entry");
+	if(IMGHDR(OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_DEBUG].Size) != 0x1c)
+		return setError("unexpected size of DEBUG data directory entry");
 
-    int off = IMGHDR(OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_DEBUG].VirtualAddress);
+	int off = IMGHDR(OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_DEBUG].VirtualAddress);
 	dbgDir = RVA<IMAGE_DEBUG_DIRECTORY>(off, 0x1c);
 	if (!dbgDir)
 		return setError("debug directory not placed in image");
@@ -271,86 +271,86 @@ bool PEImage::initDWARFPtr(bool initDbgDir)
 	hdr64 = DPV<IMAGE_NT_HEADERS64> (dos->e_lfanew);
 	if(!hdr32)
 		return setError("no optional header found");
-    if(hdr32->FileHeader.Machine == IMAGE_FILE_MACHINE_AMD64 ||
-       hdr32->FileHeader.Machine == IMAGE_FILE_MACHINE_IA64)
-        hdr32 = 0;
-    else
-        hdr64 = 0;
+	if(hdr32->FileHeader.Machine == IMAGE_FILE_MACHINE_AMD64 ||
+	   hdr32->FileHeader.Machine == IMAGE_FILE_MACHINE_IA64)
+		hdr32 = 0;
+	else
+		hdr64 = 0;
 
-    if(IMGHDR(Signature) != IMAGE_NT_SIGNATURE)
-	    return setError("optional header does not have PE signature");
-    if(IMGHDR(FileHeader.SizeOfOptionalHeader) < sizeof(IMAGE_OPTIONAL_HEADER32))
-	    return setError("optional header too small");
+	if(IMGHDR(Signature) != IMAGE_NT_SIGNATURE)
+		return setError("optional header does not have PE signature");
+	if(IMGHDR(FileHeader.SizeOfOptionalHeader) < sizeof(IMAGE_OPTIONAL_HEADER32))
+		return setError("optional header too small");
 
-    dbgDir = 0;
-    sec = hdr32 ? IMAGE_FIRST_SECTION(hdr32) : IMAGE_FIRST_SECTION(hdr64);
-    int nsec = IMGHDR(FileHeader.NumberOfSections);
-    const char* strtable = DPV<char>(IMGHDR(FileHeader.PointerToSymbolTable) + IMGHDR(FileHeader.NumberOfSymbols) * IMAGE_SIZEOF_SYMBOL);
-    for(int s = 0; s < nsec; s++)
-    {
-        const char* name = (const char*) sec[s].Name;
-        if(name[0] == '/')
-        {
-            int off = strtol(name + 1, 0, 10);
-            name = strtable + off;
-        }
-        if(strcmp(name, ".debug_aranges") == 0)
-            debug_aranges = DPV<char>(sec[s].PointerToRawData, sec[s].SizeOfRawData);
-        if(strcmp(name, ".debug_pubnames") == 0)
-            debug_pubnames = DPV<char>(sec[s].PointerToRawData, sec[s].SizeOfRawData);
-        if(strcmp(name, ".debug_pubtypes") == 0)
-            debug_pubtypes = DPV<char>(sec[s].PointerToRawData, sec[s].SizeOfRawData);
-        if(strcmp(name, ".debug_info") == 0)
-            debug_info = DPV<char>(sec[s].PointerToRawData, debug_info_length = sec[s].Misc.VirtualSize);
-        if(strcmp(name, ".debug_abbrev") == 0)
-            debug_abbrev = DPV<char>(sec[s].PointerToRawData, debug_abbrev_length = sec[s].Misc.VirtualSize);
-        if(strcmp(name, ".debug_line") == 0)
-            debug_line = DPV<char>(sec[s].PointerToRawData, debug_line_length = sec[s].Misc.VirtualSize);
-        if(strcmp(name, ".debug_frame") == 0)
-            debug_frame = DPV<char>(sec[s].PointerToRawData, sec[s].SizeOfRawData);
-        if(strcmp(name, ".debug_str") == 0)
-            debug_str = DPV<char>(sec[s].PointerToRawData, sec[s].SizeOfRawData);
-        if(strcmp(name, ".debug_loc") == 0)
-            debug_loc = DPV<char>(sec[s].PointerToRawData, sec[s].SizeOfRawData);
-        if(strcmp(name, ".debug_ranges") == 0)
-            debug_ranges = DPV<char>(sec[s].PointerToRawData, debug_ranges_length = sec[s].Misc.VirtualSize);
-        if(strcmp(name, ".reloc") == 0)
-            reloc = DPV<char>(sec[s].PointerToRawData, reloc_length = sec[s].Misc.VirtualSize);
-        if(strcmp(name, ".text") == 0)
-            codeSegment = s;
-    }
+	dbgDir = 0;
+	sec = hdr32 ? IMAGE_FIRST_SECTION(hdr32) : IMAGE_FIRST_SECTION(hdr64);
+	int nsec = IMGHDR(FileHeader.NumberOfSections);
+	const char* strtable = DPV<char>(IMGHDR(FileHeader.PointerToSymbolTable) + IMGHDR(FileHeader.NumberOfSymbols) * IMAGE_SIZEOF_SYMBOL);
+	for(int s = 0; s < nsec; s++)
+	{
+		const char* name = (const char*) sec[s].Name;
+		if(name[0] == '/')
+		{
+			int off = strtol(name + 1, 0, 10);
+			name = strtable + off;
+		}
+		if(strcmp(name, ".debug_aranges") == 0)
+			debug_aranges = DPV<char>(sec[s].PointerToRawData, sec[s].SizeOfRawData);
+		if(strcmp(name, ".debug_pubnames") == 0)
+			debug_pubnames = DPV<char>(sec[s].PointerToRawData, sec[s].SizeOfRawData);
+		if(strcmp(name, ".debug_pubtypes") == 0)
+			debug_pubtypes = DPV<char>(sec[s].PointerToRawData, sec[s].SizeOfRawData);
+		if(strcmp(name, ".debug_info") == 0)
+			debug_info = DPV<char>(sec[s].PointerToRawData, debug_info_length = sec[s].Misc.VirtualSize);
+		if(strcmp(name, ".debug_abbrev") == 0)
+			debug_abbrev = DPV<char>(sec[s].PointerToRawData, debug_abbrev_length = sec[s].Misc.VirtualSize);
+		if(strcmp(name, ".debug_line") == 0)
+			debug_line = DPV<char>(sec[s].PointerToRawData, debug_line_length = sec[s].Misc.VirtualSize);
+		if(strcmp(name, ".debug_frame") == 0)
+			debug_frame = DPV<char>(sec[s].PointerToRawData, sec[s].SizeOfRawData);
+		if(strcmp(name, ".debug_str") == 0)
+			debug_str = DPV<char>(sec[s].PointerToRawData, sec[s].SizeOfRawData);
+		if(strcmp(name, ".debug_loc") == 0)
+			debug_loc = DPV<char>(sec[s].PointerToRawData, sec[s].SizeOfRawData);
+		if(strcmp(name, ".debug_ranges") == 0)
+			debug_ranges = DPV<char>(sec[s].PointerToRawData, debug_ranges_length = sec[s].Misc.VirtualSize);
+		if(strcmp(name, ".reloc") == 0)
+			reloc = DPV<char>(sec[s].PointerToRawData, reloc_length = sec[s].Misc.VirtualSize);
+		if(strcmp(name, ".text") == 0)
+			codeSegment = s;
+	}
 
-    setError(0);
+	setError(0);
 
-    return true;
+	return true;
 }
 
 int PEImage::findSection(unsigned int off) const
 {
-    off -= IMGHDR(OptionalHeader.ImageBase);
-    int nsec = IMGHDR(FileHeader.NumberOfSections);
+	off -= IMGHDR(OptionalHeader.ImageBase);
+	int nsec = IMGHDR(FileHeader.NumberOfSections);
 	for(int s = 0; s < nsec; s++)
-        if(sec[s].VirtualAddress <= off && off < sec[s].VirtualAddress + sec[s].Misc.VirtualSize)
-            return s;
-    return -1;
+		if(sec[s].VirtualAddress <= off && off < sec[s].VirtualAddress + sec[s].Misc.VirtualSize)
+			return s;
+	return -1;
 }
 
 int PEImage::findSymbol(const char* name, unsigned long& off) const
 {
-    IMAGE_SYMBOL* symtable = DPV<IMAGE_SYMBOL>(IMGHDR(FileHeader.PointerToSymbolTable));
-    int syms = IMGHDR(FileHeader.NumberOfSymbols);
-    const char* strtable = (const char*) (symtable + syms);
-    for(int i = 0; i < syms; i++)
-    {
-        IMAGE_SYMBOL* sym = symtable + i;
-        const char* symname = sym->N.Name.Short == 0 ? strtable + sym->N.Name.Long : (char*)sym->N.ShortName;
-        if(strcmp(symname, name) == 0 || (symname[0] == '_' && strcmp(symname + 1, name) == 0))
-        {
-            off = sym->Value;
-            return sym->SectionNumber;
-        }
-    }
-    return -1;
+	IMAGE_SYMBOL* symtable = DPV<IMAGE_SYMBOL>(IMGHDR(FileHeader.PointerToSymbolTable));
+	int syms = IMGHDR(FileHeader.NumberOfSymbols);
+	const char* strtable = (const char*) (symtable + syms);
+	for(int i = 0; i < syms; i++)
+	{
+		IMAGE_SYMBOL* sym = symtable + i;
+		const char* symname = sym->N.Name.Short == 0 ? strtable + sym->N.Name.Long : (char*)sym->N.ShortName;
+		if(strcmp(symname, name) == 0 || (symname[0] == '_' && strcmp(symname + 1, name) == 0))
+		{
+			off = sym->Value;
+			return sym->SectionNumber;
+		}
+	}
+	return -1;
 }
 
 ///////////////////////////////////////////////////////////////////////

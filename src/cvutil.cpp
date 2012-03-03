@@ -181,33 +181,33 @@ int numeric_leaf(int* value, const void* leaf)
 
 int write_numeric_leaf(int value, void* leaf)
 {
-    if(value >= 0 && value < LF_NUMERIC)
-    {
-        *(unsigned short int*) leaf = (unsigned short) value;
-        return 2;
-    }
-    unsigned short int* type = (unsigned short int*) leaf;
-    leaf = type + 1;
-    if (value >= -128 && value <= 127)
-    {
-        *type = LF_CHAR;
-        *(char*) leaf = (char)value;
-        return 3;
-    }
-    if (value >= -32768 && value <= 32767)
-    {
-        *type = LF_SHORT;
-        *(short*) leaf = (short)value;
-        return 4;
-    }
-    if (value >= 0 && value <= 65535)
-    {
-        *type = LF_USHORT;
-        *(unsigned short*) leaf = (unsigned short)value;
-        return 4;
-    }
-    *type = LF_LONG;
-    *(long*) leaf = (long)value;
-    return 6;
+	if(value >= 0 && value < LF_NUMERIC)
+	{
+		*(unsigned short int*) leaf = (unsigned short) value;
+		return 2;
+	}
+	unsigned short int* type = (unsigned short int*) leaf;
+	leaf = type + 1;
+	if (value >= -128 && value <= 127)
+	{
+		*type = LF_CHAR;
+		*(char*) leaf = (char)value;
+		return 3;
+	}
+	if (value >= -32768 && value <= 32767)
+	{
+		*type = LF_SHORT;
+		*(short*) leaf = (short)value;
+		return 4;
+	}
+	if (value >= 0 && value <= 65535)
+	{
+		*type = LF_USHORT;
+		*(unsigned short*) leaf = (unsigned short)value;
+		return 4;
+	}
+	*type = LF_LONG;
+	*(long*) leaf = (long)value;
+	return 6;
 }
 

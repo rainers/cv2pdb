@@ -34,23 +34,23 @@ struct DEBUGHELPER
 
 // possible processor types
 typedef enum _MPT {
-    mptix86 = 0,    // Intel X86
-    mptia64 = 1,   // Intel Merced
-    mptamd64 = 2,   // AMD64
-    mptUnknown = 3   // Unknown
+	mptix86 = 0,    // Intel X86
+	mptia64 = 1,   // Intel Merced
+	mptamd64 = 2,   // AMD64
+	mptUnknown = 3   // Unknown
 } MPT;
 
 HRESULT readMem(DEBUGHELPER *pHelper, DWORDLONG qwAddr, DWORD nWant, VOID* pWhere, DWORD *nGot)
 {
-    if(pHelper->dwVersion < 0x20000)
-        return pHelper->ReadDebuggeeMemory(pHelper, (DWORD)qwAddr, nWant, pWhere, nGot);
-    return pHelper->ReadDebuggeeMemoryEx(pHelper, qwAddr, nWant, pWhere, nGot);
+	if(pHelper->dwVersion < 0x20000)
+		return pHelper->ReadDebuggeeMemory(pHelper, (DWORD)qwAddr, nWant, pWhere, nGot);
+	return pHelper->ReadDebuggeeMemoryEx(pHelper, qwAddr, nWant, pWhere, nGot);
 }
 
 struct DString
 {
-    DWORD length;
-    DWORD data;
+	DWORD length;
+	DWORD data;
 };
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -58,34 +58,34 @@ struct DString
 HRESULT WINAPI StringView(DWORD dwAddress, DEBUGHELPER *pHelper, int nBase, BOOL bUniStrings, 
                           char *pResult, size_t max, DWORD sizePerChar)
 {
-    DWORDLONG qwAddress = dwAddress; 
-    if(pHelper->dwVersion >= 0x20000)
-        qwAddress = pHelper->GetRealAddress(pHelper);
+	DWORDLONG qwAddress = dwAddress; 
+	if(pHelper->dwVersion >= 0x20000)
+		qwAddress = pHelper->GetRealAddress(pHelper);
 
-    int proc = 0;
-    if(pHelper->dwVersion >= 0x20000)
-        proc = pHelper->GetProcessorType(pHelper);
-    int sizeOfPtr = proc == 0 ? 4 : 8;
+	int proc = 0;
+	if(pHelper->dwVersion >= 0x20000)
+		proc = pHelper->GetProcessorType(pHelper);
+	int sizeOfPtr = proc == 0 ? 4 : 8;
 
 	// Get the string struct
-    char strdata[16];
+	char strdata[16];
 	DWORD read;
 	if (readMem(pHelper, qwAddress, 2*sizeOfPtr, strdata, &read) != S_OK) 
 	{
-	    strncpy(pResult,"Cannot access struct", max);
-	    return S_OK;
+		strncpy(pResult,"Cannot access struct", max);
+		return S_OK;
 	}
-    DWORDLONG length, data;
-    if(sizeOfPtr > 4)
-    {
-        length = *(DWORDLONG*) strdata;
-        data = *(DWORDLONG*) (strdata + sizeOfPtr);
-    }
-    else
-    {
-        length = *(DWORD*) strdata;
-        data = *(DWORD*) (strdata + sizeOfPtr);
-    }
+	DWORDLONG length, data;
+	if(sizeOfPtr > 4)
+	{
+		length = *(DWORDLONG*) strdata;
+		data = *(DWORDLONG*) (strdata + sizeOfPtr);
+	}
+	else
+	{
+		length = *(DWORD*) strdata;
+		data = *(DWORD*) (strdata + sizeOfPtr);
+	}
 	if (length == 0) 
 	{
 		strncpy(pResult,"\"\"", max);

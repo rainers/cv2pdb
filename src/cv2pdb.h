@@ -49,7 +49,7 @@ public:
 	int _doFields(int cmd, codeview_reftype* dfieldlist, const codeview_reftype* fieldlist, int arg);
 	int addFields(codeview_reftype* dfieldlist, const codeview_reftype* fieldlist, int maxdlen);
 	int countFields(const codeview_reftype* fieldlist);
-    int countNestedTypes(const codeview_reftype* fieldlist, int type);
+	int countNestedTypes(const codeview_reftype* fieldlist, int type);
 
 	int addAggregate(codeview_type* dtype, bool clss, int n_element, int fieldlist, int property, 
 	                 int derived, int vshape, int structlen, const char*name);
@@ -70,8 +70,8 @@ public:
 
 	void checkUserTypeAlloc(int size = 1000, int add = 10000);
 	void checkGlobalTypeAlloc(int size, int add = 1000);
-    void checkUdtSymbolAlloc(int size, int add = 10000);
-    void checkDWARFTypeAlloc(int size, int add = 10000);
+	void checkUdtSymbolAlloc(int size, int add = 10000);
+	void checkDWARFTypeAlloc(int size, int add = 10000);
 	void writeUserTypeLen(codeview_type* type, int len);
 
 	const codeview_type* getTypeData(int type);
@@ -80,7 +80,7 @@ public:
 	const codeview_type* findCompleteClassType(const codeview_type* cvtype, int* ptype = 0);
 
 	int findMemberFunctionType(codeview_symbol* lastGProcSym, int thisPtrType);
-    int createEmptyFieldListType();
+	int createEmptyFieldListType();
 
 	int fixProperty(int type, int prop, int fieldType);
 	bool derivesFromObject(const codeview_type* cvtype);
@@ -112,19 +112,19 @@ public:
 	const char* appendDelegate(int thisType, int funcType);
 	int  appendObjectType (int object_derived_type, int enumType, const char* classSymbol);
 	int  appendPointerType(int pointedType, int attr);
-    int  appendModifierType(int type, int attr);
+	int  appendModifierType(int type, int attr);
 	int  appendTypedef(int type, const char* name, bool saveTranslation = true);
 	int  appendComplex(int cplxtype, int basetype, int elemsize, const char* name);
 	void appendTypedefs();
 	int  appendEnumerator(const char* typeName, const char* enumName, int enumValue, int prop);
 	int  appendClassTypeEnum(const codeview_type* fieldlist, int type, const char* name);
-    void appendStackVar(const char* name, int type, int offset);
-    void appendGlobalVar(const char* name, int type, int seg, int offset);
-    bool appendEndArg();
-    void appendEnd();
-    void appendLexicalBlock(DWARF_InfoData& id, unsigned int proclo);
+	void appendStackVar(const char* name, int type, int offset);
+	void appendGlobalVar(const char* name, int type, int seg, int offset);
+	bool appendEndArg();
+	void appendEnd();
+	void appendLexicalBlock(DWARF_InfoData& id, unsigned int proclo);
 
-    bool hasClassTypeEnum(const codeview_type* fieldlist);
+	bool hasClassTypeEnum(const codeview_type* fieldlist);
 	bool insertClassTypeEnums();
 	int  insertBaseClass(const codeview_type* fieldlist, int type);
 
@@ -156,26 +156,26 @@ public:
 
 	mspdb::Mod* globalMod();
 
-    // DWARF
-    bool createDWARFModules();
-    unsigned char* getDWARFAbbrev(int off, int n);
-    bool addDWARFTypes();
-    bool addDWARFLines();
-    bool addDWARFPublics();
-    bool relocateDebugLineInfo();
-    bool writeDWARFImage(const char* opath);
+	// DWARF
+	bool createDWARFModules();
+	unsigned char* getDWARFAbbrev(int off, int n);
+	bool addDWARFTypes();
+	bool addDWARFLines();
+	bool addDWARFPublics();
+	bool relocateDebugLineInfo();
+	bool writeDWARFImage(const char* opath);
 
-    bool addDWARFSectionContrib(mspdb::Mod* mod, unsigned long pclo, unsigned long pchi);
-    bool addDWARFProc(DWARF_InfoData& id, DWARF_CompilationUnit* cu, unsigned char* &locals, unsigned char* end);
-    int  addDWARFStructure(DWARF_InfoData& id, DWARF_CompilationUnit* cu, unsigned char* &locals, unsigned char* end);
-    int  addDWARFArray(DWARF_InfoData& arrayid, DWARF_CompilationUnit* cu, unsigned char* &locals, unsigned char* end);
-    int  addDWARFBasicType(const char*name, int encoding, int byte_size);
-    bool iterateDWARFDebugInfo(int op);
-    int  getTypeByDWARFOffset(DWARF_CompilationUnit* cu, int off);
-    int  getDWARFTypeSize(DWARF_CompilationUnit* cu, int typeOff);
-    int  getDWARFArrayBounds(DWARF_InfoData& arrayid, DWARF_CompilationUnit* cu, 
-                             unsigned char* &locals, unsigned char* end, int& upperBound);
-    bool readDWARFInfoData(DWARF_InfoData& id, DWARF_CompilationUnit* cu, unsigned char* &p, bool mergeInfo = false);
+	bool addDWARFSectionContrib(mspdb::Mod* mod, unsigned long pclo, unsigned long pchi);
+	bool addDWARFProc(DWARF_InfoData& id, DWARF_CompilationUnit* cu, unsigned char* &locals, unsigned char* end);
+	int  addDWARFStructure(DWARF_InfoData& id, DWARF_CompilationUnit* cu, unsigned char* &locals, unsigned char* end);
+	int  addDWARFArray(DWARF_InfoData& arrayid, DWARF_CompilationUnit* cu, unsigned char* &locals, unsigned char* end);
+	int  addDWARFBasicType(const char*name, int encoding, int byte_size);
+	bool iterateDWARFDebugInfo(int op);
+	int  getTypeByDWARFOffset(DWARF_CompilationUnit* cu, int off);
+	int  getDWARFTypeSize(DWARF_CompilationUnit* cu, int typeOff);
+	int  getDWARFArrayBounds(DWARF_InfoData& arrayid, DWARF_CompilationUnit* cu, 
+	                         unsigned char* &locals, unsigned char* end, int& upperBound);
+	bool readDWARFInfoData(DWARF_InfoData& id, DWARF_CompilationUnit* cu, unsigned char* &p, bool mergeInfo = false);
 
 // private:
 	BYTE* libraries;
@@ -225,7 +225,7 @@ public:
 	int nextDwarfType;
 	int objectType;
 	
-    int emptyFieldListType;
+	int emptyFieldListType;
 	int classEnumType;
 	int ifaceEnumType;
 	int cppIfaceEnumType;
@@ -242,7 +242,7 @@ public:
 	int cntTypedefs;
 
 	bool addClassTypeEnum;
-    bool addStringViewHelper;
+	bool addStringViewHelper;
 	bool useGlobalMod;
 	bool thisIsNotRef;
 	bool v3;
@@ -253,9 +253,9 @@ public:
 
 	double Dversion;
 
-    // DWARF
-    int codeSegOff;
-    std::map<int, int> mapOffsetToType;
+	// DWARF
+	int codeSegOff;
+	std::map<int, int> mapOffsetToType;
 };
 
 

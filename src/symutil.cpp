@@ -113,9 +113,9 @@ int pstrlen(const BYTE* &p)
 
 int pstrmemlen(const BYTE* p)
 {
-    const BYTE* q = p;
-    int len = pstrlen(p);
-    return len + (p - q);
+	const BYTE* q = p;
+	int len = pstrlen(p);
+	return len + (p - q);
 }
 
 int dstrlen(const BYTE* &p, bool cstr)
@@ -146,19 +146,19 @@ char* p2c(const p_string& p, int idx)
 
 int c2p(const char* c, BYTE* p)
 {
-    BYTE* q = p;
-    int len = strlen(c);
-    if(len > 255)
-    {
-        *p++ = 0xff;
-        *p++ = 0;
-        *p++ = len & 0xff;
-        *p++ = len >> 8;
-    }
-    else
-        *p++ = len;
-    memcpy(p, c, len);
-    return p + len - q;
+	BYTE* q = p;
+	int len = strlen(c);
+	if(len > 255)
+	{
+		*p++ = 0xff;
+		*p++ = 0;
+		*p++ = len & 0xff;
+		*p++ = len >> 8;
+	}
+	else
+		*p++ = len;
+	memcpy(p, c, len);
+	return p + len - q;
 }
 
 int c2p(const char* c, p_string& p)
