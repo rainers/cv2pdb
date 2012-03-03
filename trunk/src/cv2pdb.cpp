@@ -34,7 +34,7 @@ CV2PDB::CV2PDB(PEImage& image)
 	memset(translatedTypedefs, 0, sizeof(translatedTypedefs));
 	cntTypedefs = 0;
 	nextUserType = 0x1000;
-    nextDwarfType = 0x1000;
+	nextDwarfType = 0x1000;
 
 	addClassTypeEnum = true;
 	addStringViewHelper = false;
@@ -80,7 +80,7 @@ bool CV2PDB::cleanup(bool commit)
 		free(userTypes);
 	if (udtSymbols)
 		free(udtSymbols);
-    if (dwarfTypes)
+	if (dwarfTypes)
 		free(dwarfTypes);
 	delete [] pointerTypes;
 
@@ -1406,7 +1406,7 @@ const char* CV2PDB::appendDynamicArray(int indexType, int elemType)
 	int dataptrType = nextUserType++;
 
 	int dstringType = 0;
-    if(addStringViewHelper &&
+	if(addStringViewHelper &&
 	   (strcmp(name, "string") == 0 || strcmp(name, "wstring") == 0 || strcmp(name, "dstring") == 0))
 	{
 		// nextUserType + 1: field list (size, array)
@@ -1747,16 +1747,16 @@ int CV2PDB::appendModifierType(int type, int attr)
 	checkUserTypeAlloc();
 
 	codeview_type* dtype = (codeview_type*) (userTypes + cbUserTypes);
-    dtype->modifier_v2.id = LF_MODIFIER_V2;
+	dtype->modifier_v2.id = LF_MODIFIER_V2;
 	dtype->modifier_v2.type = translateType(type);
 	dtype->modifier_v2.attribute = attr;
-    int len = sizeof(dtype->modifier_v2);
+	int len = sizeof(dtype->modifier_v2);
 	//for (; len & 3; len++)
 	//	userTypes[cbUserTypes + len] = 0xf4 - (len & 3);
 	dtype->modifier_v2.len = len - 2;
-    cbUserTypes += len;
+	cbUserTypes += len;
 	
-    nextUserType++;
+	nextUserType++;
 	return nextUserType - 1;
 }
 
@@ -1894,9 +1894,9 @@ bool CV2PDB::isCppInterface(const codeview_type* cvtype)
 
 bool CV2PDB::isClassType(int type)
 {
-    if(const codeview_type* cvt = getTypeData(type))
-        return isClass(cvt);
-    return false;
+	if(const codeview_type* cvt = getTypeData(type))
+		return isClass(cvt);
+	return false;
 }
 
 void CV2PDB::ensureUDT(int type, const codeview_type* cvtype)
@@ -1933,8 +1933,8 @@ void CV2PDB::ensureUDT(int type, const codeview_type* cvtype)
 
 int CV2PDB::createEmptyFieldListType()
 {
-    if(emptyFieldListType > 0)
-        return emptyFieldListType;
+	if(emptyFieldListType > 0)
+		return emptyFieldListType;
 
 	checkUserTypeAlloc();
 	codeview_reftype* rdtype = (codeview_reftype*) (userTypes + cbUserTypes);
@@ -1943,7 +1943,7 @@ int CV2PDB::createEmptyFieldListType()
 	cbUserTypes += rdtype->fieldlist.len + 2;
 	emptyFieldListType = nextUserType++;
 
-    return emptyFieldListType;
+	return emptyFieldListType;
 }
 
 int CV2PDB::appendTypedef(int type, const char* name, bool saveTranslation)
@@ -1952,34 +1952,34 @@ int CV2PDB::appendTypedef(int type, const char* name, bool saveTranslation)
 	if(type == 0x78)
 		basetype = 0x75; // dchar type not understood by debugger, use uint instead
 
-    int typedefType;
-    if(useTypedefEnum)
-    {
-	    checkUserTypeAlloc();
+	int typedefType;
+	if(useTypedefEnum)
+	{
+		checkUserTypeAlloc();
 
-	    int fieldlistType = createEmptyFieldListType();
+		int fieldlistType = createEmptyFieldListType();
 
-	    codeview_type* dtype = (codeview_type*) (userTypes + cbUserTypes);
-	    dtype->enumeration_v2.id = (v3 ? LF_ENUM_V3 : LF_ENUM_V2);
-	    dtype->enumeration_v2.type = basetype;
-	    dtype->enumeration_v2.fieldlist = fieldlistType;
-	    dtype->enumeration_v2.count = 0;
-	    dtype->enumeration_v2.property = kPropReserved2;
-	    int len = cstrcpy_v (v3, (BYTE*) &dtype->enumeration_v2.p_name, name);
-	    len += sizeof(dtype->enumeration_v2) - sizeof(dtype->enumeration_v2.p_name);
-	    writeUserTypeLen(dtype, len);
-        typedefType = nextUserType++;
-    }
-    else
-    {
-        typedefType = appendModifierType(type, 0);
-    }
-    if(saveTranslation)
-    {
-	    typedefs[cntTypedefs] = type;
-	    translatedTypedefs[cntTypedefs] = typedefType;
-	    cntTypedefs++;
-    }
+		codeview_type* dtype = (codeview_type*) (userTypes + cbUserTypes);
+		dtype->enumeration_v2.id = (v3 ? LF_ENUM_V3 : LF_ENUM_V2);
+		dtype->enumeration_v2.type = basetype;
+		dtype->enumeration_v2.fieldlist = fieldlistType;
+		dtype->enumeration_v2.count = 0;
+		dtype->enumeration_v2.property = kPropReserved2;
+		int len = cstrcpy_v (v3, (BYTE*) &dtype->enumeration_v2.p_name, name);
+		len += sizeof(dtype->enumeration_v2) - sizeof(dtype->enumeration_v2.p_name);
+		writeUserTypeLen(dtype, len);
+		typedefType = nextUserType++;
+	}
+	else
+	{
+		typedefType = appendModifierType(type, 0);
+	}
+	if(saveTranslation)
+	{
+		typedefs[cntTypedefs] = type;
+		translatedTypedefs[cntTypedefs] = typedefType;
+		cntTypedefs++;
+	}
 	return typedefType;
 }
 
@@ -2962,7 +2962,7 @@ codeview_symbol* CV2PDB::findUdtSymbol(const char* name)
 	for(int p = 0; p < cbGlobalSymbols; )
 	{
 		codeview_symbol* sym = (codeview_symbol*) (globalSymbols + p);
-        if(sym->common.id == S_UDT_V1 && p2ccmp(sym->udt_v1.p_name, name))
+		if(sym->common.id == S_UDT_V1 && p2ccmp(sym->udt_v1.p_name, name))
 			return sym;
 		p += sym->common.len + 2;
 	}
@@ -2994,7 +2994,7 @@ void CV2PDB::checkUdtSymbolAlloc(int size, int add)
 
 bool CV2PDB::addUdtSymbol(int type, const char* name)
 {
-    checkUdtSymbolAlloc(100 + kMaxNameLen);
+	checkUdtSymbolAlloc(100 + kMaxNameLen);
 
 	// no need to convert to udt_v2/udt_v3, the debugger is fine with it.
 	codeview_symbol* sym = (codeview_symbol*) (udtSymbols + cbUdtSymbols);

@@ -647,14 +647,14 @@ void unittest()
 	}
 
 	const char s[] = "_D12intellisen\xd1" "11LibraryInfo14findDe\xeaitionMFKS\x80\x8f\xaf" "0SearchDataZA\x80\x91\x9d\x80\x8a\xbb" "8count\x80\x83\x90MFAyaP\x80\x8f\xaa" "9JSONscopeH\x80\x83\x93S3std4json\x80\x85\x98ValueZb";
-    char buf[512];
-    dsym2c((const BYTE*) s, sizeof(s) - 1, buf, sizeof(buf));
+	char buf[512];
+	dsym2c((const BYTE*) s, sizeof(s) - 1, buf, sizeof(buf));
 }
 
 bool d_demangle(const char* name, char* demangled, int maxlen, bool plain)
 {
 #ifdef _DEBUG
-    static bool once; if(!once) { once = true; unittest(); }
+	static bool once; if(!once) { once = true; unittest(); }
 #endif
 
 	Demangle d;
