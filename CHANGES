@@ -162,3 +162,4 @@ unreleased Version 0.22
   * added command line switch -e to enable using named enumerator for D basic types
   * added DWARF support
   * added x64 support
+  * tweaked visualizer for associative array element to just show key and value
