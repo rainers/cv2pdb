@@ -28,7 +28,7 @@ public:
 	~CV2PDB();
 
 	bool cleanup(bool commit);
-	bool openPDB(const char* pdbname);
+	bool openPDB(const TCHAR* pdbname);
 
 	bool setError(const char* msg);
 	bool createModules();
@@ -152,7 +152,7 @@ public:
 	bool createSrcLineBitmap();
 	int  getNextSrcLine(int seg, unsigned int off);
 
-	bool writeImage(const char* opath);
+	bool writeImage(const TCHAR* opath);
 
 	mspdb::Mod* globalMod();
 
@@ -163,7 +163,7 @@ public:
 	bool addDWARFLines();
 	bool addDWARFPublics();
 	bool relocateDebugLineInfo();
-	bool writeDWARFImage(const char* opath);
+	bool writeDWARFImage(const TCHAR* opath);
 
 	bool addDWARFSectionContrib(mspdb::Mod* mod, unsigned long pclo, unsigned long pchi);
 	bool addDWARFProc(DWARF_InfoData& id, DWARF_CompilationUnit* cu, unsigned char* &locals, unsigned char* end);

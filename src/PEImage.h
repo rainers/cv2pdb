@@ -19,7 +19,7 @@ struct OMFDirEntry;
 class PEImage : public LastError
 {
 public:
-	PEImage(const char* iname = 0);
+	PEImage(const TCHAR* iname = 0);
 	~PEImage();
 
 	template<class P> P* DP(int off) const
@@ -56,8 +56,8 @@ public:
 		return 0;
 	}
 
-	bool load(const char* iname);
-	bool save(const char* oname);
+	bool load(const TCHAR* iname);
+	bool save(const TCHAR* oname);
 
 	bool replaceDebugSection (const void* data, int datalen, bool initCV);
 	bool initCVPtr(bool initDbgDir);

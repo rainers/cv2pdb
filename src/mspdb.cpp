@@ -93,7 +93,7 @@ bool exitMsPdb()
 	return true;
 }
 
-mspdb::PDB* CreatePDB(wchar_t* pdbname)
+mspdb::PDB* CreatePDB(const wchar_t* pdbname)
 {
 	if (!initMsPdb ())
 		return 0;
