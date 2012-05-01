@@ -526,7 +526,7 @@ public: virtual void EnumNameMap_Special::get(char const * *,unsigned long *);
 bool initMsPdb();
 bool exitMsPdb();
 
-mspdb::PDB* CreatePDB(wchar_t* pdbname);
+mspdb::PDB* CreatePDB(const wchar_t* pdbname);
 
 extern char* mspdb_dll;
 

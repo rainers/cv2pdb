@@ -250,30 +250,33 @@ struct DWARF_LineState
 
 ///////////////////////////////////////////////////////////////////////////////
 
-long decodeLocation(unsigned char* loc, int &id, int& size)
+long decodeLocation(unsigned char* loc, bool push0, int &id, int& size)
 {
 	unsigned char* p = loc;
-	int stackDepth = 0;
+	long stack[8] = {0};
+	int stackDepth = push0 ? 1 : 0;
 	long data = 0;
+	id = push0 ? S_CONSTANT_V2 : -1;
 	do
 	{
 		int op = *p++;
-		id = -1;
+		if(op == 0)
+			break;
 		size = 0;
 
 		switch(op)
 		{
-			case DW_OP_addr:        id = S_GDATA_V2;    size = 4; data = RD4(p); break;
-			case DW_OP_fbreg:       id = S_BPREL_V2;    data = SLEB128(p); break;
-			case DW_OP_const1u:     id = S_CONSTANT_V2; size = 1; data = *p; break;
-			case DW_OP_const2u:     id = S_CONSTANT_V2; size = 2; data = RD2(p); break;
-			case DW_OP_const4u:     id = S_CONSTANT_V2; size = 4; data = RD4(p); break;
-			case DW_OP_const1s:     id = S_CONSTANT_V2; size = 1; data = (char)*p; break;
-			case DW_OP_const2s:     id = S_CONSTANT_V2; size = 2; data = (short)RD2(p); break;
-			case DW_OP_const4s:     id = S_CONSTANT_V2; size = 4; data = (int)RD4(p); break;
-			case DW_OP_constu:      id = S_CONSTANT_V2; data = LEB128(p); break;
-			case DW_OP_consts:      id = S_CONSTANT_V2; data = SLEB128(p); break;
-			case DW_OP_plus_uconst: id = S_CONSTANT_V2; data = LEB128(p); break;
+			case DW_OP_addr:        id = S_GDATA_V2;    size = 4; stack[stackDepth++] = RD4(p); break;
+			case DW_OP_fbreg:       id = S_BPREL_V2;              stack[stackDepth++] = SLEB128(p); break;
+			case DW_OP_const1u:     id = S_CONSTANT_V2; size = 1; stack[stackDepth++] = *p; break;
+			case DW_OP_const2u:     id = S_CONSTANT_V2; size = 2; stack[stackDepth++] = RD2(p); break;
+			case DW_OP_const4u:     id = S_CONSTANT_V2; size = 4; stack[stackDepth++] = RD4(p); break;
+			case DW_OP_const1s:     id = S_CONSTANT_V2; size = 1; stack[stackDepth++] = (char)*p; break;
+			case DW_OP_const2s:     id = S_CONSTANT_V2; size = 2; stack[stackDepth++] = (short)RD2(p); break;
+			case DW_OP_const4s:     id = S_CONSTANT_V2; size = 4; stack[stackDepth++] = (int)RD4(p); break;
+			case DW_OP_constu:      id = S_CONSTANT_V2;           stack[stackDepth++] = LEB128(p); break;
+			case DW_OP_consts:      id = S_CONSTANT_V2;           stack[stackDepth++] = SLEB128(p); break;
+			case DW_OP_plus_uconst: stack[stackDepth-1] += LEB128(p); break;
 			case DW_OP_lit0:  case DW_OP_lit1:  case DW_OP_lit2:  case DW_OP_lit3:
 			case DW_OP_lit4:  case DW_OP_lit5:  case DW_OP_lit6:  case DW_OP_lit7:
 			case DW_OP_lit8:  case DW_OP_lit9:  case DW_OP_lit10: case DW_OP_lit11:
@@ -283,7 +286,7 @@ long decodeLocation(unsigned char* loc, int &id, int& size)
 			case DW_OP_lit24: case DW_OP_lit25: case DW_OP_lit26: case DW_OP_lit27:
 			case DW_OP_lit28: case DW_OP_lit29: case DW_OP_lit30: case DW_OP_lit31:
 				id = S_CONSTANT_V2;
-				data = op - DW_OP_lit0; 
+				stack[stackDepth++] = op - DW_OP_lit0; 
 				break;
 			case DW_OP_reg0:  case DW_OP_reg1:  case DW_OP_reg2:  case DW_OP_reg3:
 			case DW_OP_reg4:  case DW_OP_reg5:  case DW_OP_reg6:  case DW_OP_reg7:
@@ -318,12 +321,12 @@ long decodeLocation(unsigned char* loc, int &id, int& size)
 
 			case DW_OP_deref: break;
 			case DW_OP_deref_size: size = 1; break;
-			case DW_OP_dup:   stackDepth++; break;
+			case DW_OP_dup:   stack[stackDepth] = stack[stackDepth-1]; stackDepth++; break;
 			case DW_OP_drop:  stackDepth--; break;
-			case DW_OP_over:  stackDepth++; break;
-			case DW_OP_pick:  size = 1; stackDepth++; break;
-			case DW_OP_swap:  break;
-			case DW_OP_rot:   break;
+			case DW_OP_over:  stack[stackDepth] = stack[stackDepth-2]; stackDepth++; break;
+			case DW_OP_pick:  size = 1; stack[stackDepth++] = stack[*p]; break;
+			case DW_OP_swap:  data = stack[stackDepth-1]; stack[stackDepth-1] = stack[stackDepth-2]; stack[stackDepth-2] = data; break;
+			case DW_OP_rot:   data = stack[stackDepth-1]; stack[stackDepth-1] = stack[stackDepth-2]; stack[stackDepth-2] = stack[stackDepth-3]; stack[stackDepth-3] = data; break;
 			case DW_OP_xderef:     stackDepth--; break;
 			case DW_OP_xderef_size: size = 1; stackDepth--; break;
 
@@ -336,51 +339,51 @@ long decodeLocation(unsigned char* loc, int &id, int& size)
 			case DW_OP_bit_piece:
 			case DW_OP_implicit_value: /* DWARF4 */
 			case DW_OP_stack_value:
-				assert(!"unsupported expression operations");
+				//assert(!"unsupported expression operations");
+				id = -1;
+				return 0;
 
 			// unary operations pop and push
-			case DW_OP_abs:
-			case DW_OP_neg:
-			case DW_OP_not:
+			case DW_OP_abs:   stack[stackDepth-1] = abs(stack[stackDepth-1]); break;
+			case DW_OP_neg:   stack[stackDepth-1] = -stack[stackDepth-1]; break;
+			case DW_OP_not:   stack[stackDepth-1] = ~stack[stackDepth-1]; break;
 				break;
 			// biary operations pop twice and push
-			case DW_OP_and:
-			case DW_OP_div:
-			case DW_OP_minus:
-			case DW_OP_mod:
-			case DW_OP_mul:
-			case DW_OP_or:
-			case DW_OP_plus:
-			case DW_OP_shl:
-			case DW_OP_shr:
-			case DW_OP_shra:
-			case DW_OP_xor:
-			case DW_OP_eq:
-			case DW_OP_ge:
-			case DW_OP_gt:
-			case DW_OP_le:
-			case DW_OP_lt:
-			case DW_OP_ne:
-				stackDepth--; break; 
+			case DW_OP_and:   stack[stackDepth-2] = stack[stackDepth-2] &  stack[stackDepth-1]; stackDepth--; break;
+			case DW_OP_div:   stack[stackDepth-2] = stack[stackDepth-2] /  stack[stackDepth-1]; stackDepth--; break;
+			case DW_OP_minus: stack[stackDepth-2] = stack[stackDepth-2] -  stack[stackDepth-1]; stackDepth--; break;
+			case DW_OP_mod:   stack[stackDepth-2] = stack[stackDepth-2] %  stack[stackDepth-1]; stackDepth--; break;
+			case DW_OP_mul:   stack[stackDepth-2] = stack[stackDepth-2] *  stack[stackDepth-1]; stackDepth--; break;
+			case DW_OP_or:    stack[stackDepth-2] = stack[stackDepth-2] |  stack[stackDepth-1]; stackDepth--; break;
+			case DW_OP_plus:  stack[stackDepth-2] = stack[stackDepth-2] +  stack[stackDepth-1]; stackDepth--; break;
+			case DW_OP_shl:   stack[stackDepth-2] = stack[stackDepth-2] << stack[stackDepth-1]; stackDepth--; break;
+			case DW_OP_shr:   stack[stackDepth-2] = stack[stackDepth-2] >> stack[stackDepth-1]; stackDepth--; break;
+			case DW_OP_shra:  stack[stackDepth-2] = stack[stackDepth-2] >> stack[stackDepth-1]; stackDepth--; break;
+			case DW_OP_xor:   stack[stackDepth-2] = stack[stackDepth-2] ^  stack[stackDepth-1]; stackDepth--; break;
+			case DW_OP_eq:    stack[stackDepth-2] = stack[stackDepth-2] == stack[stackDepth-1]; stackDepth--; break;
+			case DW_OP_ge:    stack[stackDepth-2] = stack[stackDepth-2] >= stack[stackDepth-1]; stackDepth--; break;
+			case DW_OP_gt:    stack[stackDepth-2] = stack[stackDepth-2] >  stack[stackDepth-1]; stackDepth--; break;
+			case DW_OP_le:    stack[stackDepth-2] = stack[stackDepth-2] <= stack[stackDepth-1]; stackDepth--; break;
+			case DW_OP_lt:    stack[stackDepth-2] = stack[stackDepth-2] <  stack[stackDepth-1]; stackDepth--; break;
+			case DW_OP_ne:    stack[stackDepth-2] = stack[stackDepth-2] != stack[stackDepth-1]; stackDepth--; break;
+
 			case DW_OP_bra:
 			case DW_OP_skip:
 				size = RD2(p) + 2;
 				break;
 		}
-		if(id >= 0)
-			stackDepth++;
 		p += size;
 	}
-	while(false); // stackDepth > 0);
+	while(stackDepth > 0);
 	size = p - loc;
-	return data;
+	return stack[0];
 }
 
 
-long decodeLocation(unsigned long long loc, int &id)
+long decodeLocation(unsigned long long loc, bool push0, int &id)
 {
 	int size;
-	return decodeLocation((unsigned char*) &loc, id, size);
+	return decodeLocation((unsigned char*) &loc, push0, id, size);
 }
 
 unsigned char* CV2PDB::getDWARFAbbrev(int off, int findcode)
@@ -726,7 +729,7 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, DWARF_CompilationUnit* cu,
 			{
 				if(id.name)
 				{
-					off = decodeLocation(id.location, cvid);
+					off = decodeLocation(id.location, false, cvid);
 					if(cvid == S_BPREL_V2)
 						appendStackVar(id.name, getTypeByDWARFOffset(cu, id.type), off + frameOff);
 				}
@@ -740,7 +743,7 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, DWARF_CompilationUnit* cu,
 					case DW_TAG_variable:
 						if(id.name)
 						{
-							off = decodeLocation(id.location, cvid);
+							off = decodeLocation(id.location, false, cvid);
 							if(cvid == S_BPREL_V2)
 								appendStackVar(id.name, getTypeByDWARFOffset(cu, id.type), off + frameOff);
 						}
@@ -815,7 +818,7 @@ int CV2PDB::addDWARFStructure(DWARF_InfoData& structid, DWARF_CompilationUnit* c
 			int cvid = -1;
 			if (id.tag == DW_TAG_member && id.name)
 			{
-				int off = isunion ? 0 : decodeLocation(id.member_location, cvid);
+				int off = isunion ? 0 : decodeLocation(id.member_location, true, cvid);
 				if(isunion || cvid == S_CONSTANT_V2)
 				{
 					checkDWARFTypeAlloc(kMaxNameLen + 100);
@@ -826,7 +829,7 @@ int CV2PDB::addDWARFStructure(DWARF_InfoData& structid, DWARF_CompilationUnit* c
 			}
 			else if(id.tag == DW_TAG_inheritance)
 			{
-				int off = decodeLocation(id.member_location, cvid);
+				int off = decodeLocation(id.member_location, true, cvid);
 				if(cvid == S_CONSTANT_V2)
 				{
 					codeview_fieldtype* bc = (codeview_fieldtype*) (dwarfTypes + cbDwarfTypes);
@@ -1253,7 +1256,7 @@ bool CV2PDB::iterateDWARFDebugInfo(int op)
 						else
 						{
 							int cvid;
-							segOff = decodeLocation(id.location, cvid);
+							segOff = decodeLocation(id.location, false, cvid);
 							if(cvid == S_GDATA_V2)
 								seg = img.findSection(segOff);
 							if(seg >= 0)
@@ -1691,7 +1694,7 @@ bool CV2PDB::addDWARFPublics()
 	return true;
 }
 
-bool CV2PDB::writeDWARFImage(const char* opath)
+bool CV2PDB::writeDWARFImage(const TCHAR* opath)
 {
 	int len = sizeof(*rsds) + strlen((char*)(rsds + 1)) + 1;
 	if (!img.replaceDebugSection(rsds, len, false))

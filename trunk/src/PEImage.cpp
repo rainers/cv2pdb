@@ -18,8 +18,16 @@ extern "C" {
 #include <share.h>
 #include <sys/stat.h>
 
+#ifdef UNICODE
+#define T_sopen	_wsopen
+#define T_open	_wopen
+#else
+#define T_sopen	sopen
+#define T_open	open
+#endif
+
 ///////////////////////////////////////////////////////////////////////
-PEImage::PEImage(const char* iname)
+PEImage::PEImage(const TCHAR* iname)
 : dump_base(0)
 , dump_total_len(0)
 , dirHeader(0)
@@ -51,12 +59,12 @@ PEImage::~PEImage()
 }
 
 ///////////////////////////////////////////////////////////////////////
-bool PEImage::load(const char* iname)
+bool PEImage::load(const TCHAR* iname)
 {
 	if (fd != -1)
 		return setError("file already open");
 
-	fd = sopen(iname, O_RDONLY | O_BINARY, SH_DENYWR);
+	fd = T_sopen(iname, O_RDONLY | O_BINARY, SH_DENYWR);
 	if (fd == -1) 
 		return setError("Can't open file");
 
@@ -78,7 +86,7 @@ bool PEImage::load(const char* iname)
 }
 
 ///////////////////////////////////////////////////////////////////////
-bool PEImage::save(const char* oname)
+bool PEImage::save(const TCHAR* oname)
 {
 	if (fd != -1)
 		return setError("file already open");
@@ -86,7 +94,7 @@ bool PEImage::save(const char* oname)
 	if (!dump_base)
 		return setError("no data to dump");
 
-	fd = open(oname, O_WRONLY | O_CREAT | O_BINARY | O_TRUNC, S_IREAD | S_IWRITE | S_IEXEC);
+	fd = T_open(oname, O_WRONLY | O_CREAT | O_BINARY | O_TRUNC, S_IREAD | S_IWRITE | S_IEXEC);
 	if (fd == -1) 
 		return setError("Can't create file");
 

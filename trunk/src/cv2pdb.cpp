@@ -125,10 +125,18 @@ bool CV2PDB::cleanup(bool commit)
 	return true;
 }
 
-bool CV2PDB::openPDB(const char* pdbname)
+bool CV2PDB::openPDB(const TCHAR* pdbname)
 {
+#ifdef UNICODE
+	const wchar_t* pdbnameW = pdbname;
+	char pdbnameA[260]; // = L"c:\\tmp\\aa\\ddoc4.pdb";
+	WideCharToMultiByte(CP_UTF8, 0, pdbname, -1, pdbnameA, 260, 0, 0);
+	//  wcstombs (pdbnameA, pdbname, 260);
+#else
+	const char* pdbnameA = pdbname;
 	wchar_t pdbnameW[260]; // = L"c:\\tmp\\aa\\ddoc4.pdb";
 	mbstowcs (pdbnameW, pdbname, 260);
+#endif
 
 	if (!initMsPdb ())
 		return setError("cannot load PDB helper DLL");
@@ -142,11 +150,11 @@ bool CV2PDB::openPDB(const char* pdbname)
 	printf("PDB::QueryPdbImplementationVersion() = %d\n", pdb->QueryPdbImplementationVersion());
 #endif
 
-	rsds = (OMFSignatureRSDS *) new char[24 + strlen(pdbname) + 1]; // sizeof(OMFSignatureRSDS) without name
+	rsds = (OMFSignatureRSDS *) new char[24 + strlen(pdbnameA) + 1]; // sizeof(OMFSignatureRSDS) without name
 	memcpy (rsds->Signature, "RSDS", 4);
 	pdb->QuerySignature2(&rsds->guid);
 	rsds->unknown = pdb->QueryAge();
-	strcpy(rsds->name, pdbname);
+	strcpy(rsds->name, pdbnameA);
 
 	int rc = pdb->CreateDBI("", &dbi);
 	if (rc <= 0 || !dbi)
@@ -3096,7 +3104,7 @@ bool CV2PDB::addSymbols()
 	return rc;
 }
 
-bool CV2PDB::writeImage(const char* opath)
+bool CV2PDB::writeImage(const TCHAR* opath)
 {
 	int len = sizeof(*rsds) + strlen((char*)(rsds + 1)) + 1;
 	if (!img.replaceDebugSection(rsds, len, true))

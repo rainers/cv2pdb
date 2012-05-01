@@ -1,6 +1,24 @@
 
 module cvtest;
 
+version(none)
+{
+	int[int] global_oem_int_assoc_array;
+
+	int args(int a, int b, int c, int abc)
+	{
+		int d = a + b;
+		int e = b + c;
+		foreach(x; global_oem_int_assoc_array)
+			e += x;
+		return d + e + abc;
+	}
+	void main()
+	{
+		args(3, 4, 5, 345);
+	}
+}
+version(all):
 import std.string;
 import std.stdio;
 
@@ -220,6 +238,15 @@ void voidpointers(ubyte* p)
 	const(int*) const_ip2 = cast(const(int*)) p;
 }
 
+int args(int a, int b, int c, int abc)
+{
+	int d = a + b;
+	int e = b + c;
+	foreach(x; global_oem_int_assoc_array)
+		e += x;
+	return d + e + abc;
+}
+
 size_t arrays()
 {
 	int[] iarr;
@@ -330,6 +357,7 @@ int main(char[][]argv)
 	long lng = 3;
 	ulong ulng = 4;
 
+	args(3, 4, 5, 345);
 	voidpointers(null);
 	arrays();
 	lexical_scope();

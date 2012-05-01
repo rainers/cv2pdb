@@ -163,3 +163,9 @@ unreleased Version 0.22
   * added DWARF support
   * added x64 support
   * tweaked visualizer for associative array element to just show key and value
+
+2012-05-01 Version 0.24
+
+  * supports unicode characters in file names
+  * improve interpretation of DWARF location expression 
+
