@@ -33,6 +33,12 @@ enum enum_name
 	E_NOTIMPL     = cast(int)0x80004001,
 };
 
+enum derived_enum : ushort
+{
+	kDerived1,
+	kDerived2
+}
+
 // field type LF_MEMBER_V1
 class class_member
 {
@@ -286,6 +292,7 @@ alias int Action;
 
 Action convertEnum()
 {
+	derived_enum direvedEnum = derived_enum.kDerived2;
 	return Accept;
 }
 

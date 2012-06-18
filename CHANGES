@@ -169,3 +169,7 @@ unreleased Version 0.22
   * supports unicode characters in file names
   * improve interpretation of DWARF location expression 
 
+2012-06-18 Version 0.25
+
+  * new option -p allows to specify the embedded PDB reference in the binary
+  * added support for VS2012

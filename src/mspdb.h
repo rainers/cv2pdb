@@ -33,6 +33,7 @@ struct Mod;
 struct StreamCached;
 struct GSI;
 struct TPI;
+struct IPI;
 struct NameMap;
 struct EnumNameMap;
 
@@ -51,6 +52,9 @@ struct EnumNameMap;
 #define EnumNameMap2 EnumNameMap
 
 struct DBI;
+
+extern int vsVersion;
+
 /*
 #define DBICommon DBI
 #define DBI2 DBI
@@ -198,35 +202,76 @@ public: virtual void MRECmp::structIsBoring(unsigned long);
 typedef int __cdecl fnPDBOpen2W(unsigned short const *path,char const *mode,long *p,
 				unsigned short *ext,unsigned int flags,struct PDB **pPDB);
 
-struct PDB {
-public: static int __cdecl PDBCommon::Open2W(unsigned short const *path,char const *mode,long *p,unsigned short *ext,unsigned int flags,struct PDB **pPDB);
+struct PDB_part1 {
+public: virtual unsigned long QueryInterfaceVersion(void);
+public: virtual unsigned long QueryImplementationVersion(void);
+public: virtual long QueryLastError(char * const);
+public: virtual char * QueryPDBName(char * const);
+public: virtual unsigned long QuerySignature(void);
+public: virtual unsigned long QueryAge(void);
+public: virtual int CreateDBI(char const *,struct DBI * *);
+public: virtual int OpenDBI(char const *,char const *,struct DBI * *);
+public: virtual int OpenTpi(char const *,struct TPI * *);
+};
 
-public: virtual unsigned long PDB::QueryInterfaceVersion(void);
-public: virtual unsigned long PDB::QueryImplementationVersion(void);
-public: virtual long PDBCommon::QueryLastError(char * const);
-public: virtual char * PDB::QueryPDBName(char * const);
-public: virtual unsigned long PDB::QuerySignature(void);
-public: virtual unsigned long PDB::QueryAge(void);
-public: virtual int PDB::CreateDBI(char const *,struct DBI * *);
-public: virtual int PDB::OpenDBI(char const *,char const *,struct DBI * *);
-public: virtual int PDB::OpenTpi(char const *,struct TPI * *);
-public: virtual int PDB::Commit(void);
-public: virtual int PDB::Close(void);
-public: virtual int PDBCommon::OpenStreamW(unsigned short const *,struct Stream * *);
-public: virtual int PDB::GetEnumStreamNameMap(struct Enum * *);
-public: virtual int PDB::GetRawBytes(int (__cdecl*)(void const *,long));
-public: virtual unsigned long PDB::QueryPdbImplementationVersion(void);
-public: virtual int PDB::OpenDBIEx(char const *,char const *,struct DBI * *,int (__stdcall*)(struct _tagSEARCHDEBUGINFO *));
-public: virtual int PDBCommon::CopyTo(char const *,unsigned long,unsigned long);
-public: virtual int PDB::OpenSrc(struct Src * *);
-public: virtual long PDB::QueryLastErrorExW(unsigned short *,unsigned int);
-public: virtual unsigned short * PDB::QueryPDBNameExW(unsigned short *,unsigned int);
-public: virtual int PDB::QuerySignature2(struct _GUID *);
-public: virtual int PDBCommon::CopyToW(unsigned short const *,unsigned long,unsigned long);
-public: virtual int PDB::fIsSZPDB(void)const ;
-public: virtual int PDB::containsW(unsigned short const *,unsigned long *);
-public: virtual int PDB::CopyToW2(unsigned short const *,unsigned long,int (__cdecl*(__cdecl*)(void *,enum PCC))(void),void *);
-public: virtual int PDB::OpenStreamEx(char const *,char const *,struct Stream * *);
+struct PDB_part_vs11 : public PDB_part1 {
+public: virtual int OpenIpi(char const *,struct IPI * *); // VS11
+};
+
+template<class BASE>
+struct PDB_part2 : public BASE {
+public: virtual int Commit(void);
+public: virtual int Close(void);
+public: virtual int OpenStreamW(unsigned short const *,struct Stream * *);
+public: virtual int GetEnumStreamNameMap(struct Enum * *);
+public: virtual int GetRawBytes(int (__cdecl*)(void const *,long));
+public: virtual unsigned long QueryPdbImplementationVersion(void);
+public: virtual int OpenDBIEx(char const *,char const *,struct DBI * *,int (__stdcall*)(struct _tagSEARCHDEBUGINFO *));
+public: virtual int CopyTo(char const *,unsigned long,unsigned long);
+public: virtual int OpenSrc(struct Src * *);
+public: virtual long QueryLastErrorExW(unsigned short *,unsigned int);
+public: virtual unsigned short * QueryPDBNameExW(unsigned short *,unsigned int);
+public: virtual int QuerySignature2(struct _GUID *);
+public: virtual int CopyToW(unsigned short const *,unsigned long,unsigned long);
+public: virtual int fIsSZPDB(void)const ;
+public: virtual int containsW(unsigned short const *,unsigned long *);
+public: virtual int CopyToW2(unsigned short const *,unsigned long,int (__cdecl*(__cdecl*)(void *,enum PCC))(void),void *);
+public: virtual int OpenStreamEx(char const *,char const *,struct Stream * *);
+};
+
+struct PDB_VS10 : public PDB_part2<PDB_part1> {};
+struct PDB_VS11 : public PDB_part2<PDB_part_vs11> {};
+
+struct PDB
+{
+	PDB_VS10 vs10;
+
+public: 
+	static int __cdecl Open2W(unsigned short const *path,char const *mode,long *p,unsigned short *ext,unsigned int flags,struct PDB **pPDB);
+
+	unsigned long QueryAge() { return vs10.QueryAge(); }
+	int CreateDBI(char const *n,struct DBI * *pdbi) { return vs10.CreateDBI(n, pdbi); }
+	int OpenTpi(char const *n,struct TPI * *ptpi)  { return vs10.OpenTpi(n, ptpi); }
+	long QueryLastError(char * const lastErr) { return vs10.QueryLastError(lastErr); }
+
+	int Commit()
+	{
+		if(vsVersion >= 11)
+			return ((PDB_VS11*)&vs10)->Commit();
+		return vs10.Commit();
+	}
+	int Close()
+	{
+		if(vsVersion >= 11)
+			return ((PDB_VS11*)&vs10)->Close();
+		return vs10.Close();
+	}
+	int QuerySignature2(struct _GUID *guid)
+	{
+		if(vsVersion >= 11)
+			return ((PDB_VS11*)&vs10)->QuerySignature2(guid);
+		return vs10.QuerySignature2(guid);
+	}
 };
 
 struct Src {
@@ -414,7 +459,6 @@ struct DBI_VS10 : public DBI_BASE<DBI_part2> {};
 
 struct DBI
 {
-    static bool isVS10;
     DBI_VS9 vs9;
 
     unsigned long QueryImplementationVersion() { return vs9.QueryImplementationVersion(); }
@@ -425,13 +469,13 @@ struct DBI
 
     int AddPublic2(char const *name,unsigned short sec,long off,unsigned long type)
     {
-        if(isVS10)
+        if(vsVersion >= 10)
             return ((DBI_VS10*) &vs9)->AddPublic2(name, sec, off, type);
         return vs9.AddPublic2(name, sec, off, type);
     }
     void SetMachineType(unsigned short type)
     {
-        if(isVS10)
+        if(vsVersion >= 10)
             return ((DBI_VS10*) &vs9)->SetMachineType(type);
         return vs9.SetMachineType(type);
     }
