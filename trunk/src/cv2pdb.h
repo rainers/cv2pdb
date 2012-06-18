@@ -28,7 +28,7 @@ public:
 	~CV2PDB();
 
 	bool cleanup(bool commit);
-	bool openPDB(const TCHAR* pdbname);
+	bool openPDB(const TCHAR* pdbname, const TCHAR* pdbref);
 
 	bool setError(const char* msg);
 	bool createModules();

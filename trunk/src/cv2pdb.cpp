@@ -125,15 +125,15 @@ bool CV2PDB::cleanup(bool commit)
 	return true;
 }
 
-bool CV2PDB::openPDB(const TCHAR* pdbname)
+bool CV2PDB::openPDB(const TCHAR* pdbname, const TCHAR* pdbref)
 {
 #ifdef UNICODE
 	const wchar_t* pdbnameW = pdbname;
 	char pdbnameA[260]; // = L"c:\\tmp\\aa\\ddoc4.pdb";
-	WideCharToMultiByte(CP_UTF8, 0, pdbname, -1, pdbnameA, 260, 0, 0);
+	WideCharToMultiByte(CP_UTF8, 0, pdbref ? pdbref : pdbname, -1, pdbnameA, 260, 0, 0);
 	//  wcstombs (pdbnameA, pdbname, 260);
 #else
-	const char* pdbnameA = pdbname;
+	const char* pdbnameA = pdbref ? pdbref : pdbname;
 	wchar_t pdbnameW[260]; // = L"c:\\tmp\\aa\\ddoc4.pdb";
 	mbstowcs (pdbnameW, pdbname, 260);
 #endif
@@ -3045,9 +3045,10 @@ bool CV2PDB::writeSymbols(mspdb::Mod* mod, DWORD* data, int databytes, int prefi
 		data[3] = 1;
 	int rc = mod->AddSymbols((BYTE*) data, ((databytes + 3) / 4 + prefix) * 4);
 	if (rc <= 0)
-		return setError(mspdb::DBI::isVS10
-		                ? "cannot add symbols to module, probably msobj100.dll missing"
-		                : "cannot add symbols to module, probably msobj80.dll missing");
+		return setError(
+		    mspdb::vsVersion == 10 ? "cannot add symbols to module, probably msobj100.dll missing"
+		  : mspdb::vsVersion == 11 ? "cannot add symbols to module, probably msobj110.dll missing"
+		                           : "cannot add symbols to module, probably msobj80.dll missing");
 	return true;
 }
 

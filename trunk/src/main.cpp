@@ -107,6 +107,7 @@ int T_main(int argc, TCHAR* argv[])
 {
 	PEImage img;
 	double Dversion = 2.043;
+	const TCHAR* pdbref = 0;
 
 	while (argc > 1 && argv[1][0] == '-')
 	{
@@ -124,6 +125,8 @@ int T_main(int argc, TCHAR* argv[])
 			useTypedefEnum = true;
 		else if (argv[0][1] == 's' && argv[0][2])
 			dotReplacementChar = (char)argv[0][2];
+		else if (argv[0][1] == 'p' && argv[0][2])
+			pdbref = argv[0] + 2;
 		else
 			fatal("unknown option: " SARG, argv[0]);
 	}
@@ -136,7 +139,7 @@ int T_main(int argc, TCHAR* argv[])
 		printf("License for redistribution is given by the Artistic License 2.0\n");
 		printf("see file LICENSE for further details\n");
 		printf("\n");
-		printf("usage: " SARG " [-Dversion|-C|-n|-sC] <exe-file> [new-exe-file] [pdb-file]\n", argv[0]);
+		printf("usage: " SARG " [-Dversion|-C|-n|-e|-sC|-pembedded-pdb] <exe-file> [new-exe-file] [pdb-file]\n", argv[0]);
 		return -1;
 	}
 
@@ -169,7 +172,7 @@ int T_main(int argc, TCHAR* argv[])
 
 	T_unlink(pdbname);
 
-	if(!cv2pdb.openPDB(pdbname))
+	if(!cv2pdb.openPDB(pdbname, pdbref))
 		fatal(SARG ": %s", pdbname, cv2pdb.getLastError());
 
 	if(img.hasDWARF())
