@@ -151,8 +151,10 @@ struct DWARF_InfoData
 	unsigned long specification;
 	unsigned long inlined;
 	unsigned long external;
-	unsigned long long location; // first 8 bytes
-	unsigned long long member_location; // first 8 bytes
+	unsigned char*location_ptr;
+	unsigned long location_len;
+	unsigned char*member_location_ptr;
+	unsigned long member_location_len;
 	unsigned long locationlist; // offset into debug_loc
 	long frame_base;
 	long upper_bound;
@@ -250,7 +252,7 @@ struct DWARF_LineState
 
 ///////////////////////////////////////////////////////////////////////////////
 
-long decodeLocation(unsigned char* loc, bool push0, int &id, int& size)
+long decodeLocation(unsigned char* loc, long len, bool push0, int &id, int& size)
 {
 	unsigned char* p = loc;
 	long stack[8] = {0};
@@ -259,6 +261,9 @@ long decodeLocation(unsigned char* loc, bool push0, int &id, int& size)
 	id = push0 ? S_CONSTANT_V2 : -1;
 	do
 	{
+        if(p - loc >= len)
+            break;
+
 		int op = *p++;
 		if(op == 0)
 			break;
@@ -380,10 +385,10 @@ long decodeLocation(unsigned char* loc, bool push0, int &id, int& size)
 }
 
 
-long decodeLocation(unsigned long long loc, bool push0, int &id)
+long decodeLocation(unsigned char*loc, long len, bool push0, int &id)
 {
 	int size;
-	return decodeLocation((unsigned char*) &loc, push0, id, size);
+	return decodeLocation(loc, len, push0, id, size);
 }
 
 unsigned char* CV2PDB::getDWARFAbbrev(int off, int findcode)
@@ -449,8 +454,10 @@ bool CV2PDB::readDWARFInfoData(DWARF_InfoData& id, DWARF_CompilationUnit* cu, un
 		id.specification = 0;
 		id.inlined = 0;
 		id.external = 0;
-		id.member_location = 0;
-		id.location = 0;
+		id.member_location_ptr = 0;
+		id.member_location_len = 0;
+		id.location_ptr = 0;
+		id.location_len = 0;
 		id.locationlist = 0;
 		id.frame_base = -1;
 		id.upper_bound = 0;
@@ -518,10 +525,10 @@ bool CV2PDB::readDWARFInfoData(DWARF_InfoData& id, DWARF_CompilationUnit* cu, un
 		case DW_AT_lower_bound: id.lower_bound = data; break;
 		case DW_AT_containing_type: id.containing_type = data; break;
 		case DW_AT_specification: id.specification = data; break;
-		case DW_AT_data_member_location: id.member_location = lldata; break;
+		case DW_AT_data_member_location: id.member_location_ptr = p; id.member_location_len = size; break;
 		case DW_AT_location:  
 			if(form == DW_FORM_block1) 
-				id.location = lldata; 
+				id.location_ptr = p, id.location_len = size; 
 			else 
 				id.locationlist = data;
 			break;
@@ -729,7 +736,7 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, DWARF_CompilationUnit* cu,
 			{
 				if(id.name)
 				{
-					off = decodeLocation(id.location, false, cvid);
+					off = decodeLocation(id.location_ptr, id.location_len, false, cvid);
 					if(cvid == S_BPREL_V2)
 						appendStackVar(id.name, getTypeByDWARFOffset(cu, id.type), off + frameOff);
 				}
@@ -743,7 +750,7 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, DWARF_CompilationUnit* cu,
 					case DW_TAG_variable:
 						if(id.name)
 						{
-							off = decodeLocation(id.location, false, cvid);
+							off = decodeLocation(id.location_ptr, id.location_len, false, cvid);
 							if(cvid == S_BPREL_V2)
 								appendStackVar(id.name, getTypeByDWARFOffset(cu, id.type), off + frameOff);
 						}
@@ -818,7 +825,7 @@ int CV2PDB::addDWARFStructure(DWARF_InfoData& structid, DWARF_CompilationUnit* c
 			int cvid = -1;
 			if (id.tag == DW_TAG_member && id.name)
 			{
-				int off = isunion ? 0 : decodeLocation(id.member_location, true, cvid);
+                int off = isunion ? 0 : decodeLocation(id.member_location_ptr, id.member_location_len, true, cvid);
 				if(isunion || cvid == S_CONSTANT_V2)
 				{
 					checkDWARFTypeAlloc(kMaxNameLen + 100);
@@ -829,7 +836,7 @@ int CV2PDB::addDWARFStructure(DWARF_InfoData& structid, DWARF_CompilationUnit* c
 			}
 			else if(id.tag == DW_TAG_inheritance)
 			{
-				int off = decodeLocation(id.member_location, true, cvid);
+                int off = decodeLocation(id.member_location_ptr, id.member_location_len, true, cvid);
 				if(cvid == S_CONSTANT_V2)
 				{
 					codeview_fieldtype* bc = (codeview_fieldtype*) (dwarfTypes + cbDwarfTypes);
@@ -1249,14 +1256,14 @@ bool CV2PDB::iterateDWARFDebugInfo(int op)
 					{
 						int seg = -1;
 						unsigned long segOff;
-						if(id.location == 0 && id.external && id.linkage_name)
+						if(id.location_ptr == 0 && id.external && id.linkage_name)
 						{
 							seg = img.findSymbol(id.linkage_name, segOff);
 						}
 						else
 						{
 							int cvid;
-							segOff = decodeLocation(id.location, false, cvid);
+							segOff = decodeLocation(id.location_ptr, id.location_len, false, cvid);
 							if(cvid == S_GDATA_V2)
 								seg = img.findSection(segOff);
 							if(seg >= 0)

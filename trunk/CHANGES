@@ -173,3 +173,12 @@ unreleased Version 0.22
 
   * new option -p allows to specify the embedded PDB reference in the binary
   * added support for VS2012
+
+2012-11-09 Version 0.26
+
+  * new option -p allows to specify the embedded PDB reference in the binary
+  * added support for VS2012
+
+2013-05-11 Version 0.27
+
+  * fixed crash when converting DWARF locations using 8 bytes or more
