@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="Windows-1252"?>
 <VisualStudioProject
 	ProjectType="Visual C++"
-	Version="9.00"
+	Version="9,00"
 	Name="cv2pdb"
 	ProjectGUID="{5E2BD27D-446A-4C99-9829-135F7C000D90}"
 	RootNamespace="cv2pdb"
@@ -120,6 +120,7 @@
 				AdditionalOptions="/wd4996"
 				Optimization="2"
 				EnableIntrinsicFunctions="true"
+				FavorSizeOrSpeed="1"
 				PreprocessorDefinitions="WIN32;NDEBUG;_CONSOLE"
 				RuntimeLibrary="0"
 				EnableFunctionLevelLinking="true"

@@ -155,34 +155,54 @@ __declspec(dllexport)
 HRESULT WINAPI DObjectView(DWORD dwAddress, DEBUGHELPER *pHelper, int nBase, BOOL bUniStrings, 
                            char *pResult, size_t max, DWORD reserved)
 {
-	if(dwAddress == 0)
+	DWORDLONG qwAddress = dwAddress; 
+	if(pHelper->dwVersion >= 0x20000)
+		qwAddress = pHelper->GetRealAddress(pHelper);
+
+	if(qwAddress == 0)
 	{
 		strncpy(pResult,"null", max);
 		return S_OK;
 	}
 
+	int proc = 0;
+	if(pHelper->dwVersion >= 0x20000)
+		proc = pHelper->GetProcessorType(pHelper);
+	int sizeOfPtr = proc == 0 ? 4 : 8;
+
 	DWORD read;
-	DWORD vtablePtr;
-	if (pHelper->ReadDebuggeeMemory(pHelper, dwAddress, sizeof(vtablePtr), &vtablePtr, &read) != S_OK) 
+	DWORDLONG vtablePtr = 0;
+	if (readMem(pHelper, qwAddress, sizeOfPtr, &vtablePtr, &read) != S_OK) 
 	{
 		strncpy(pResult,"Cannot access object", max);
 		return S_OK;
 	}
-	DWORD classinfoPtr;
-	if (pHelper->ReadDebuggeeMemory(pHelper, vtablePtr, sizeof(vtablePtr), &classinfoPtr, &read) != S_OK) 
+	DWORDLONG classinfoPtr = 0;
+	if (readMem(pHelper, vtablePtr, sizeOfPtr, &classinfoPtr, &read) != S_OK) 
 	{
 		strncpy(pResult,"Cannot access vtable", max);
 		return S_OK;
 	}
-	DString dstr;
-	if (pHelper->ReadDebuggeeMemory(pHelper, classinfoPtr + 16, sizeof(dstr), &dstr, &read) != S_OK) 
+	char strdata[16];
+    if (readMem(pHelper, classinfoPtr + 4*sizeOfPtr, 2*sizeOfPtr, strdata, &read) != S_OK) 
 	{
 		strncpy(pResult,"Cannot access class info", max);
 		return S_OK;
 	}
 
-	DWORD cnt = (dstr.length < max - 1 ? dstr.length : max - 1);
-	if (pHelper->ReadDebuggeeMemory(pHelper, dstr.data, cnt, pResult, &read) != S_OK) 
+	DWORDLONG length, data;
+	if(sizeOfPtr > 4)
+	{
+		length = *(DWORDLONG*) strdata;
+		data = *(DWORDLONG*) (strdata + sizeOfPtr);
+	}
+	else
+	{
+		length = *(DWORD*) strdata;
+		data = *(DWORD*) (strdata + sizeOfPtr);
+	}
+	DWORD cnt = (DWORD)(length < max - 1 ? length : max - 1);
+    if (readMem(pHelper, data, cnt, pResult, &read) != S_OK) 
 	{
 		strncpy(pResult,"Cannot access name data", max);
 		return S_OK;

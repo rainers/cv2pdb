@@ -128,6 +128,11 @@ struct struct_name
 {
 	int member;
 	static int static_member;
+
+	int method() 
+	{ 
+		return member + static_member + this.member; 
+	}
 }
 
 union union_name
@@ -352,7 +357,10 @@ int main2(char[][]argv)
 	// delegate
 	int delegate() dg = &inst_method.method;
 	int res = dg();
-	
+
+	int delegate() dg2 = &inst_struct.method;
+	int res2 = dg2();
+
 	class_with_struct_member cwsm = new class_with_struct_member;
 
 	return 0;

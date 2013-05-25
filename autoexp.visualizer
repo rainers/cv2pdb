@@ -38,7 +38,7 @@ const void[]|void[] {
 }
 
 ; dynamic array
-*[] {
+*[]|dArray* {
 	preview ( 
 		#if ($e.ptr == 0) ( "null" )
 		#else ( 

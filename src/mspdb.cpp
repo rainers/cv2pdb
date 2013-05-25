@@ -16,6 +16,7 @@ mspdb::fnPDBOpen2W *pPDBOpen2W;
 char* mspdb80_dll = "mspdb80.dll";
 char* mspdb100_dll = "mspdb100.dll";
 char* mspdb110_dll = "mspdb110.dll";
+// char* mspdb110shell_dll = "mspdbst.dll"; // the VS 2012 Shell uses this file instead of mspdb110.dll, but is missing mspdbsrv.exe
 
 int mspdb::vsVersion = 8;
 
@@ -47,12 +48,11 @@ bool tryLoadMsPdb(const char* version, const char* mspdb)
 	return modMsPdb != 0;
 }
 
-bool initMsPdb()
+void tryLoadMsPdb80()
 {
 	if (!modMsPdb)
 		modMsPdb = LoadLibraryA(mspdb80_dll);
 
-#if 1
 	if (!modMsPdb)
 		tryLoadMsPdb("VisualStudio\\9.0", mspdb80_dll);
 	if (!modMsPdb)
@@ -61,9 +61,10 @@ bool initMsPdb()
 		tryLoadMsPdb("VCExpress\\9.0", mspdb80_dll);
 	if (!modMsPdb)
 		tryLoadMsPdb("VCExpress\\8.0", mspdb80_dll);
-#endif
+}
 
-#if 1
+void tryLoadMsPdb100()
+{
 	if (!modMsPdb)
 	{
 		modMsPdb = LoadLibraryA(mspdb100_dll);
@@ -74,20 +75,39 @@ bool initMsPdb()
 		if (modMsPdb)
 			mspdb::vsVersion = 10;
 	}
-#endif
+}
 
-#if 1
+void tryLoadMsPdb110()
+{
 	if (!modMsPdb)
 	{
 		modMsPdb = LoadLibraryA(mspdb110_dll);
 		if (!modMsPdb)
 			tryLoadMsPdb("VisualStudio\\11.0", mspdb110_dll);
 		if (!modMsPdb)
-			tryLoadMsPdb("VCExpress\\11.0", mspdb110_dll);
+			tryLoadMsPdb("VSWinExpress\\11.0", mspdb110_dll);
 		if (modMsPdb)
 			mspdb::vsVersion = 11;
 	}
+}
+
+bool initMsPdb()
+{
+#if 0 // might cause problems when combining VS Shell 2010 with VS 2008 or similar
+	if(const char* p = getenv("VisualStudioDir"))
+	{
+		// guess from environment variable from which version of VS we are invoked and prefer a correspondig mspdb DLL
+		if (strstr(p, "2010"))
+			tryLoadMsPdb100();
+		if (strstr(p, "2012"))
+			tryLoadMsPdb110();
+		// VS2008 tried next anyway
+	}
 #endif
+
+	tryLoadMsPdb80();
+	tryLoadMsPdb100();
+	tryLoadMsPdb110();
 
 	if (!modMsPdb)
 		return false;

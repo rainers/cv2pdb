@@ -9,6 +9,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 object_viewhelper=$ADDIN(dviewhelper.dll,_DObjectView@28)
+object@Object=$ADDIN(dviewhelper.dll,_DObjectView@28)
 string=$ADDIN(dviewhelper.dll,_DStringView@28)
 wstring=$ADDIN(dviewhelper.dll,_DWStringView@28)
 dstring=$ADDIN(dviewhelper.dll,_DDStringView@28)
