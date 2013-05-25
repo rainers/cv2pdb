@@ -176,8 +176,7 @@ unreleased Version 0.22
 
 2012-11-09 Version 0.26
 
-  * new option -p allows to specify the embedded PDB reference in the binary
-  * added support for VS2012
+  * now iterating over multiple entries in the debug directory to find CV info
 
 2013-05-11 Version 0.27
 
