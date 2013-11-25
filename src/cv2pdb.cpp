@@ -3048,6 +3048,7 @@ bool CV2PDB::writeSymbols(mspdb::Mod* mod, DWORD* data, int databytes, int prefi
 		return setError(
 		    mspdb::vsVersion == 10 ? "cannot add symbols to module, probably msobj100.dll missing"
 		  : mspdb::vsVersion == 11 ? "cannot add symbols to module, probably msobj110.dll missing"
+		  : mspdb::vsVersion == 12 ? "cannot add symbols to module, probably msobj120.dll missing"
 		                           : "cannot add symbols to module, probably msobj80.dll missing");
 	return true;
 }

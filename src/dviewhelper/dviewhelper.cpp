@@ -212,4 +212,17 @@ HRESULT WINAPI DObjectView(DWORD dwAddress, DEBUGHELPER *pHelper, int nBase, BOO
 	return S_OK;
 }
 
+// avoid unloading the DLL with every expression
+BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved)
+{
+    if(fdwReason == DLL_PROCESS_ATTACH)
+    {
+        TCHAR moduleName[1024];
+
+        if(GetModuleFileName(hinstDLL, moduleName, sizeof(moduleName)/ sizeof(TCHAR)))
+            LoadLibrary(moduleName);
+    }
+    return TRUE;
+}
+
 } // extern "C"
