@@ -16,9 +16,33 @@ mspdb::fnPDBOpen2W *pPDBOpen2W;
 char* mspdb80_dll = "mspdb80.dll";
 char* mspdb100_dll = "mspdb100.dll";
 char* mspdb110_dll = "mspdb110.dll";
+char* mspdb120_dll = "mspdb120.dll";
 // char* mspdb110shell_dll = "mspdbst.dll"; // the VS 2012 Shell uses this file instead of mspdb110.dll, but is missing mspdbsrv.exe
 
 int mspdb::vsVersion = 8;
+
+// verify mspdbsrv.exe is found in the same path
+void tryLoadLibrary(const char* mspdb)
+{
+	if (modMsPdb)
+		return;
+	modMsPdb = LoadLibraryA(mspdb);
+	if (!modMsPdb)
+		return;
+
+	char modpath[260];
+	if(GetModuleFileNameA(modMsPdb, modpath, 260) < 260)
+	{
+		char* p = modpath + strlen(modpath);
+		while(p > modpath && p[-1] != '\\')
+			p--;
+		strcpy(p, "mspdbsrv.exe");
+		if(GetFileAttributesA(modpath) != INVALID_FILE_ATTRIBUTES)
+			return;
+	}
+	FreeLibrary(modMsPdb);
+	modMsPdb = NULL;
+}
 
 bool getInstallDir(const char* version, char* installDir, DWORD size)
 {
@@ -34,7 +58,7 @@ bool getInstallDir(const char* version, char* installDir, DWORD size)
 	return rc;
 }
 
-bool tryLoadMsPdb(const char* version, const char* mspdb)
+bool tryLoadMsPdb(const char* version, const char* mspdb, const char* path = 0)
 {
 	char installDir[260];
 	if (!getInstallDir(version, installDir, sizeof(installDir)))
@@ -42,52 +66,71 @@ bool tryLoadMsPdb(const char* version, const char* mspdb)
 	char* p = installDir + strlen(installDir);
 	if (p[-1] != '\\' && p[-1] != '/')
 		*p++ = '\\';
+	if(path)
+		p += strlen(strcpy(p, path));
 	strcpy(p, mspdb);
 
-	modMsPdb = LoadLibraryA(installDir);
+	tryLoadLibrary(installDir);
 	return modMsPdb != 0;
 }
 
-void tryLoadMsPdb80()
+void tryLoadMsPdb80(bool throughPath)
 {
-	if (!modMsPdb)
-		modMsPdb = LoadLibraryA(mspdb80_dll);
+	if (!modMsPdb && throughPath)
+		tryLoadLibrary(mspdb80_dll);
 
-	if (!modMsPdb)
+	if (!modMsPdb && !throughPath)
 		tryLoadMsPdb("VisualStudio\\9.0", mspdb80_dll);
-	if (!modMsPdb)
+	if (!modMsPdb && !throughPath)
 		tryLoadMsPdb("VisualStudio\\8.0", mspdb80_dll);
-	if (!modMsPdb)
+	if (!modMsPdb && !throughPath)
 		tryLoadMsPdb("VCExpress\\9.0", mspdb80_dll);
-	if (!modMsPdb)
+	if (!modMsPdb && !throughPath)
 		tryLoadMsPdb("VCExpress\\8.0", mspdb80_dll);
 }
 
-void tryLoadMsPdb100()
+void tryLoadMsPdb100(bool throughPath)
 {
 	if (!modMsPdb)
 	{
-		modMsPdb = LoadLibraryA(mspdb100_dll);
-		if (!modMsPdb)
+		if(throughPath)
+			modMsPdb = LoadLibraryA(mspdb100_dll);
+		if (!modMsPdb && !throughPath)
 			tryLoadMsPdb("VisualStudio\\10.0", mspdb100_dll);
-		if (!modMsPdb)
+		if (!modMsPdb && !throughPath)
 			tryLoadMsPdb("VCExpress\\10.0", mspdb100_dll);
 		if (modMsPdb)
 			mspdb::vsVersion = 10;
 	}
 }
 
-void tryLoadMsPdb110()
+void tryLoadMsPdb110(bool throughPath)
 {
 	if (!modMsPdb)
 	{
-		modMsPdb = LoadLibraryA(mspdb110_dll);
-		if (!modMsPdb)
+		if (throughPath)
+			modMsPdb = LoadLibraryA(mspdb110_dll);
+		if (!modMsPdb && !throughPath)
 			tryLoadMsPdb("VisualStudio\\11.0", mspdb110_dll);
-		if (!modMsPdb)
+		if (!modMsPdb && !throughPath)
 			tryLoadMsPdb("VSWinExpress\\11.0", mspdb110_dll);
 		if (modMsPdb)
 			mspdb::vsVersion = 11;
+	}
+}
+
+void tryLoadMsPdb120(bool throughPath)
+{
+	if (!modMsPdb)
+	{
+		if(throughPath)
+			modMsPdb = LoadLibraryA(mspdb120_dll);
+		if (!modMsPdb && !throughPath)
+			tryLoadMsPdb("VisualStudio\\12.0", mspdb120_dll, "..\\..\\VC\\bin\\");
+		if (!modMsPdb && !throughPath)
+			tryLoadMsPdb("VSWinExpress\\12.0", mspdb120_dll, "..\\..\\VC\\bin\\");
+		if (modMsPdb)
+			mspdb::vsVersion = 12;
 	}
 }
 
@@ -105,9 +148,16 @@ bool initMsPdb()
 	}
 #endif
 
-	tryLoadMsPdb80();
-	tryLoadMsPdb100();
-	tryLoadMsPdb110();
+	// try loading through the PATH first to best match current setup
+	tryLoadMsPdb120(true);
+	tryLoadMsPdb110(true);
+	tryLoadMsPdb100(true);
+	tryLoadMsPdb80(true);
+
+	tryLoadMsPdb120(false);
+	tryLoadMsPdb110(false);
+	tryLoadMsPdb100(false);
+	tryLoadMsPdb80(false);
 
 	if (!modMsPdb)
 		return false;

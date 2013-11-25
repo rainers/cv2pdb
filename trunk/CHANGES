@@ -181,3 +181,10 @@ unreleased Version 0.22
 2013-05-11 Version 0.27
 
   * fixed crash when converting DWARF locations using 8 bytes or more
+
+2013-11-16 Version 0.28
+
+  * added searching mspdb120.dll for VS 2013
+  * changed search order for mspdb*.dll: trying to load through PATH first
+    newest VS versions preferred, then trying through installation paths for VS 2013-2005
+  * dviewhelper.dll now avoids being reloaded for every expression
