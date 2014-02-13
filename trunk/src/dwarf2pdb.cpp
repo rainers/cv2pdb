@@ -155,6 +155,7 @@ struct DWARF_InfoData
 	unsigned long location_len;
 	unsigned char*member_location_ptr;
 	unsigned long member_location_len;
+	unsigned long member_location_data;
 	unsigned long locationlist; // offset into debug_loc
 	long frame_base;
 	long upper_bound;
@@ -456,6 +457,7 @@ bool CV2PDB::readDWARFInfoData(DWARF_InfoData& id, DWARF_CompilationUnit* cu, un
 		id.external = 0;
 		id.member_location_ptr = 0;
 		id.member_location_len = 0;
+		id.member_location_data = 0;
 		id.location_ptr = 0;
 		id.location_len = 0;
 		id.locationlist = 0;
@@ -500,11 +502,11 @@ bool CV2PDB::readDWARFInfoData(DWARF_InfoData& id, DWARF_CompilationUnit* cu, un
 		case DW_FORM_ref4:           size = 4; lldata = data = RD4(p); isRef = true; break;
 		case DW_FORM_ref8:           size = 8; lldata = RD8(p); data = (unsigned long) lldata; isRef = true; break;
 		case DW_FORM_ref_udata:      lldata = data = LEB128(p); size = 0; isRef = true; break;
-		case DW_FORM_exprloc:        size = LEB128(p); break;
-		case DW_FORM_flag_present:   size = 1; break;
+		case DW_FORM_exprloc:        size = LEB128(p); lldata = RDsize(p, size); data = (unsigned long) lldata; isRef = true; break;
+		case DW_FORM_flag_present:   size = 0; lldata = data = 1; break;
 		case DW_FORM_ref_sig8:       size = 8; break;
+		case DW_FORM_sec_offset:     size = img.isX64() ? 8 : 4; lldata = RDsize(p, size); data = (unsigned long) lldata; isRef = true; break;
 		case DW_FORM_indirect:
-		case DW_FORM_sec_offset:
 		default: return setError("unknown DWARF form entry");
 		}
 		switch(attr)
@@ -516,7 +518,12 @@ bool CV2PDB::readDWARFInfoData(DWARF_InfoData& id, DWARF_CompilationUnit* cu, un
 		case DW_AT_MIPS_linkage_name: id.linkage_name = str; break;
 		case DW_AT_comp_dir:  id.dir  = str; break;
 		case DW_AT_low_pc:    id.pclo = addr; break;
-		case DW_AT_high_pc:   id.pchi = addr; break;
+		case DW_AT_high_pc:
+			if(form == DW_FORM_addr)
+				id.pchi = addr;
+			else
+				id.pchi = id.pclo + data;
+			break;
 		case DW_AT_ranges:    id.ranges = data; break;
 		case DW_AT_type:      id.type = data; break;
 		case DW_AT_inline:    id.inlined = data; break;
@@ -525,9 +532,14 @@ bool CV2PDB::readDWARFInfoData(DWARF_InfoData& id, DWARF_CompilationUnit* cu, un
 		case DW_AT_lower_bound: id.lower_bound = data; break;
 		case DW_AT_containing_type: id.containing_type = data; break;
 		case DW_AT_specification: id.specification = data; break;
-		case DW_AT_data_member_location: id.member_location_ptr = p; id.member_location_len = size; break;
+		case DW_AT_data_member_location: 
+			if(form == DW_FORM_block1 || form == DW_FORM_exprloc) 
+				id.member_location_ptr = p, id.member_location_len = size; 
+			else
+				id.member_location_data = data;
+			break;
 		case DW_AT_location:  
-			if(form == DW_FORM_block1) 
+			if(form == DW_FORM_block1 || form == DW_FORM_exprloc)
 				id.location_ptr = p, id.location_len = size; 
 			else 
 				id.locationlist = data;
@@ -825,7 +837,17 @@ int CV2PDB::addDWARFStructure(DWARF_InfoData& structid, DWARF_CompilationUnit* c
 			int cvid = -1;
 			if (id.tag == DW_TAG_member && id.name)
 			{
-                int off = isunion ? 0 : decodeLocation(id.member_location_ptr, id.member_location_len, true, cvid);
+                int off = 0;
+				if(!isunion)
+				{
+					if(id.member_location_ptr)
+						off = decodeLocation(id.member_location_ptr, id.member_location_len, true, cvid);
+					else
+					{
+						off = id.member_location_data;
+						cvid = S_CONSTANT_V2;
+					}
+				}
 				if(isunion || cvid == S_CONSTANT_V2)
 				{
 					checkDWARFTypeAlloc(kMaxNameLen + 100);
