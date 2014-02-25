@@ -192,3 +192,7 @@ unreleased Version 0.22
 2014-19-02 Version 0.29
 
   * fix DWARF conversion for newer gcc versions (4.8.0 or even earlier)
+
+2014-25-02 Version 0.30
+
+  * fixed crash when converting DWARF for executables without .reloc segment
