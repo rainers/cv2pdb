@@ -58,13 +58,14 @@ $(DOWNLOADS):
 	if not exist $(DOWNLOADS)\nul mkdir $(DOWNLOADS)
 
 ###############################
+ZIP = zip
 SRC_ZIP = $(DOWNLOADS)\cv2pdb_src_$(VERSION).zip
 
 src: $(DOWNLOADS) $(SRC_ZIP)
 
 $(SRC_ZIP): $(SRC) $(ADD) $(DOC) $(TEST)
 	if exist $(SRC_ZIP) del $(SRC_ZIP)
-	zip $(SRC_ZIP) -X $(SRC) $(ADD) $(DOC) $(TEST)
+	$(ZIP) $(SRC_ZIP) -X $(SRC) $(ADD) $(DOC) $(TEST)
  
 ###############################
 BIN_ZIP = $(DOWNLOADS)\cv2pdb_$(VERSION).zip
@@ -73,7 +74,7 @@ bin: $(DOWNLOADS) $(BIN_ZIP)
 
 $(BIN_ZIP): $(BIN) $(DOC) Makefile
 	if exist $(BIN_ZIP) del $(BIN_ZIP)
-	zip $(BIN_ZIP) -j -X $(BIN) $(DOC)
+	$(ZIP) $(BIN_ZIP) -j -X $(BIN) $(DOC)
 
 IDEDIR = $(VSINSTALLDIR)\Common7\IDE
 

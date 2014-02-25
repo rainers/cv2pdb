@@ -45,6 +45,8 @@ PEImage::PEImage(const TCHAR* iname)
 , debug_loc(0)
 , debug_ranges(0)
 , codeSegment(0)
+, reloc(0)
+, reloc_length(0)
 {
 	if(iname)
 		load(iname);
