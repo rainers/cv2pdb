@@ -189,10 +189,14 @@ unreleased Version 0.22
     newest VS versions preferred, then trying through installation paths for VS 2013-2005
   * dviewhelper.dll now avoids being reloaded for every expression
 
-2014-19-02 Version 0.29
+2014-02-19 Version 0.29
 
   * fix DWARF conversion for newer gcc versions (4.8.0 or even earlier)
 
-2014-25-02 Version 0.30
+2014-02-25 Version 0.30
 
   * fixed crash when converting DWARF for executables without .reloc segment
+
+2014-03-01 Version 0.31
+
+  * added support for local variables accessed through esp

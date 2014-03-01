@@ -316,13 +316,13 @@ long decodeLocation(unsigned char* loc, long len, bool push0, int &id, int& size
 			case DW_OP_breg20: case DW_OP_breg21: case DW_OP_breg22: case DW_OP_breg23:
 			case DW_OP_breg24: case DW_OP_breg25: case DW_OP_breg26: case DW_OP_breg27:
 			case DW_OP_breg28: case DW_OP_breg29: case DW_OP_breg30: case DW_OP_breg31:
-				id = S_REGISTER_V2;
-				data = SLEB128(p); 
+				id = ( op == DW_OP_breg4 ? S_BPREL_XXXX_V3 : op == DW_OP_breg5 ? S_BPREL_V2 : S_REGISTER_V2 );
+				stack[stackDepth++] = SLEB128(p);
 				break;
 			case DW_OP_bregx:
-				id = S_REGISTER_V2;
 				data = LEB128(p); // reg
-				data = SLEB128(p); 
+				id = ( data == DW_OP_breg4 ? S_BPREL_XXXX_V3 : data == DW_OP_breg5 ? S_BPREL_V2 : S_REGISTER_V2 );
+				stack[stackDepth++] = SLEB128(p); 
 				break;
 
 			case DW_OP_deref: break;
@@ -340,7 +340,7 @@ long decodeLocation(unsigned char* loc, long len, bool push0, int &id, int& size
 			case DW_OP_call2: size = 2; break;
 			case DW_OP_call4: size = 4; break;
 			case DW_OP_form_tls_address: break;
-			case DW_OP_call_frame_cfa:   stackDepth++; break; 
+			case DW_OP_call_frame_cfa:   stack[stackDepth++] = -1; break; // default stack offset?
 			case DW_OP_call_ref:
 			case DW_OP_bit_piece:
 			case DW_OP_implicit_value: /* DWARF4 */
@@ -354,7 +354,7 @@ long decodeLocation(unsigned char* loc, long len, bool push0, int &id, int& size
 			case DW_OP_neg:   stack[stackDepth-1] = -stack[stackDepth-1]; break;
 			case DW_OP_not:   stack[stackDepth-1] = ~stack[stackDepth-1]; break;
 				break;
-			// biary operations pop twice and push
+			// binary operations pop twice and push
 			case DW_OP_and:   stack[stackDepth-2] = stack[stackDepth-2] &  stack[stackDepth-1]; stackDepth--; break;
 			case DW_OP_div:   stack[stackDepth-2] = stack[stackDepth-2] /  stack[stackDepth-1]; stackDepth--; break;
 			case DW_OP_minus: stack[stackDepth-2] = stack[stackDepth-2] -  stack[stackDepth-1]; stackDepth--; break;
@@ -479,6 +479,7 @@ bool CV2PDB::readDWARFInfoData(DWARF_InfoData& id, DWARF_CompilationUnit* cu, un
 		unsigned long addr = 0;
 		unsigned long data = 0;
 		unsigned long long lldata = 0;
+		int locid;
 		bool isRef = false;
 		switch(form)
 		{
@@ -502,7 +503,7 @@ bool CV2PDB::readDWARFInfoData(DWARF_InfoData& id, DWARF_CompilationUnit* cu, un
 		case DW_FORM_ref4:           size = 4; lldata = data = RD4(p); isRef = true; break;
 		case DW_FORM_ref8:           size = 8; lldata = RD8(p); data = (unsigned long) lldata; isRef = true; break;
 		case DW_FORM_ref_udata:      lldata = data = LEB128(p); size = 0; isRef = true; break;
-		case DW_FORM_exprloc:        size = LEB128(p); lldata = RDsize(p, size); data = (unsigned long) lldata; isRef = true; break;
+		case DW_FORM_exprloc:        size = LEB128(p); lldata = decodeLocation(p, size, false, locid); data = (unsigned long) lldata; isRef = true; break;
 		case DW_FORM_flag_present:   size = 0; lldata = data = 1; break;
 		case DW_FORM_ref_sig8:       size = 8; break;
 		case DW_FORM_sec_offset:     size = img.isX64() ? 8 : 4; lldata = RDsize(p, size); data = (unsigned long) lldata; isRef = true; break;
@@ -563,7 +564,7 @@ void CV2PDB::checkDWARFTypeAlloc(int size, int add)
 	}
 }
 
-void CV2PDB::appendStackVar(const char* name, int type, int offset)
+void CV2PDB::appendStackVar(const char* name, int type, int offset, bool esp)
 {
 	unsigned int len;
 	unsigned int align = 4;
@@ -576,11 +577,14 @@ void CV2PDB::appendStackVar(const char* name, int type, int offset)
 	codeview_symbol*cvs = (codeview_symbol*) (udtSymbols + cbUdtSymbols);
 	cvs->stack_v2.offset = offset;
 	cvs->stack_v2.symtype = type;
-	if(img.isX64())
+
+	bool isx64 = img.isX64();
+	if(isx64 || esp)
 	{
 		cvs->stack_xxxx_v3.id = S_BPREL_XXXX_V3;
 		// register as in "Microsoft Symbol and Type Information" 6.1, see also dia2dump/regs.cpp
-		cvs->stack_xxxx_v3.unknown = 0x14e; // 0x14f: esp relative, 0x14e: ebp relative
+		short reg = isx64 ? (esp ? 0x14f : 0x14e) : (esp ? 21 : 22);
+		cvs->stack_xxxx_v3.unknown = reg;
 		len = cstrcpy_v (true, (BYTE*) cvs->stack_xxxx_v3.name, name);
 		len += (BYTE*) &cvs->stack_xxxx_v3.name - (BYTE*) cvs;
 	}
@@ -695,6 +699,21 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, DWARF_CompilationUnit* cu,
 	cvs->proc_v2.len = len - 2;
 	cbUdtSymbols += len;
 
+#if 0 // add funcinfo
+	cvs = (codeview_symbol*) (udtSymbols + cbUdtSymbols);
+	cvs->funcinfo_32.id = S_FUNCINFO_32;
+	cvs->funcinfo_32.sizeLocals = 20;
+	memset(cvs->funcinfo_32.unknown, 0, sizeof(cvs->funcinfo_32.unknown));
+	cvs->funcinfo_32.unknown[5] = 4;
+	cvs->funcinfo_32.info = 0x4200;
+	cvs->funcinfo_32.unknown2 = 0x11;
+	len = sizeof(cvs->funcinfo_32);
+	for (; len & (align-1); len++)
+		udtSymbols[cbUdtSymbols + len] = 0xf4 - (len & 3);
+	cvs->funcinfo_32.len = len - 2;
+	cbUdtSymbols += len;
+#endif
+
 #if 0
 	addStackVar("local_var", 0x1001, 8);
 #endif
@@ -750,7 +769,9 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, DWARF_CompilationUnit* cu,
 				{
 					off = decodeLocation(id.location_ptr, id.location_len, false, cvid);
 					if(cvid == S_BPREL_V2)
-						appendStackVar(id.name, getTypeByDWARFOffset(cu, id.type), off + frameOff);
+						appendStackVar(id.name, getTypeByDWARFOffset(cu, id.type), off + frameOff, false);
+					else if(cvid == S_BPREL_XXXX_V3)
+						appendStackVar(id.name, getTypeByDWARFOffset(cu, id.type), off, true);
 				}
 			}
 			else
@@ -764,7 +785,9 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, DWARF_CompilationUnit* cu,
 						{
 							off = decodeLocation(id.location_ptr, id.location_len, false, cvid);
 							if(cvid == S_BPREL_V2)
-								appendStackVar(id.name, getTypeByDWARFOffset(cu, id.type), off + frameOff);
+								appendStackVar(id.name, getTypeByDWARFOffset(cu, id.type), off + frameOff, false);
+							else if(cvid == S_BPREL_XXXX_V3)
+								appendStackVar(id.name, getTypeByDWARFOffset(cu, id.type), off, true);
 						}
 						break;
 					case DW_TAG_subprogram:
