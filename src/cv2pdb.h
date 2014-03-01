@@ -118,7 +118,7 @@ public:
 	void appendTypedefs();
 	int  appendEnumerator(const char* typeName, const char* enumName, int enumValue, int prop);
 	int  appendClassTypeEnum(const codeview_type* fieldlist, int type, const char* name);
-	void appendStackVar(const char* name, int type, int offset);
+	void appendStackVar(const char* name, int type, int offset, bool esp);
 	void appendGlobalVar(const char* name, int type, int seg, int offset);
 	bool appendEndArg();
 	void appendEnd();
