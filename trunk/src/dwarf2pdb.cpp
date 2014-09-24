@@ -1716,9 +1716,9 @@ bool CV2PDB::relocateDebugLineInfo()
 		char* p = img.RVA<char> (virtadr, 1);
 		if(p >= img.debug_line && p < img.debug_line + img.debug_line_length)
 		{
-			for (unsigned int p = 8; p < chksize; p += 2)
+			for (unsigned int w = 8; w < chksize; w += 2)
 			{
-				unsigned short entry = *(unsigned short*)(relocbase + p);
+				unsigned short entry = *(unsigned short*)(relocbase + w);
 				unsigned short type = (entry >> 12) & 0xf;
 				unsigned short off = entry & 0xfff;
 
