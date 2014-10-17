@@ -9,9 +9,11 @@
 
 #include "LastError.h"
 #include "mspdb.h"
+#include "readDwarf.h"
 
 #include <windows.h>
 #include <map>
+#include <unordered_map>
 
 extern "C" {
 #include "mscvpdb.h"
@@ -158,7 +160,6 @@ public:
 
 	// DWARF
 	bool createDWARFModules();
-	unsigned char* getDWARFAbbrev(int off, int n);
 	bool addDWARFTypes();
 	bool addDWARFLines();
 	bool addDWARFPublics();
@@ -166,16 +167,16 @@ public:
 	bool writeDWARFImage(const TCHAR* opath);
 
 	bool addDWARFSectionContrib(mspdb::Mod* mod, unsigned long pclo, unsigned long pchi);
-	bool addDWARFProc(DWARF_InfoData& id, DWARF_CompilationUnit* cu, unsigned char* &locals, unsigned char* end);
-	int  addDWARFStructure(DWARF_InfoData& id, DWARF_CompilationUnit* cu, unsigned char* &locals, unsigned char* end);
-	int  addDWARFArray(DWARF_InfoData& arrayid, DWARF_CompilationUnit* cu, unsigned char* &locals, unsigned char* end);
+	bool addDWARFProc(DWARF_InfoData& id, DWARF_CompilationUnit* cu, DIECursor cursor);
+	int  addDWARFStructure(DWARF_InfoData& id, DWARF_CompilationUnit* cu, DIECursor cursor);
+	int  addDWARFArray(DWARF_InfoData& arrayid, DWARF_CompilationUnit* cu, DIECursor cursor);
 	int  addDWARFBasicType(const char*name, int encoding, int byte_size);
-	bool iterateDWARFDebugInfo(int op);
 	int  getTypeByDWARFOffset(DWARF_CompilationUnit* cu, int off);
 	int  getDWARFTypeSize(DWARF_CompilationUnit* cu, int typeOff);
-	int  getDWARFArrayBounds(DWARF_InfoData& arrayid, DWARF_CompilationUnit* cu, 
-	                         unsigned char* &locals, unsigned char* end, int& upperBound);
-	bool readDWARFInfoData(DWARF_InfoData& id, DWARF_CompilationUnit* cu, unsigned char* &p, bool mergeInfo = false);
+	int  getDWARFArrayBounds(DWARF_InfoData& arrayid, DWARF_CompilationUnit* cu, DIECursor cursor, int& upperBound);
+
+	bool mapTypes();
+	bool createTypes();
 
 // private:
 	BYTE* libraries;
@@ -255,7 +256,7 @@ public:
 
 	// DWARF
 	int codeSegOff;
-	std::map<int, int> mapOffsetToType;
+	std::unordered_map<int, int> mapOffsetToType;
 };
 
 
