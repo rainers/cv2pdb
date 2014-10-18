@@ -282,6 +282,16 @@ struct DWARF_LineState
 
 ///////////////////////////////////////////////////////////////////////////////
 
+// The actual value is {reg} + offset
+struct Location
+{
+	int reg;
+	int offset;
+};
+const int NoReg = -1;
+
+bool decodeLocation(byte* loc, long len, Location& result, Location* frameBase = 0);
+
 long decodeLocation(byte* loc, long len, bool push0, int &id, int& size);
 
 inline long decodeLocation(byte*loc, long len, bool push0, int &id)

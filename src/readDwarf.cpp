@@ -11,21 +11,13 @@ extern "C" {
 	#include "mscvpdb.h"
 }
 
-// The actual value is {reg} + offset
-struct Location
-{
-	int reg;
-	int offset;
-};
-const int NoReg = -1;
-
 Location makeLoc(int r, int o)
 {
 	Location e = { r, o };
 	return e;
 }
 
-bool decodeLocation(byte* loc, long len, Location* frameBase)
+bool decodeLocation(byte* loc, long len, Location& result, Location* frameBase)
 {
 	byte* p = loc;
 	Location stack[256];
@@ -34,13 +26,11 @@ bool decodeLocation(byte* loc, long len, Location* frameBase)
 	for (;;)
 	{
 		if (p >= loc + len)
-			return false;
+			break;
 
 		int op = *p++;
 		if (op == 0)
-		{
-			return true;
-		}
+			break;
 
 		switch (op)
 		{
@@ -74,10 +64,25 @@ bool decodeLocation(byte* loc, long len, Location* frameBase)
 		case DW_OP_reg28: case DW_OP_reg29: case DW_OP_reg30: case DW_OP_reg31:
 			stack[stackDepth++] = makeLoc(op - DW_OP_reg0, 0);
 			break;
+			case DW_OP_regx:
+				stack[stackDepth++] = makeLoc(LEB128(p), 0);
+				break;
 
+			case DW_OP_breg0:  case DW_OP_breg1:  case DW_OP_breg2:  case DW_OP_breg3:
+			case DW_OP_breg4:  case DW_OP_breg5:  case DW_OP_breg6:  case DW_OP_breg7:
+			case DW_OP_breg8:  case DW_OP_breg9:  case DW_OP_breg10: case DW_OP_breg11:
+			case DW_OP_breg12: case DW_OP_breg13: case DW_OP_breg14: case DW_OP_breg15:
+			case DW_OP_breg16: case DW_OP_breg17: case DW_OP_breg18: case DW_OP_breg19:
+			case DW_OP_breg20: case DW_OP_breg21: case DW_OP_breg22: case DW_OP_breg23:
+			case DW_OP_breg24: case DW_OP_breg25: case DW_OP_breg26: case DW_OP_breg27:
+			case DW_OP_breg28: case DW_OP_breg29: case DW_OP_breg30: case DW_OP_breg31:
+				stack[stackDepth++] = makeLoc(op - DW_OP_breg0, SLEB128(p));
+				break;
 		case DW_OP_bregx:
-			stack[stackDepth++] = makeLoc(LEB128(p), SLEB128(p));
-			break;
+			{
+				unsigned reg = LEB128(p);
+				stack[stackDepth++] = makeLoc(reg, SLEB128(p));
+			}   break;
 
 		case DW_OP_plus:  // op2 + op1
 		{
@@ -230,8 +235,27 @@ bool decodeLocation(byte* loc, long len, Location* frameBase)
 			}
 			--stackDepth;
 		}   break;
+
+			case DW_OP_nop:
+				break;
+
+			case DW_OP_push_object_address:
+			case DW_OP_call2:
+			case DW_OP_call4:
+			case DW_OP_form_tls_address:
+			case DW_OP_call_frame_cfa:
+			case DW_OP_call_ref:
+			case DW_OP_bit_piece:
+			case DW_OP_implicit_value:
+			case DW_OP_stack_value:
+			default:
+				return false;
 		}
 	}
+
+	assert(stackDepth > 0);
+	result = stack[0];
+	return true;
 }
 
 
