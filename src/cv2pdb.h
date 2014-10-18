@@ -171,8 +171,8 @@ public:
 	int  addDWARFStructure(DWARF_InfoData& id, DWARF_CompilationUnit* cu, DIECursor cursor);
 	int  addDWARFArray(DWARF_InfoData& arrayid, DWARF_CompilationUnit* cu, DIECursor cursor);
 	int  addDWARFBasicType(const char*name, int encoding, int byte_size);
-	int  getTypeByDWARFOffset(DWARF_CompilationUnit* cu, int off);
-	int  getDWARFTypeSize(DWARF_CompilationUnit* cu, int typeOff);
+	int  getTypeByDWARFPtr(DWARF_CompilationUnit* cu, byte* ptr);
+	int  getDWARFTypeSize(DWARF_CompilationUnit* cu, byte* ptr);
 	int  getDWARFArrayBounds(DWARF_InfoData& arrayid, DWARF_CompilationUnit* cu, DIECursor cursor, int& upperBound);
 
 	bool mapTypes();
@@ -256,7 +256,7 @@ public:
 
 	// DWARF
 	int codeSegOff;
-	std::unordered_map<int, int> mapOffsetToType;
+	std::unordered_map<byte*, int> mapOffsetToType;
 };
 
 

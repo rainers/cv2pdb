@@ -5,7 +5,9 @@
 #include <vector>
 #include "mspdb.h"
 
-inline unsigned int LEB128(unsigned char* &p)
+typedef unsigned char byte;
+
+inline unsigned int LEB128(byte* &p)
 {
 	unsigned int x = 0;
 	int shift = 0;
@@ -20,7 +22,7 @@ inline unsigned int LEB128(unsigned char* &p)
 	return x;
 }
 
-inline int SLEB128(unsigned char* &p)
+inline int SLEB128(byte* &p)
 {
 	unsigned int x = 0;
 	int shift = 0;
@@ -37,14 +39,14 @@ inline int SLEB128(unsigned char* &p)
 	return x;
 }
 
-inline unsigned int RD2(unsigned char* p)
+inline unsigned int RD2(byte* &p)
 {
 	unsigned int x = *p++;
 	x |= *p++ << 8;
 	return x;
 }
 
-inline unsigned int RD4(unsigned char* p)
+inline unsigned int RD4(byte* &p)
 {
 	unsigned int x = *p++;
 	x |= *p++ << 8;
@@ -53,7 +55,7 @@ inline unsigned int RD4(unsigned char* p)
 	return x;
 }
 
-inline unsigned long long RD8(unsigned char* p)
+inline unsigned long long RD8(byte* &p)
 {
 	unsigned long long x = *p++;
 	for (int shift = 8; shift < 64; shift += 8)
@@ -61,7 +63,7 @@ inline unsigned long long RD8(unsigned char* p)
 	return x;
 }
 
-inline unsigned long long RDsize(unsigned char* p, int size)
+inline unsigned long long RDsize(byte* &p, int size)
 {
 	if (size > 8)
 		size = 8;
@@ -71,6 +73,34 @@ inline unsigned long long RDsize(unsigned char* p, int size)
 	return x;
 }
 
+enum AttrClass
+{
+	Invalid,
+	Addr,
+	Block,
+	Const,
+	String,
+	Flag,
+	Ref,
+	ExprLoc,
+	SecOffset
+};
+
+struct DWARF_Attribute
+{
+	AttrClass type;
+	union
+	{
+		unsigned long addr;
+		struct { byte* ptr; unsigned len; } block;
+		unsigned long cons;
+		const char* string;
+		bool flag;
+		byte* ref;
+		struct { byte* ptr; unsigned len; } expr;
+		unsigned long sec_offset;
+	};
+};
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -81,7 +111,7 @@ struct DWARF_CompilationUnit
 	unsigned int unit_length; // 12 byte in DWARF-64
 	unsigned short version;
 	unsigned int debug_abbrev_offset; // 8 byte in DWARF-64
-	unsigned char address_size;
+	byte address_size;
 
 	bool isDWARF64() const { return unit_length == ~0; }
 	int refSize() const { return unit_length == ~0 ? 8 : 4; }
@@ -94,7 +124,7 @@ struct DWARF_FileName
 	unsigned long lastModification;
 	unsigned long fileLength;
 
-	void read(unsigned char* &p)
+	void read(byte* &p)
 	{
 		file_name = (const char*)p;
 		p += strlen((const char*)p) + 1;
@@ -106,8 +136,9 @@ struct DWARF_FileName
 
 struct DWARF_InfoData
 {
-	int entryOff;
+	byte* entryPtr;
 	int code;
+	byte* abbrev;
 	int tag;
 	int hasChild;
 
@@ -115,31 +146,27 @@ struct DWARF_InfoData
 	const char* linkage_name;
 	const char* dir;
 	unsigned long byte_size;
-	unsigned long sibling;
+	byte* sibling;
 	unsigned long encoding;
 	unsigned long pclo;
 	unsigned long pchi;
 	unsigned long ranges;
-	unsigned long type;
-	unsigned long containing_type;
-	unsigned long specification;
+	byte* type;
+	byte* containing_type;
+	byte* specification;
 	unsigned long inlined;
-	unsigned long external;
-	unsigned char*location_ptr;
-	unsigned long location_len;
-	unsigned char*member_location_ptr;
-	unsigned long member_location_len;
-	unsigned long member_location_data;
-	unsigned long locationlist; // offset into debug_loc
-	long frame_base;
+	bool external;
+	DWARF_Attribute location;
+	DWARF_Attribute member_location;
+	DWARF_Attribute frame_base;
 	long upper_bound;
 	long lower_bound;
-	unsigned char* abbrev;
 
 	void clear()
 	{
-		entryOff = 0;
+		entryPtr = 0;
 		code = 0;
+		abbrev = 0;
 		tag = 0;
 		hasChild = 0;
 
@@ -151,22 +178,16 @@ struct DWARF_InfoData
 		encoding = 0;
 		pclo = 0;
 		pchi = 0;
-		ranges = 0;
 		type = 0;
 		containing_type = 0;
 		specification = 0;
 		inlined = 0;
 		external = 0;
-		member_location_ptr = 0;
-		member_location_len = 0;
-		member_location_data = 0;
-		location_ptr = 0;
-		location_len = 0;
-		locationlist = 0;
-		frame_base = -1;
+		member_location.type = Invalid;
+		location.type = Invalid;
+		frame_base.type = Invalid;
 		upper_bound = 0;
 		lower_bound = 0;
-		abbrev = 0;
 	}
 };
 
@@ -177,12 +198,12 @@ struct DWARF_LineNumberProgramHeader
 	unsigned int unit_length; // 12 byte in DWARF-64
 	unsigned short version;
 	unsigned int header_length; // 8 byte in DWARF-64
-	unsigned char minimum_instruction_length;
-	//unsigned char maximum_operations_per_instruction; (// not in DWARF 2
-	unsigned char default_is_stmt;
+	byte minimum_instruction_length;
+	//byte maximum_operations_per_instruction; (// not in DWARF 2
+	byte default_is_stmt;
 	signed char line_base;
-	unsigned char line_range;
-	unsigned char opcode_base;
+	byte line_range;
+	byte opcode_base;
 	//LEB128 standard_opcode_lengths[opcode_base]; 
 	// string include_directories[] // zero byte terminated
 	// DWARF_FileNames file_names[] // zero byte terminated
@@ -261,15 +282,13 @@ struct DWARF_LineState
 
 ///////////////////////////////////////////////////////////////////////////////
 
+long decodeLocation(byte* loc, long len, bool push0, int &id, int& size);
 
-long decodeLocation(unsigned char* loc, long len, bool push0, int &id, int& size);
-
-inline long decodeLocation(unsigned char*loc, long len, bool push0, int &id)
+inline long decodeLocation(byte*loc, long len, bool push0, int &id)
 {
 	int size;
 	return decodeLocation(loc, len, push0, id, size);
 }
-
 
 class PEImage;
 
@@ -278,19 +297,19 @@ class DIECursor
 {
 public:
 	DWARF_CompilationUnit* cu;
-	unsigned char* ptr;
+	byte* ptr;
 	int level;
 	bool hasChild; // indicates whether the last read DIE has children
-	unsigned int sibling;
+	byte* sibling;
 
-	unsigned char* getDWARFAbbrev(unsigned off, unsigned findcode);
+	byte* getDWARFAbbrev(unsigned off, unsigned findcode);
 
 public:
 
 	static void setContext(PEImage* img_);
 
-	// Create a new DIECursor from compilation unit with offset relative to the CU.
-	DIECursor(DWARF_CompilationUnit* cu_, unsigned long offset);
+	// Create a new DIECursor
+	DIECursor(DWARF_CompilationUnit* cu_, byte* ptr);
 
 	// Reads next sibling DIE.  If the last read DIE had any children, they will be skipped over.
 	// Returns 'false' upon reaching the last sibling on the current level.
