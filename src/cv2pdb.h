@@ -16,7 +16,8 @@
 #include <unordered_map>
 
 extern "C" {
-#include "mscvpdb.h"
+	#include "mscvpdb.h"
+	#include "dcvinfo.h"
 }
 
 class PEImage;

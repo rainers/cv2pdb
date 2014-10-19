@@ -110,6 +110,7 @@
   <ItemGroup>
     <ClInclude Include="cv2pdb.h" />
     <ClInclude Include="cvutil.h" />
+    <ClInclude Include="dcvinfo.h" />
     <ClInclude Include="demangle.h" />
     <ClInclude Include="dwarf.h" />
     <ClInclude Include="LastError.h" />

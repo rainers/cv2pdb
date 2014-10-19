@@ -8,7 +8,7 @@
 
 bool isStruct(const codeview_type* cvtype)
 {
-	switch(cvtype->common.id)
+	switch (cvtype->generic.id)
 	{
 	case LF_STRUCTURE_V1:
 	case LF_CLASS_V1:
@@ -23,7 +23,7 @@ bool isStruct(const codeview_type* cvtype)
 
 bool isClass(const codeview_type* cvtype)
 {
-	switch(cvtype->common.id)
+	switch (cvtype->generic.id)
 	{
 	case LF_CLASS_V1:
 	case LF_CLASS_V2:
@@ -35,7 +35,7 @@ bool isClass(const codeview_type* cvtype)
 
 int getStructProperty(const codeview_type* cvtype)
 {
-	switch(cvtype->common.id)
+	switch (cvtype->generic.id)
 	{
 	case LF_STRUCTURE_V1:
 	case LF_CLASS_V1:
@@ -52,7 +52,7 @@ int getStructProperty(const codeview_type* cvtype)
 
 int getStructFieldlist(const codeview_type* cvtype)
 {
-	switch(cvtype->common.id)
+	switch (cvtype->generic.id)
 	{
 	case LF_STRUCTURE_V1:
 	case LF_CLASS_V1:
@@ -70,7 +70,7 @@ int getStructFieldlist(const codeview_type* cvtype)
 const BYTE* getStructName(const codeview_type* cvtype, bool &cstr)
 {
 	int value, leaf_len;
-	switch(cvtype->common.id)
+	switch (cvtype->generic.id)
 	{
 	case LF_STRUCTURE_V1:
 	case LF_CLASS_V1:

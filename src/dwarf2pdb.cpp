@@ -112,10 +112,10 @@ void CV2PDB::appendStackVar(const char* name, int type, Location& loc)
 	}
 	else
 	{
-		cvs->stack_xxxx_v3.id = S_BPREL_XXXX_V3;
-		cvs->stack_xxxx_v3.unknown = baseReg;
-		len = cstrcpy_v (true, (BYTE*) cvs->stack_xxxx_v3.name, name);
-		len += (BYTE*) &cvs->stack_xxxx_v3.name - (BYTE*) cvs;
+		cvs->regrel_v3.id = S_REGREL_V3;
+		cvs->regrel_v3.reg = baseReg;
+		len = cstrcpy_v(true, (BYTE*)cvs->regrel_v3.name, name);
+		len += (BYTE*)&cvs->regrel_v3.name - (BYTE*)cvs;
 	}
 	for (; len & (align-1); len++)
 		udtSymbols[cbUdtSymbols + len] = 0xf4 - (len & 3);
@@ -152,8 +152,8 @@ bool CV2PDB::appendEndArg()
 	checkUdtSymbolAlloc(8);
 
 	codeview_symbol*cvs = (codeview_symbol*) (udtSymbols + cbUdtSymbols);
-	cvs->common.id = S_ENDARG_V1;
-	cvs->common.len = 2;
+	cvs->generic.id = S_ENDARG_V1;
+	cvs->generic.len = 2;
 	cbUdtSymbols += 4;
 	return true;
 }
@@ -163,8 +163,8 @@ void CV2PDB::appendEnd()
 	checkUdtSymbolAlloc(8);
 
 	codeview_symbol*cvs = (codeview_symbol*) (udtSymbols + cbUdtSymbols);
-	cvs->common.id = S_END_V1;
-	cvs->common.len = 2;
+	cvs->generic.id = S_END_V1;
+	cvs->generic.len = 2;
 	cbUdtSymbols += 4;
 }
 
@@ -264,9 +264,7 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, DWARF_CompilationUnit* cu, DIE
 				{
 					Location param;
 					if (decodeLocation(id.location.expr.ptr, id.location.expr.len, param, pframeBase))
-					{
 						appendStackVar(id.name, getTypeByDWARFPtr(cu, id.type), param);
-					}
 				}
 			}
 			prev = cursor;
@@ -289,9 +287,7 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, DWARF_CompilationUnit* cu, DIE
 					{
 						Location var;
 						if (decodeLocation(id.location.expr.ptr, id.location.expr.len, var, pframeBase))
-						{
 							appendStackVar(id.name, getTypeByDWARFPtr(cu, id.type), var);
-						}
 					}
 				}
 				else if (id.tag == DW_TAG_lexical_block)

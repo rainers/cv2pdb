@@ -322,12 +322,12 @@ long decodeLocation(byte* loc, long len, bool push0, int &id, int& size)
 		case DW_OP_breg20: case DW_OP_breg21: case DW_OP_breg22: case DW_OP_breg23:
 		case DW_OP_breg24: case DW_OP_breg25: case DW_OP_breg26: case DW_OP_breg27:
 		case DW_OP_breg28: case DW_OP_breg29: case DW_OP_breg30: case DW_OP_breg31:
-			id = (op == DW_OP_breg4 ? S_BPREL_XXXX_V3 : op == DW_OP_breg5 ? S_BPREL_V2 : S_REGISTER_V2);
+			id = (op == DW_OP_breg4 ? S_REGREL_V3 : op == DW_OP_breg5 ? S_BPREL_V2 : S_REGISTER_V2);
 			stack[stackDepth++] = SLEB128(p);
 			break;
 		case DW_OP_bregx:
 			data = LEB128(p); // reg
-			id = (data == DW_OP_breg4 ? S_BPREL_XXXX_V3 : data == DW_OP_breg5 ? S_BPREL_V2 : S_REGISTER_V2);
+			id = (data == DW_OP_breg4 ? S_REGREL_V3 : data == DW_OP_breg5 ? S_BPREL_V2 : S_REGISTER_V2);
 			stack[stackDepth++] = SLEB128(p);
 			break;
 

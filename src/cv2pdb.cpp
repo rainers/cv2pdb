@@ -153,7 +153,7 @@ bool CV2PDB::openPDB(const TCHAR* pdbname, const TCHAR* pdbref)
 	rsds = (OMFSignatureRSDS *) new char[24 + strlen(pdbnameA) + 1]; // sizeof(OMFSignatureRSDS) without name
 	memcpy (rsds->Signature, "RSDS", 4);
 	pdb->QuerySignature2(&rsds->guid);
-	rsds->unknown = pdb->QueryAge();
+	rsds->age = pdb->QueryAge();
 	strcpy(rsds->name, pdbnameA);
 
 	int rc = pdb->CreateDBI("", &dbi);
@@ -371,7 +371,7 @@ int CV2PDB::_doFields(int cmd, codeview_reftype* dfieldlist, const codeview_reft
 		codeview_fieldtype* dfieldtype = (codeview_fieldtype*)(dp + dpos);
 		int copylen = 0;
 
-		switch (fieldtype->common.id)
+		switch (fieldtype->generic.id)
 		{
 		case LF_ENUMERATE_V1:
 			if (dp && v3)
@@ -484,10 +484,10 @@ int CV2PDB::_doFields(int cmd, codeview_reftype* dfieldlist, const codeview_reft
 
 			if(cmd == kCmdOffsetFirstVirtualMethod)
 				if(const codeview_type* cvtype = getTypeData(fieldtype->method_v1.mlist))
-					if(cvtype->common.id == LF_METHODLIST_V1 && cvtype->common.len > 2)
+					if (cvtype->generic.id == LF_METHODLIST_V1 && cvtype->generic.len > 2)
 					{
 						// just check the first entry
-						const unsigned short *pattr = (const unsigned short*)(&cvtype->common + 1);
+						const unsigned short *pattr = (const unsigned short*)(&cvtype->generic + 1);
 						int mode =(*pattr >> 2) & 7;
 						if(mode == 4 || mode == 6)
 							return *(const unsigned*)(&pattr[2]);
@@ -609,7 +609,7 @@ int CV2PDB::_doFields(int cmd, codeview_reftype* dfieldlist, const codeview_reft
 			base_classes++;
 			if (dp)
 			{
-				dfieldtype->vbclass_v2.id = fieldtype->common.id == LF_VBCLASS_V1 ? LF_VBCLASS_V2 : LF_IVBCLASS_V2;
+				dfieldtype->vbclass_v2.id = fieldtype->generic.id == LF_VBCLASS_V1 ? LF_VBCLASS_V2 : LF_IVBCLASS_V2;
 				dfieldtype->vbclass_v2.attribute = fieldtype->vbclass_v1.attribute;
 				dfieldtype->vbclass_v2.btype = fieldtype->vbclass_v1.btype;
 				dfieldtype->vbclass_v2.vbtype = fieldtype->vbclass_v1.vbtype;
@@ -735,7 +735,7 @@ int CV2PDB::addPointerType(codeview_type* dtype, int type, int attr)
 	dtype->pointer_v2.len = 10;
 	dtype->pointer_v2.datatype = translateType(type);
 	dtype->pointer_v2.attribute = attr;
-	return dtype->common.len + 2; // no alignment data needed, because always 12 bytes
+	return dtype->generic.len + 2; // no alignment data needed, because always 12 bytes
 }
 int CV2PDB::addPointerType(unsigned char* dtype, int type, int attr)
 {
@@ -815,7 +815,7 @@ void CV2PDB::writeUserTypeLen(codeview_type* type, int len)
 	for (; len & 3; len++)
 		p[len] = 0xf4 - (len & 3);
 
-	type->common.len = len - 2;
+	type->generic.len = len - 2;
 	cbUserTypes += len;
 }
 
@@ -853,7 +853,7 @@ const codeview_type* CV2PDB::getUserTypeData(int type)
 	while(type > 0 && pos < cbUserTypes)
 	{
 		const codeview_type* ptype = (codeview_type*)(userTypes + pos);
-		int len = ptype->common.len + 2;
+		int len = ptype->generic.len + 2;
 		pos += len;
 		type--;
 	}
@@ -870,7 +870,7 @@ const codeview_type* CV2PDB::getConvertedTypeData(int type)
 	while(type > 0 && pos < cbGlobalTypes)
 	{
 		const codeview_type* ptype = (codeview_type*)(globalTypes + pos);
-		int len = ptype->common.len + 2;
+		int len = ptype->generic.len + 2;
 		pos += len;
 		type--;
 	}
@@ -911,7 +911,7 @@ const codeview_type* CV2PDB::findCompleteClassType(const codeview_type* cvtype, 
 					*ptype = t;
 				return type;
 			}
-			pos += type->common.len + 2;
+			pos += type->generic.len + 2;
 		}
 	}
 	return cvtype;
@@ -920,11 +920,11 @@ const codeview_type* CV2PDB::findCompleteClassType(const codeview_type* cvtype, 
 int CV2PDB::findMemberFunctionType(codeview_symbol* lastGProcSym, int thisPtrType)
 {
 	const codeview_type* proctype = getTypeData(lastGProcSym->proc_v2.proctype);
-	if (!proctype || proctype->common.id != LF_PROCEDURE_V1)
+	if (!proctype || proctype->generic.id != LF_PROCEDURE_V1)
 		return lastGProcSym->proc_v2.proctype;
 
 	const codeview_type* thisPtrData = getTypeData(thisPtrType);
-	if (!thisPtrData || thisPtrData->common.id != LF_POINTER_V1)
+	if (!thisPtrData || thisPtrData->generic.id != LF_POINTER_V1)
 		return lastGProcSym->proc_v2.proctype;
 
 	int thistype = thisPtrData->pointer_v1.datatype;
@@ -936,7 +936,7 @@ int CV2PDB::findMemberFunctionType(codeview_symbol* lastGProcSym, int thisPtrTyp
 	{
 		// remember: mfunction_v1.class_type falsely is pointer, not class type
 		const codeview_type* type = (const codeview_type*)(typeData + offset[t]);
-		if (type->common.id == LF_MFUNCTION_V1 && type->mfunction_v1.this_type == thisPtrType)
+		if (type->generic.id == LF_MFUNCTION_V1 && type->mfunction_v1.this_type == thisPtrType)
 		{
 			if (type->mfunction_v1.arglist == proctype->procedure_v1.arglist &&
 				type->mfunction_v1.call == proctype->procedure_v1.call &&
@@ -961,7 +961,7 @@ int CV2PDB::fixProperty(int type, int prop, int fieldType)
 	for (unsigned int t = 0; t < globalTypeHeader->cTypes; t++)
 	{
 		const codeview_reftype* cvtype = (const codeview_reftype*)(typeData + offset[t]);
-		if (cvtype->common.id == LF_FIELDLIST_V1 || cvtype->common.id == LF_FIELDLIST_V2)
+		if (cvtype->generic.id == LF_FIELDLIST_V1 || cvtype->generic.id == LF_FIELDLIST_V2)
 		{
 			if (countNestedTypes(cvtype, type) > 0)
 			{
@@ -1059,11 +1059,11 @@ int CV2PDB::sizeofType(int type)
 	if (!cvtype)
 		return 4;
 
-	if (cvtype->common.id == LF_CLASS_V1 || cvtype->common.id == LF_STRUCTURE_V1)
+	if (cvtype->generic.id == LF_CLASS_V1 || cvtype->generic.id == LF_STRUCTURE_V1)
 		return sizeofClassType(cvtype);
 
-	if (cvtype->common.id == LF_OEM_V1 || cvtype->common.id == LF_OEM_V2)
-		if (((codeview_oem_type*) (&cvtype->common + 1))->common.oemid == 0x42)
+	if (cvtype->generic.id == LF_OEM_V1 || cvtype->generic.id == LF_OEM_V2)
+		if (((codeview_oem_type*)(&cvtype->generic + 1))->generic.oemid == 0x42)
 			return 8; // all D oem types
 
 	// everything else must be pointer or function pointer
@@ -1085,16 +1085,16 @@ int CV2PDB::translateType(int type)
 	if (!cvtype)
 		return type;
 
-	if (cvtype->common.id != LF_OEM_V1)
+	if (cvtype->generic.id != LF_OEM_V1)
 		return type;
 
-	codeview_oem_type* oem = (codeview_oem_type*) (&cvtype->common + 1);
-	if (oem->common.oemid == 0x42 && oem->common.id == 3)
+	codeview_oem_type* oem = (codeview_oem_type*)(&cvtype->generic + 1);
+	if (oem->generic.oemid == 0x42 && oem->generic.id == 3)
 	{
 		if (oem->d_delegate.this_type == 0x403 && oem->d_delegate.func_type == 0x74)
 			return translateType(0x13); // int64
 	}
-	if (oem->common.oemid == 0x42 && oem->common.id == 1 && Dversion == 0)
+	if (oem->generic.oemid == 0x42 && oem->generic.id == 1 && Dversion == 0)
 	{
 		// C does not have D types, so this must be unsigned long
 		if (oem->d_dyn_array.index_type == 0x12 && oem->d_dyn_array.elem_type == 0x74)
@@ -1213,7 +1213,7 @@ bool CV2PDB::nameOfType(int type, char* name, int maxlen)
 		return setError("nameOfType: invalid type while retreiving name of type");
 
 	int leaf_len, value, len;
-	switch(ptype->common.id)
+	switch(ptype->generic.id)
 	{
 	case LF_CLASS_V1:
 	case LF_STRUCTURE_V1:
@@ -1322,7 +1322,7 @@ bool CV2PDB::nameOfType(int type, char* name, int maxlen)
 		break;
 
 	case LF_OEM_V1:
-		if (!nameOfOEMType((codeview_oem_type*) (&ptype->common + 1), name, maxlen))
+		if (!nameOfOEMType((codeview_oem_type*) (&ptype->generic + 1), name, maxlen))
 			return false;
 		break;
 	default:
@@ -1386,11 +1386,11 @@ bool CV2PDB::nameOfDelegate(int thisType, int funcType, char* name, int maxlen)
 
 bool CV2PDB::nameOfOEMType(codeview_oem_type* oem, char* name, int maxlen)
 {
-	if (oem->common.oemid == 0x42 && oem->common.id == 1)
+	if (oem->generic.oemid == 0x42 && oem->generic.id == 1)
 		return nameOfDynamicArray(oem->d_dyn_array.index_type, oem->d_dyn_array.elem_type, name, maxlen);
-	if (oem->common.oemid == 0x42 && oem->common.id == 2)
+	if (oem->generic.oemid == 0x42 && oem->generic.id == 2)
 		return nameOfAssocArray(oem->d_assoc_array.key_type, oem->d_assoc_array.elem_type, name, maxlen);
-	if (oem->common.oemid == 0x42 && oem->common.id == 3)
+	if (oem->generic.oemid == 0x42 && oem->generic.id == 3)
 		return nameOfDelegate(oem->d_delegate.this_type, oem->d_delegate.func_type, name, maxlen);
 
 	return setError("nameOfOEMType: unknown OEM type record");
@@ -1692,11 +1692,11 @@ int CV2PDB::appendObjectType (int object_type, int enumType, const char* classSy
 
 	// vtable
 	rdtype = (codeview_reftype*) (userTypes + cbUserTypes);
-	rdtype->common.len = 6;
-	rdtype->common.id = LF_VTSHAPE_V1;
-	((unsigned short*) (&rdtype->common + 1))[0] = 1;
-	((unsigned short*) (&rdtype->common + 1))[1] = 0xf150;
-	cbUserTypes += rdtype->common.len + 2;
+	rdtype->generic.len = 6;
+	rdtype->generic.id = LF_VTSHAPE_V1;
+	((unsigned short*)(&rdtype->generic + 1))[0] = 1;
+	((unsigned short*)(&rdtype->generic + 1))[1] = 0xf150;
+	cbUserTypes += rdtype->generic.len + 2;
 	int vtableType = nextUserType++;
 
 	// vtable*
@@ -1728,7 +1728,7 @@ int CV2PDB::appendObjectType (int object_type, int enumType, const char* classSy
 		numElem++;
 	}
 
-	cbUserTypes += rdtype->common.len + 2;
+	cbUserTypes += rdtype->generic.len + 2;
 	int fieldListType = nextUserType++;
 
 	dtype = (codeview_type*) (userTypes + cbUserTypes);
@@ -1840,13 +1840,13 @@ int CV2PDB::getBaseClass(const codeview_type* cvtype)
 		cvtype = findCompleteClassType(cvtype);
 
 	const codeview_reftype* fieldlist = (const codeview_reftype*) getConvertedTypeData(getStructFieldlist(cvtype));
-	if(!fieldlist || (fieldlist->common.id != LF_FIELDLIST_V1 && fieldlist->common.id != LF_FIELDLIST_V2))
+	if (!fieldlist || (fieldlist->generic.id != LF_FIELDLIST_V1 && fieldlist->generic.id != LF_FIELDLIST_V2))
 		return 0;
 
 	codeview_fieldtype* fieldtype = (codeview_fieldtype*)(fieldlist->fieldlist.list);
-	if(fieldtype->common.id == LF_BCLASS_V1)
+	if (fieldtype->generic.id == LF_BCLASS_V1)
 		return fieldtype->bclass_v1.type;
-	if(fieldtype->common.id == LF_BCLASS_V2)
+	if (fieldtype->generic.id == LF_BCLASS_V2)
 		return fieldtype->bclass_v2.type;
 	return 0;
 }
@@ -1857,7 +1857,7 @@ int CV2PDB::countBaseClasses(const codeview_type* cvtype)
 		cvtype = findCompleteClassType(cvtype);
 
 	const codeview_reftype* fieldlist = (const codeview_reftype*) getConvertedTypeData(getStructFieldlist(cvtype));
-	if(!fieldlist || (fieldlist->common.id != LF_FIELDLIST_V1 && fieldlist->common.id != LF_FIELDLIST_V2))
+	if (!fieldlist || (fieldlist->generic.id != LF_FIELDLIST_V1 && fieldlist->generic.id != LF_FIELDLIST_V2))
 		return 0;
 
 	return _doFields(kCmdCountBaseClasses, 0, fieldlist, 0);
@@ -1884,14 +1884,14 @@ bool CV2PDB::isCppInterface(const codeview_type* cvtype)
 		cvtype = findCompleteClassType(cvtype);
 
 	const codeview_reftype* fieldlist = (const codeview_reftype*) getTypeData(getStructFieldlist(cvtype));
-	if(!fieldlist || (fieldlist->common.id != LF_FIELDLIST_V1 && fieldlist->common.id != LF_FIELDLIST_V2))
+	if (!fieldlist || (fieldlist->generic.id != LF_FIELDLIST_V1 && fieldlist->generic.id != LF_FIELDLIST_V2))
 		return false;
 
 	codeview_fieldtype* fieldtype = (codeview_fieldtype*)(fieldlist->fieldlist.list);
 	const codeview_type* basetype = 0;
-	if(fieldtype->common.id == LF_BCLASS_V1)
+	if (fieldtype->generic.id == LF_BCLASS_V1)
 		basetype = getTypeData(fieldtype->bclass_v1.type);
-	if(fieldtype->common.id == LF_BCLASS_V2)
+	if (fieldtype->generic.id == LF_BCLASS_V2)
 		basetype = getTypeData(fieldtype->bclass_v2.type);
 	if(basetype)
 		return isCppInterface(basetype);
@@ -2061,7 +2061,7 @@ bool CV2PDB::initGlobalTypes()
 				const codeview_reftype* rtype = (codeview_reftype*)(typeData + offset[t]);
 				int leaf_len, value;
 
-				int len = type->common.len + 2;
+				int len = type->generic.len + 2;
 				checkGlobalTypeAlloc(len + 1000);
 
 				unsigned int clsstype;
@@ -2080,13 +2080,13 @@ bool CV2PDB::initGlobalTypes()
 					continue;
 				}
 
-				switch (type->common.id)
+				switch (type->generic.id)
 				{
 				case LF_OEM_V1:
 				{
-					codeview_oem_type* oem = (codeview_oem_type*) (&type->common + 1);
+					codeview_oem_type* oem = (codeview_oem_type*)(&type->generic + 1);
 
-					if (oem->common.oemid == 0x42 && oem->common.id == 1)
+					if (oem->generic.oemid == 0x42 && oem->generic.id == 1)
 					{
 						if(Dversion == 0) // in dmc, this is used for (u)int64
 						{
@@ -2101,12 +2101,12 @@ bool CV2PDB::initGlobalTypes()
 							len = addClass(dtype, 0, 0, kPropIncomplete, 0, 0, 0, name);
 						}
 					}
-					else if (oem->common.oemid == 0x42 && oem->common.id == 3)
+					else if (oem->generic.oemid == 0x42 && oem->generic.id == 3)
 					{
 						const char* name = appendDelegate(oem->d_delegate.this_type, oem->d_delegate.func_type);
 						len = addClass(dtype, 0, 0, kPropIncomplete, 0, 0, 0, name);
 					}
-					else if (oem->common.oemid == 0x42 && oem->common.id == 2)
+					else if (oem->generic.oemid == 0x42 && oem->generic.id == 2)
 					{
 						const char* name = appendAssocArray(oem->d_assoc_array.key_type, oem->d_assoc_array.elem_type);
 						len = addClass(dtype, 0, 0, kPropIncomplete, 0, 0, 0, name);
@@ -2150,7 +2150,7 @@ bool CV2PDB::initGlobalTypes()
 					dtype->struct_v2.n_element = type->struct_v1.n_element;
 					if(type->struct_v1.fieldlist != 0)
 						if(const codeview_type* td = getTypeData(type->struct_v1.fieldlist))
-							if(td->common.id == LF_FIELDLIST_V1 || td->common.id == LF_FIELDLIST_V2)
+							if(td->generic.id == LF_FIELDLIST_V1 || td->generic.id == LF_FIELDLIST_V2)
 								dtype->struct_v2.n_element = countFields((const codeview_reftype*)td);
 					dtype->struct_v2.property = fixProperty(t + 0x1000, type->struct_v1.property, 
 					                                        type->struct_v1.fieldlist) | kPropReserved2;
@@ -2228,7 +2228,7 @@ bool CV2PDB::initGlobalTypes()
 					{
 						// fix class_type to point to class, not pointer to class
 						codeview_type* ctype = (codeview_type*)(typeData + offset[clsstype - 0x1000]);
-						if (ctype->common.id == LF_POINTER_V1)
+						if (ctype->generic.id == LF_POINTER_V1)
 							dtype->mfunction_v2.class_type = translateType(ctype->pointer_v1.datatype);
 					}
 					dtype->mfunction_v2.this_type = translateType(type->mfunction_v1.this_type);
@@ -2261,7 +2261,7 @@ bool CV2PDB::initGlobalTypes()
 
 				case LF_DERIVED_V1:
 #if REMOVE_LF_DERIVED
-					rdtype->common.id = LF_NULL_V1;
+					rdtype->generic.id = LF_NULL_V1;
 					len = 4;
 #else
 					rdtype->derived_v2.id = LF_DERIVED_V2;
@@ -2284,10 +2284,10 @@ bool CV2PDB::initGlobalTypes()
 
 				case LF_METHODLIST_V1:
 				{
-					dtype->common.id = LF_METHODLIST_V2;
+					dtype->generic.id = LF_METHODLIST_V2;
 					const unsigned short* pattr = (const unsigned short*)((const char*)type + 4);
 					unsigned* dpattr = (unsigned*)((char*)dtype + 4);
-					while ((const char*)pattr + 4 <= (const char*)type + type->common.len + 2)
+					while ((const char*)pattr + 4 <= (const char*)type + type->generic.len + 2)
 					{
 						// type translation?
 						switch ((*pattr >> 2) & 7)
@@ -2326,7 +2326,7 @@ bool CV2PDB::initGlobalTypes()
 
 				for (; len & 3; len++)
 					globalTypes[cbGlobalTypes + len] = 0xf4 - (len & 3);
-				dtype->common.len = len - 2;
+				dtype->generic.len = len - 2;
 			
 				cbGlobalTypes += len;
 			}
@@ -2359,7 +2359,7 @@ int CV2PDB::appendClassTypeEnum(const codeview_type* fieldlist, int type, const 
 	BYTE data[200];
 	int len = addFieldNestedType((codeview_fieldtype*) data, type, name);
 
-	int fieldlen = fieldlist->common.len + 2;
+	int fieldlen = fieldlist->generic.len + 2;
 	int off = (unsigned char*) fieldlist - globalTypes;
 	checkGlobalTypeAlloc(len);
 
@@ -2369,7 +2369,7 @@ int CV2PDB::appendClassTypeEnum(const codeview_type* fieldlist, int type, const 
 	cbGlobalTypes += len;
 
 	codeview_type* nfieldlist = (codeview_type*) (globalTypes + off);
-	nfieldlist->common.len = fieldlen + len - 2;
+	nfieldlist->generic.len = fieldlen + len - 2;
 	return len;
 }
 
@@ -2385,7 +2385,7 @@ int CV2PDB::insertBaseClass(const codeview_type* fieldlist, int type)
 	for (; len & 3; len++)
 		p[len] = 0xf4 - (len & 3);
 
-	int fieldlen = fieldlist->common.len + 2;
+	int fieldlen = fieldlist->generic.len + 2;
 	int off = (unsigned char*) fieldlist - globalTypes;
 	checkGlobalTypeAlloc(len);
 
@@ -2395,7 +2395,7 @@ int CV2PDB::insertBaseClass(const codeview_type* fieldlist, int type)
 	cbGlobalTypes += len;
 
 	codeview_type* nfieldlist = (codeview_type*) (globalTypes + off);
-	nfieldlist->common.len = fieldlen + len - 2;
+	nfieldlist->generic.len = fieldlen + len - 2;
 	return len;
 }
 
@@ -2405,9 +2405,9 @@ bool CV2PDB::insertClassTypeEnums()
 	for (unsigned int t = 0; pos < cbGlobalTypes && t < globalTypeHeader->cTypes; t++)
 	{
 		codeview_type* type = (codeview_type*)(globalTypes + pos);
-		int typelen = type->common.len + 2;
+		int typelen = type->generic.len + 2;
 	
-		switch(type->common.id)
+		switch(type->generic.id)
 		{
 		case LF_STRUCTURE_V3:
 		case LF_STRUCTURE_V2:
@@ -2421,7 +2421,7 @@ bool CV2PDB::insertClassTypeEnums()
 					int basetype = 0;
 					const char* name;
 
-					if(type->common.id == LF_STRUCTURE_V2 || type->common.id == LF_STRUCTURE_V3)
+					if(type->generic.id == LF_STRUCTURE_V2 || type->generic.id == LF_STRUCTURE_V3)
 					{
 						enumtype = structEnumType;
 						basetype = structBaseType;
@@ -2684,12 +2684,12 @@ bool CV2PDB::addPublics()
 			for (unsigned int i = 0; i < header->cbSymbol; i += length)
 			{
 				union codeview_symbol* sym = (union codeview_symbol*)(symbols + i);
-				length = sym->common.len + 2;
-				if (!sym->common.id || length < 4) 
+				length = sym->generic.len + 2;
+				if (!sym->generic.id || length < 4) 
 					break;
 
 				int rc;
-				switch (sym->common.id)
+				switch (sym->generic.id)
 				{
 				case S_GDATA_V1:
 				case S_LDATA_V1:
@@ -2743,15 +2743,15 @@ int CV2PDB::copySymbols(BYTE* srcSymbols, int srcSize, BYTE* destSymbols, int de
 	for (int i = 0; i < srcSize; i += length)
 	{
 		codeview_symbol* sym = (codeview_symbol*)(srcSymbols + i);
-		length = sym->common.len + 2;
-		if (!sym->common.id || length < 4) 
+		length = sym->generic.len + 2;
+		if (!sym->generic.id || length < 4) 
 			break;
 
 		codeview_symbol* dsym = (codeview_symbol*)(destSymbols + destSize);
 		memcpy(dsym, sym, length);
 		destlength = length;
 
-		switch (sym->common.id)
+		switch (sym->generic.id)
 		{
 		case S_UDT_V1:
 			dsym->udt_v1.type = translateType(sym->udt_v1.type);
@@ -2820,8 +2820,8 @@ int CV2PDB::copySymbols(BYTE* srcSymbols, int srcSize, BYTE* destSymbols, int de
 			else if (type == 0 && p2ccmp(dsym->stack_v1.p_name, "@send"))
 			{
 				destlength = 4;
-				dsym->common.id = S_END_V1;
-				dsym->common.len = destlength - 2;
+				dsym->generic.id = S_END_V1;
+				dsym->generic.len = destlength - 2;
 			}
 			else
 #endif
@@ -2944,23 +2944,23 @@ codeview_symbol* CV2PDB::findUdtSymbol(int type)
 	for(int p = 0; p < cbGlobalSymbols; )
 	{
 		codeview_symbol* sym = (codeview_symbol*) (globalSymbols + p);
-		if(sym->common.id == S_UDT_V1 && sym->udt_v1.type == type)
+		if(sym->generic.id == S_UDT_V1 && sym->udt_v1.type == type)
 			return sym;
-		p += sym->common.len + 2;
+		p += sym->generic.len + 2;
 	}
 	for(int p = 0; p < cbStaticSymbols; )
 	{
 		codeview_symbol* sym = (codeview_symbol*) (staticSymbols + p);
-		if(sym->common.id == S_UDT_V1 && sym->udt_v1.type == type)
+		if(sym->generic.id == S_UDT_V1 && sym->udt_v1.type == type)
 			return sym;
-		p += sym->common.len + 2;
+		p += sym->generic.len + 2;
 	}
 	for(int p = 0; p < cbUdtSymbols; )
 	{
 		codeview_symbol* sym = (codeview_symbol*) (udtSymbols + p);
-		if(sym->common.id == S_UDT_V1 && sym->udt_v1.type == type)
+		if(sym->generic.id == S_UDT_V1 && sym->udt_v1.type == type)
 			return sym;
-		p += sym->common.len + 2;
+		p += sym->generic.len + 2;
 	}
 	return 0;
 }
@@ -2970,23 +2970,23 @@ codeview_symbol* CV2PDB::findUdtSymbol(const char* name)
 	for(int p = 0; p < cbGlobalSymbols; )
 	{
 		codeview_symbol* sym = (codeview_symbol*) (globalSymbols + p);
-		if(sym->common.id == S_UDT_V1 && p2ccmp(sym->udt_v1.p_name, name))
+		if(sym->generic.id == S_UDT_V1 && p2ccmp(sym->udt_v1.p_name, name))
 			return sym;
-		p += sym->common.len + 2;
+		p += sym->generic.len + 2;
 	}
 	for(int p = 0; p < cbStaticSymbols; )
 	{
 		codeview_symbol* sym = (codeview_symbol*) (staticSymbols + p);
-		if(sym->common.id == S_UDT_V1 && p2ccmp(sym->udt_v1.p_name, name))
+		if(sym->generic.id == S_UDT_V1 && p2ccmp(sym->udt_v1.p_name, name))
 			return sym;
-		p += sym->common.len + 2;
+		p += sym->generic.len + 2;
 	}
 	for(int p = 0; p < cbUdtSymbols; )
 	{
 		codeview_symbol* sym = (codeview_symbol*) (udtSymbols + p);
-		if(sym->common.id == S_UDT_V1 && p2ccmp(sym->udt_v1.p_name, name))
+		if(sym->generic.id == S_UDT_V1 && p2ccmp(sym->udt_v1.p_name, name))
 			return sym;
-		p += sym->common.len + 2;
+		p += sym->generic.len + 2;
 	}
 	return 0;
 }
