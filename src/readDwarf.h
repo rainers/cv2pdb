@@ -137,6 +137,7 @@ struct DWARF_FileName
 struct DWARF_InfoData
 {
 	byte* entryPtr;
+	unsigned entryOff; // offset in the cu
 	int code;
 	byte* abbrev;
 	int tag;
@@ -188,6 +189,28 @@ struct DWARF_InfoData
 		frame_base.type = Invalid;
 		upper_bound = 0;
 		lower_bound = 0;
+	}
+
+	void merge(const DWARF_InfoData& id)
+	{
+		if (id.name) name = id.name;
+		if (id.linkage_name) linkage_name = id.linkage_name;
+		if (id.dir) dir = id.dir;
+		if (id.byte_size) byte_size = id.byte_size;
+		if (id.sibling) sibling = id.sibling;
+		if (id.encoding) encoding = id.encoding;
+		if (id.pclo) pclo = id.pclo;
+		if (id.pchi) pchi = id.pchi;
+		if (id.type) type = id.type;
+		if (id.containing_type) containing_type = id.containing_type;
+		if (id.specification) specification = id.specification;
+		if (id.inlined) inlined = id.inlined;
+		if (id.external) external = id.external;
+		if (id.member_location.type != Invalid) member_location = id.member_location;
+		if (id.location.type != Invalid) location = id.location;
+		if (id.frame_base.type != Invalid) frame_base = id.frame_base;
+		if (id.upper_bound) upper_bound = id.upper_bound;
+		if (id.lower_bound) lower_bound = id.lower_bound;
 	}
 };
 
@@ -291,14 +314,6 @@ struct Location
 const int NoReg = -1;
 
 bool decodeLocation(byte* loc, long len, Location& result, Location* frameBase = 0);
-
-long decodeLocation(byte* loc, long len, bool push0, int &id, int& size);
-
-inline long decodeLocation(byte*loc, long len, bool push0, int &id)
-{
-	int size;
-	return decodeLocation(loc, len, push0, id, size);
-}
 
 class PEImage;
 

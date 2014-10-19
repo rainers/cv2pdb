@@ -353,13 +353,21 @@ int CV2PDB::addDWARFStructure(DWARF_InfoData& structid, DWARF_CompilationUnit* c
 				if(!isunion)
 				{
 					if (id.member_location.type == ExprLoc)
-						off = decodeLocation(id.member_location.expr.ptr, id.member_location.expr.len, true, cvid);
-					else
+					{
+						Location loc;
+						if (decodeLocation(id.member_location.expr.ptr, id.member_location.expr.len, loc) && loc.reg == NoReg)
+						{
+							off = loc.offset;
+							cvid = S_CONSTANT_V2;
+						}
+					}
+					else if (id.member_location.type == Const)
 					{
 						off = id.member_location.cons;
 						cvid = S_CONSTANT_V2;
 					}
 				}
+
 				if(isunion || cvid == S_CONSTANT_V2)
 				{
 					checkDWARFTypeAlloc(kMaxNameLen + 100);
@@ -370,7 +378,13 @@ int CV2PDB::addDWARFStructure(DWARF_InfoData& structid, DWARF_CompilationUnit* c
 			}
 			else if(id.tag == DW_TAG_inheritance)
 			{
-				int off = decodeLocation(id.member_location.expr.ptr, id.member_location.expr.len, true, cvid);
+				Location loc;
+				int off;
+				if (decodeLocation(id.member_location.expr.ptr, id.member_location.expr.len, loc) && loc.reg == NoReg)
+				{   
+					cvid = S_CONSTANT_V2;
+					off = loc.offset;
+				}
 				if(cvid == S_CONSTANT_V2)
 				{
 					codeview_fieldtype* bc = (codeview_fieldtype*) (dwarfTypes + cbDwarfTypes);
@@ -685,6 +699,15 @@ bool CV2PDB::createTypes()
 			//printf("0x%08x, level = %d, id.code = %d, id.tag = %d\n",
 			//    (unsigned char*)cu + id.entryOff - (unsigned char*)img.debug_info, cursor.level, id.code, id.tag);
 
+			if (id.specification)
+			{
+				DIECursor specCursor(cu, id.specification);
+				DWARF_InfoData idspec;
+				specCursor.readNext(idspec);
+				assert(id.tag == idspec.tag);
+				id.merge(idspec);
+			}
+
 			int cvtype = -1;
 			switch (id.tag)
 			{
@@ -781,12 +804,17 @@ bool CV2PDB::createTypes()
 					}
 					else
 					{
-						int cvid;
-						segOff = decodeLocation(id.location.expr.ptr, id.location.expr.len, false, cvid);
-						if (cvid == S_GDATA_V2)
-							seg = img.findSection(segOff);
-						if (seg >= 0)
-							segOff -= img.getImageBase() + img.getSection(seg).VirtualAddress;
+						Location loc;
+						if (id.location.type == ExprLoc)
+						{
+							if (decodeLocation(id.location.expr.ptr, id.location.expr.len, loc) && loc.reg == NoReg)
+							{
+								segOff = loc.offset;
+								seg = img.findSection(segOff);
+								if (seg >= 0)
+									segOff -= img.getImageBase() + img.getSection(seg).VirtualAddress;
+							}
+						}
 					}
 					if (seg >= 0)
 					{
