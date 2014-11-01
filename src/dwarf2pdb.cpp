@@ -97,8 +97,6 @@ void CV2PDB::appendStackVar(const char* name, int type, Location& loc)
 	checkUdtSymbolAlloc(100 + kMaxNameLen);
 
 	codeview_symbol*cvs = (codeview_symbol*) (udtSymbols + cbUdtSymbols);
-	cvs->stack_v2.offset = loc.offset;
-	cvs->stack_v2.symtype = type;
 
 	CV_X86_REG baseReg = dwarf_to_x86_reg(loc.reg);
 	if (baseReg == CV_REG_NONE)
@@ -107,6 +105,8 @@ void CV2PDB::appendStackVar(const char* name, int type, Location& loc)
 	if (baseReg == CV_REG_EBP)
 	{
 		cvs->stack_v2.id = v3 ? S_BPREL_V3 : S_BPREL_V2;
+		cvs->stack_v2.offset = loc.off;
+		cvs->stack_v2.symtype = type;
 		len = cstrcpy_v(v3, (BYTE*)&cvs->stack_v2.p_name, name);
 		len += (BYTE*)&cvs->stack_v2.p_name - (BYTE*)cvs;
 	}
@@ -114,6 +114,8 @@ void CV2PDB::appendStackVar(const char* name, int type, Location& loc)
 	{
 		cvs->regrel_v3.id = S_REGREL_V3;
 		cvs->regrel_v3.reg = baseReg;
+		cvs->regrel_v3.offset = loc.off;
+		cvs->regrel_v3.symtype = type;
 		len = cstrcpy_v(true, (BYTE*)cvs->regrel_v3.name, name);
 		len += (BYTE*)&cvs->regrel_v3.name - (BYTE*)cvs;
 	}
@@ -239,14 +241,7 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, DWARF_CompilationUnit* cu, DIE
 	addStackVar("local_var", 0x1001, 8);
 #endif
 
-	Location frameBase;
-	Location* pframeBase = NULL;
-	if(img.debug_loc && procid.frame_base.type == ExprLoc)
-	{
-		if (decodeLocation(procid.frame_base.expr.ptr, procid.frame_base.expr.len, frameBase))
-			pframeBase = &frameBase;
-			}
-
+	Location frameBase = decodeLocation(procid.frame_base);
 
 	if (cu)
 	{
@@ -262,9 +257,9 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, DWARF_CompilationUnit* cu, DIE
 			{
 				if (id.name && id.location.type == ExprLoc)
 				{
-					Location param;
-					if (decodeLocation(id.location.expr.ptr, id.location.expr.len, param, pframeBase))
-						appendStackVar(id.name, getTypeByDWARFPtr(cu, id.type), param);
+					Location loc = decodeLocation(id.location, &frameBase);
+					if (loc.is_regrel())
+						appendStackVar(id.name, getTypeByDWARFPtr(cu, id.type), loc);
 				}
 			}
 			prev = cursor;
@@ -281,22 +276,22 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, DWARF_CompilationUnit* cu, DIE
 
 			while (cursor.readSibling(id))
 			{
-				if (id.tag == DW_TAG_variable)
-				{
-					if (id.name && id.location.type == ExprLoc)
-					{
-						Location var;
-						if (decodeLocation(id.location.expr.ptr, id.location.expr.len, var, pframeBase))
-							appendStackVar(id.name, getTypeByDWARFPtr(cu, id.type), var);
-					}
-				}
-				else if (id.tag == DW_TAG_lexical_block)
+				if (id.tag == DW_TAG_lexical_block)
 				{
 					if (id.hasChild && id.pchi != id.pclo)
 					{
 						appendLexicalBlock(id, pclo + codeSegOff);
 						lexicalBlocks.push_back(cursor);
 						cursor = cursor.getSubtreeCursor();
+					}
+				}
+				else if (id.tag == DW_TAG_variable)
+				{
+					if (id.name && id.location.type == ExprLoc)
+					{
+						Location loc = decodeLocation(id.location, &frameBase);
+						if (loc.is_regrel())
+							appendStackVar(id.name, getTypeByDWARFPtr(cu, id.type), loc);
 					}
 				}
 			}
@@ -348,22 +343,14 @@ int CV2PDB::addDWARFStructure(DWARF_InfoData& structid, DWARF_CompilationUnit* c
 			int cvid = -1;
 			if (id.tag == DW_TAG_member && id.name)
 			{
-				printf("    Adding field %s\n", id.name);
+				//printf("    Adding field %s\n", id.name);
 				int off = 0;
-				if(!isunion)
+				if (!isunion)
 				{
-					if (id.member_location.type == ExprLoc)
+					Location loc = decodeLocation(id.member_location);
+					if (loc.is_abs())
 					{
-						Location loc;
-						if (decodeLocation(id.member_location.expr.ptr, id.member_location.expr.len, loc) && loc.reg == NoReg)
-						{
-							off = loc.offset;
-							cvid = S_CONSTANT_V2;
-						}
-					}
-					else if (id.member_location.type == Const)
-					{
-						off = id.member_location.cons;
+						off = loc.off;
 						cvid = S_CONSTANT_V2;
 					}
 				}
@@ -378,12 +365,12 @@ int CV2PDB::addDWARFStructure(DWARF_InfoData& structid, DWARF_CompilationUnit* c
 			}
 			else if(id.tag == DW_TAG_inheritance)
 			{
-				Location loc;
 				int off;
-				if (decodeLocation(id.member_location.expr.ptr, id.member_location.expr.len, loc) && loc.reg == NoReg)
+				Location loc = decodeLocation(id.member_location);
+				if (loc.is_abs())
 				{   
 					cvid = S_CONSTANT_V2;
-					off = loc.offset;
+					off = loc.off;
 				}
 				if(cvid == S_CONSTANT_V2)
 				{
@@ -804,16 +791,13 @@ bool CV2PDB::createTypes()
 					}
 					else
 					{
-						Location loc;
-						if (id.location.type == ExprLoc)
+						Location loc = decodeLocation(id.location);
+						if (loc.is_abs())
 						{
-							if (decodeLocation(id.location.expr.ptr, id.location.expr.len, loc) && loc.reg == NoReg)
-							{
-								segOff = loc.offset;
-								seg = img.findSection(segOff);
-								if (seg >= 0)
-									segOff -= img.getImageBase() + img.getSection(seg).VirtualAddress;
-							}
+							segOff = loc.off;
+							seg = img.findSection(segOff);
+							if (seg >= 0)
+								segOff -= img.getImageBase() + img.getSection(seg).VirtualAddress;
 						}
 					}
 					if (seg >= 0)

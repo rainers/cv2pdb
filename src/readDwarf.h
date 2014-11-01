@@ -305,15 +305,31 @@ struct DWARF_LineState
 
 ///////////////////////////////////////////////////////////////////////////////
 
-// The actual value is {reg} + offset
+
 struct Location
 {
-	int reg;
-	int offset;
-};
-const int NoReg = -1;
+	enum Type
+	{
+		Invalid, // Failed to evaluate the location expression
+		InReg,   // In register (reg)
+		Abs,     // Absolute address (off)
+		RegRel   // Register-relative address ($reg + off)
+	};
 
-bool decodeLocation(byte* loc, long len, Location& result, Location* frameBase = 0);
+	Type type;
+	int reg;
+	int off;
+
+	bool is_invalid() const { return type == Invalid; }
+	bool is_inreg() const { return type == InReg; }
+	bool is_abs() const { return type == Abs; }
+	bool is_regrel() const { return type == RegRel; }
+};
+
+// Attemots to partially evaluate DWARF location expressions.
+// The only supported expressions are those, whose result may be represented
+// as either an absolute value, a register, or a register-relative address.
+Location decodeLocation(const DWARF_Attribute& attr, const Location* frameBase = 0);
 
 class PEImage;
 

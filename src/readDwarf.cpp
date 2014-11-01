@@ -11,21 +11,48 @@ extern "C" {
 	#include "mscvpdb.h"
 }
 
-Location makeLoc(int r, int o)
+static Location mkInReg(unsigned reg)
 {
-	Location e = { r, o };
-	return e;
+	Location l;
+	l.type = Location::InReg;
+	l.reg = reg;
+	return l;
 }
 
-bool decodeLocation(byte* loc, long len, Location& result, Location* frameBase)
+static Location mkAbs(int off)
 {
-	byte* p = loc;
+	Location l;
+	l.type = Location::Abs;
+	l.off = off;
+	return l;
+}
+
+static Location mkRegRel(int reg, int off)
+{
+	Location l;
+	l.type = Location::RegRel;
+	l.reg = reg;
+	l.off = off;
+	return l;
+}
+
+Location decodeLocation(const DWARF_Attribute& attr, const Location* frameBase)
+{
+	static Location invalid = { Location::Invalid };
+
+	if (attr.type == Const)
+		return mkAbs(attr.cons);
+
+	if (attr.type != ExprLoc)
+		return invalid;
+
+	byte* p = attr.expr.ptr;
 	Location stack[256];
 	int stackDepth = 0;
 
 	for (;;)
 	{
-		if (p >= loc + len)
+		if (p >= attr.expr.ptr + attr.expr.len)
 			break;
 
 		int op = *p++;
@@ -34,38 +61,42 @@ bool decodeLocation(byte* loc, long len, Location& result, Location* frameBase)
 
 		switch (op)
 		{
-		case DW_OP_const1u: stack[stackDepth++] = makeLoc(NoReg, *p); break;
-		case DW_OP_const2u: stack[stackDepth++] = makeLoc(NoReg, RD2(p)); break;
-		case DW_OP_const4u: stack[stackDepth++] = makeLoc(NoReg, RD4(p)); break;
-		case DW_OP_const1s: stack[stackDepth++] = makeLoc(NoReg, (char)*p); break;
-		case DW_OP_const2s: stack[stackDepth++] = makeLoc(NoReg, (short)RD2(p)); break;
-		case DW_OP_const4s: stack[stackDepth++] = makeLoc(NoReg, (int)RD4(p)); break;
-		case DW_OP_constu:  stack[stackDepth++] = makeLoc(NoReg, LEB128(p)); break;
-		case DW_OP_consts:  stack[stackDepth++] = makeLoc(NoReg, SLEB128(p)); break;
-
-		case DW_OP_plus_uconst: stack[stackDepth - 1].offset += LEB128(p); break;
-
-		case DW_OP_lit0:  case DW_OP_lit1:  case DW_OP_lit2:  case DW_OP_lit3:
-		case DW_OP_lit4:  case DW_OP_lit5:  case DW_OP_lit6:  case DW_OP_lit7:
-		case DW_OP_lit8:  case DW_OP_lit9:  case DW_OP_lit10: case DW_OP_lit11:
-		case DW_OP_lit12: case DW_OP_lit13: case DW_OP_lit14: case DW_OP_lit15:
-		case DW_OP_lit16: case DW_OP_lit17: case DW_OP_lit18: case DW_OP_lit19:
-		case DW_OP_lit20: case DW_OP_lit21: case DW_OP_lit22: case DW_OP_lit23:
-			stack[stackDepth++] = makeLoc(NoReg, op - DW_OP_lit0);
-			break;
-
-		case DW_OP_reg0:  case DW_OP_reg1:  case DW_OP_reg2:  case DW_OP_reg3:
-		case DW_OP_reg4:  case DW_OP_reg5:  case DW_OP_reg6:  case DW_OP_reg7:
-		case DW_OP_reg8:  case DW_OP_reg9:  case DW_OP_reg10: case DW_OP_reg11:
-		case DW_OP_reg12: case DW_OP_reg13: case DW_OP_reg14: case DW_OP_reg15:
-		case DW_OP_reg16: case DW_OP_reg17: case DW_OP_reg18: case DW_OP_reg19:
-		case DW_OP_reg20: case DW_OP_reg21: case DW_OP_reg22: case DW_OP_reg23:
-		case DW_OP_reg24: case DW_OP_reg25: case DW_OP_reg26: case DW_OP_reg27:
-		case DW_OP_reg28: case DW_OP_reg29: case DW_OP_reg30: case DW_OP_reg31:
-			stack[stackDepth++] = makeLoc(op - DW_OP_reg0, 0);
-			break;
+			case DW_OP_reg0:  case DW_OP_reg1:  case DW_OP_reg2:  case DW_OP_reg3:
+			case DW_OP_reg4:  case DW_OP_reg5:  case DW_OP_reg6:  case DW_OP_reg7:
+			case DW_OP_reg8:  case DW_OP_reg9:  case DW_OP_reg10: case DW_OP_reg11:
+			case DW_OP_reg12: case DW_OP_reg13: case DW_OP_reg14: case DW_OP_reg15:
+			case DW_OP_reg16: case DW_OP_reg17: case DW_OP_reg18: case DW_OP_reg19:
+			case DW_OP_reg20: case DW_OP_reg21: case DW_OP_reg22: case DW_OP_reg23:
+			case DW_OP_reg24: case DW_OP_reg25: case DW_OP_reg26: case DW_OP_reg27:
+			case DW_OP_reg28: case DW_OP_reg29: case DW_OP_reg30: case DW_OP_reg31:
+				stack[stackDepth++] = mkInReg(op - DW_OP_reg0);
+				break;
 			case DW_OP_regx:
-				stack[stackDepth++] = makeLoc(LEB128(p), 0);
+				stack[stackDepth++] = mkInReg(LEB128(p));
+				break;
+
+			case DW_OP_const1u: stack[stackDepth++] = mkAbs(*p); break;
+			case DW_OP_const2u: stack[stackDepth++] = mkAbs(RD2(p)); break;
+			case DW_OP_const4u: stack[stackDepth++] = mkAbs(RD4(p)); break;
+			case DW_OP_const1s: stack[stackDepth++] = mkAbs((char)*p); break;
+			case DW_OP_const2s: stack[stackDepth++] = mkAbs((short)RD2(p)); break;
+			case DW_OP_const4s: stack[stackDepth++] = mkAbs((int)RD4(p)); break;
+			case DW_OP_constu:  stack[stackDepth++] = mkAbs(LEB128(p)); break;
+			case DW_OP_consts:  stack[stackDepth++] = mkAbs(SLEB128(p)); break;
+
+			case DW_OP_plus_uconst: 
+				if (stack[stackDepth - 1].is_inreg())
+					return invalid;
+				stack[stackDepth - 1].off += LEB128(p); 
+				break;
+
+			case DW_OP_lit0:  case DW_OP_lit1:  case DW_OP_lit2:  case DW_OP_lit3:
+			case DW_OP_lit4:  case DW_OP_lit5:  case DW_OP_lit6:  case DW_OP_lit7:
+			case DW_OP_lit8:  case DW_OP_lit9:  case DW_OP_lit10: case DW_OP_lit11:
+			case DW_OP_lit12: case DW_OP_lit13: case DW_OP_lit14: case DW_OP_lit15:
+			case DW_OP_lit16: case DW_OP_lit17: case DW_OP_lit18: case DW_OP_lit19:
+			case DW_OP_lit20: case DW_OP_lit21: case DW_OP_lit22: case DW_OP_lit23:
+				stack[stackDepth++] = mkAbs(op - DW_OP_lit0);
 				break;
 
 			case DW_OP_breg0:  case DW_OP_breg1:  case DW_OP_breg2:  case DW_OP_breg3:
@@ -76,169 +107,164 @@ bool decodeLocation(byte* loc, long len, Location& result, Location* frameBase)
 			case DW_OP_breg20: case DW_OP_breg21: case DW_OP_breg22: case DW_OP_breg23:
 			case DW_OP_breg24: case DW_OP_breg25: case DW_OP_breg26: case DW_OP_breg27:
 			case DW_OP_breg28: case DW_OP_breg29: case DW_OP_breg30: case DW_OP_breg31:
-				stack[stackDepth++] = makeLoc(op - DW_OP_breg0, SLEB128(p));
+				stack[stackDepth++] = mkRegRel(op - DW_OP_breg0, SLEB128(p));
 				break;
-		case DW_OP_bregx:
+			case DW_OP_bregx:
 			{
 				unsigned reg = LEB128(p);
-				stack[stackDepth++] = makeLoc(reg, SLEB128(p));
+				stack[stackDepth++] = mkRegRel(reg, SLEB128(p));
 			}   break;
 
-		case DW_OP_plus:  // op2 + op1
-		{
-			Location& op1 = stack[stackDepth - 1];
-			Location& op2 = stack[stackDepth - 2];
-			if (op1.reg != NoReg && op2.reg != NoReg) // only one of them may be reg-relative
-				return false;
 
-			op2.reg = (op1.reg != NoReg) ? op1.reg : op2.reg;
-			op2.offset = op2.offset + op1.offset;
-			--stackDepth;
-		}   break;
-
-		case DW_OP_minus: // op2 - op1
-		{
-			Location& op1 = stack[stackDepth - 1];
-			Location& op2 = stack[stackDepth - 2];
-			if (op1.reg == op2.reg)
-				op2 = makeLoc(NoReg, op2.offset - op1.offset);
-			else if (op1.reg == NoReg)
-				op2.offset = op2.offset - op1.offset;
-			else
-				return false;  // cannot subtract reg-relative
-			--stackDepth;
-		}   break;
-
-		case DW_OP_and:
-		{
-			Location& op1 = stack[stackDepth - 1];
-			Location& op2 = stack[stackDepth - 2];
-			if ((op1.reg == NoReg && op1.offset == 0) || (op2.reg == NoReg && op1.offset == 0)) // X & 0 == 0
-				op2 = makeLoc(NoReg, 0);
-			else if (op1.reg == NoReg && op2.reg == NoReg)
-				op2 = makeLoc(NoReg, op1.offset & op2.offset);
-			else
-				return false;
-			--stackDepth;
-		}   break;
-
-		case DW_OP_xor:
-		{
-			Location& op1 = stack[stackDepth - 1];
-			Location& op2 = stack[stackDepth - 2];
-			if (op1.reg == op2.reg && op1.offset == op2.offset) // X ^ X == 0
-				op2 = makeLoc(NoReg, 0);
-			else if (op1.reg == NoReg && op2.reg == NoReg)
-				op2 = makeLoc(NoReg, op1.offset ^ op2.offset);
-			else
-				return false;
-			--stackDepth;
-		}   break;
-
-		case DW_OP_mul:
-		{
-			Location& op1 = stack[stackDepth - 1];
-			Location& op2 = stack[stackDepth - 2];
-			if (op1.reg == NoReg && op1.offset == 0) // X * 0 == 0
-				op2 = makeLoc(NoReg, 0);
-			else if (op1.reg == NoReg && op2.reg == NoReg)
-				op2 = makeLoc(NoReg, op1.offset * op2.offset);
-			else
-				return false;
-			--stackDepth;
-		}   break;
-
-
-		case DW_OP_abs: case DW_OP_neg: case DW_OP_not:
-		{
-			Location& op1 = stack[stackDepth - 1];
-			if (op1.reg != NoReg)
-				return false;
-			switch (op)
+			case DW_OP_abs: case DW_OP_neg: case DW_OP_not:
 			{
-			case DW_OP_abs:   op1.offset = abs(op1.offset); break;
-			case DW_OP_neg:   op1.offset = -op1.offset; break;
-			case DW_OP_not:   op1.offset = ~op1.offset; break;
-			}
-		}   break;
+				Location& op1 = stack[stackDepth - 1];
+				if (!op1.is_abs())
+					return invalid;
+				switch (op)
+				{
+					case DW_OP_abs:   op1 = mkAbs(abs(op1.off)); break;
+					case DW_OP_neg:   op1 = mkAbs(-op1.off); break;
+					case DW_OP_not:   op1 = mkAbs(~op1.off); break;
+				}
+			}   break;
 
-		case DW_OP_eq:  case DW_OP_ge:  case DW_OP_gt:
-		case DW_OP_le:  case DW_OP_lt:  case DW_OP_ne:
-		{
-			Location& op1 = stack[stackDepth - 1];
-			Location& op2 = stack[stackDepth - 2];
-			if (op1.reg != op2.reg) // can't compare unless both use the same register (or NoReg)
-				return false;
-			switch (op)
+			case DW_OP_plus:  // op2 + op1
 			{
-			case DW_OP_eq:    op2.offset = op2.offset == op1.offset; break;
-			case DW_OP_ge:    op2.offset = op2.offset >= op1.offset; break;
-			case DW_OP_gt:    op2.offset = op2.offset > op1.offset; break;
-			case DW_OP_le:    op2.offset = op2.offset <= op1.offset; break;
-			case DW_OP_lt:    op2.offset = op2.offset < op1.offset; break;
-			case DW_OP_ne:    op2.offset = op2.offset != op1.offset; break;
-			}
-			--stackDepth;
-		}   break;
+				Location& op1 = stack[stackDepth - 1];
+				Location& op2 = stack[stackDepth - 2];
+				// Can add only two offsets or a regrel and an offset.
+				if (op2.is_regrel() && op1.is_abs())
+					op2 = mkRegRel(op2.reg, op2.off + op1.off);
+				else if (op2.is_abs() && op1.is_regrel())
+					op2 = mkRegRel(op1.reg, op2.off + op1.off);
+				else if (op2.is_abs() && op1.is_abs())
+					op2 = mkAbs(op2.off + op1.off);
+				else
+					return invalid;
+				--stackDepth;
+			}   break;
 
-		case DW_OP_div: case DW_OP_mod: case DW_OP_shl:
-		case DW_OP_shr: case DW_OP_shra: case DW_OP_or:
-		{
-			Location& op1 = stack[stackDepth - 1];
-			Location& op2 = stack[stackDepth - 2];
-			if (op1.reg != NoReg || op2.reg != NoReg) // can't combine unless both are constants
-				return false;
-			switch (op)
+			case DW_OP_minus: // op2 - op1
 			{
-			case DW_OP_div:   op2.offset = op2.offset / op1.offset; break;
-			case DW_OP_mod:   op2.offset = op2.offset % op1.offset; break;
-			case DW_OP_shl:   op2.offset = op2.offset << op1.offset; break;
-			case DW_OP_shr:   op2.offset = op2.offset >> op1.offset; break;
-			case DW_OP_shra:  op2.offset = op2.offset >> op1.offset; break;
-			case DW_OP_or:    op2.offset = op2.offset | op1.offset; break;
-			}
-			--stackDepth;
-		}   break;
+				Location& op1 = stack[stackDepth - 1];
+				Location& op2 = stack[stackDepth - 2];
+				if (op2.is_regrel() && op1.is_regrel() && op2.reg == op1.reg)
+					op2 = mkAbs(0); // X - X == 0
+				else if (op2.is_regrel() && op1.is_abs())
+					op2 = mkRegRel(op2.reg, op2.off - op1.off);
+				else if (op2.is_abs() && op1.is_abs())
+					op2 = mkAbs(op2.off - op1.off);
+				else
+					return invalid;
+				--stackDepth;
+			}   break;
 
-		case DW_OP_fbreg:
-			if (!frameBase)
-				return false;
-			stack[stackDepth++] = makeLoc(frameBase->reg, frameBase->offset + SLEB128(p));
-			break;
+			case DW_OP_mul:
+			{
+				Location& op1 = stack[stackDepth - 1];
+				Location& op2 = stack[stackDepth - 2];
+				if ((op1.is_abs() && op1.off == 0) || (op2.is_abs() && op2.off == 0))
+					op2 = mkAbs(0); // X * 0 == 0
+				else if (op1.is_abs() && op2.is_abs())
+					op2 = mkAbs(op1.off * op2.off);
+				else
+					return invalid;
+				--stackDepth;
+			}   break;
 
-		case DW_OP_dup:   stack[stackDepth] = stack[stackDepth - 1]; stackDepth++; break;
-		case DW_OP_drop:  stackDepth--; break;
-		case DW_OP_over:  stack[stackDepth] = stack[stackDepth - 2]; stackDepth++; break;
-		case DW_OP_pick:  stack[stackDepth++] = stack[*p]; break;
-		case DW_OP_swap:  { Location tmp = stack[stackDepth - 1]; stack[stackDepth - 1] = stack[stackDepth - 2]; stack[stackDepth - 2] = tmp; } break;
-		case DW_OP_rot:   { Location tmp = stack[stackDepth - 1]; stack[stackDepth - 1] = stack[stackDepth - 2]; stack[stackDepth - 2] = stack[stackDepth - 3]; stack[stackDepth - 3] = tmp; } break;
+			case DW_OP_and:
+			{
+				Location& op1 = stack[stackDepth - 1];
+				Location& op2 = stack[stackDepth - 2];
+				if ((op1.is_abs() && op1.off == 0) || (op2.is_abs() && op2.off == 0))
+					op2 = mkAbs(0); // X & 0 == 0
+				else if (op1.is_abs() && op2.is_abs())
+					op2 = mkAbs(op1.off & op2.off);
+				else
+					return invalid;
+				--stackDepth;
+			}   break;
 
-		case DW_OP_addr:
-			stack[stackDepth++] = makeLoc(NoReg, RD4(p));
-			break;
+			case DW_OP_div: case DW_OP_mod: case DW_OP_shl:
+			case DW_OP_shr: case DW_OP_shra: case DW_OP_or:
+			case DW_OP_xor:
+			case DW_OP_eq:  case DW_OP_ge:  case DW_OP_gt:
+			case DW_OP_le:  case DW_OP_lt:  case DW_OP_ne:
+			{
+				Location& op1 = stack[stackDepth - 1];
+				Location& op2 = stack[stackDepth - 2];
+				if (!op1.is_abs() || !op2.is_abs()) // can't combine unless both are constants
+					return invalid;
+				switch (op)
+				{
+					case DW_OP_div:   op2.off = op2.off / op1.off; break;
+					case DW_OP_mod:   op2.off = op2.off % op1.off; break;
+					case DW_OP_shl:   op2.off = op2.off << op1.off; break;
+					case DW_OP_shr:   op2.off = op2.off >> op1.off; break;
+					case DW_OP_shra:  op2.off = op2.off >> op1.off; break;
+					case DW_OP_or:    op2.off = op2.off | op1.off; break;
+					case DW_OP_xor:   op2.off = op2.off ^ op1.off; break;
+					case DW_OP_eq:    op2.off = op2.off == op1.off; break;
+					case DW_OP_ge:    op2.off = op2.off >= op1.off; break;
+					case DW_OP_gt:    op2.off = op2.off > op1.off; break;
+					case DW_OP_le:    op2.off = op2.off <= op1.off; break;
+					case DW_OP_lt:    op2.off = op2.off < op1.off; break;
+					case DW_OP_ne:    op2.off = op2.off != op1.off; break;
+				}
+				--stackDepth;
+			}   break;
 
-		case DW_OP_skip:
-		{
-			unsigned off = RD2(p);
-			p = p + off;
-		}   break;
+			case DW_OP_fbreg:
+			{
+				if (!frameBase)
+					return invalid;
 
-		case DW_OP_bra:
-		{
-			Location& op1 = stack[stackDepth - 1];
-			if (op1.reg != NoReg)
-				return false;
-			if (op1.offset != 0)
+				Location loc;
+				if (frameBase->is_inreg()) // ok in frame base specification, per DWARF4 spec #3.3.5
+					loc = mkRegRel(frameBase->reg, SLEB128(p));
+				else if (frameBase->is_regrel())
+					loc = mkRegRel(frameBase->reg, frameBase->off + SLEB128(p));
+				else
+					return invalid;
+				stack[stackDepth++] = loc;
+			}   break;
+
+			case DW_OP_dup:   stack[stackDepth] = stack[stackDepth - 1]; stackDepth++; break;
+			case DW_OP_drop:  stackDepth--; break;
+			case DW_OP_over:  stack[stackDepth] = stack[stackDepth - 2]; stackDepth++; break;
+			case DW_OP_pick:  stack[stackDepth++] = stack[*p]; break;
+			case DW_OP_swap:  { Location tmp = stack[stackDepth - 1]; stack[stackDepth - 1] = stack[stackDepth - 2]; stack[stackDepth - 2] = tmp; } break;
+			case DW_OP_rot:   { Location tmp = stack[stackDepth - 1]; stack[stackDepth - 1] = stack[stackDepth - 2]; stack[stackDepth - 2] = stack[stackDepth - 3]; stack[stackDepth - 3] = tmp; } break;
+
+			case DW_OP_addr:
+				stack[stackDepth++] = mkAbs(RD4(p)); // TODO: 64-bit
+				break;
+
+			case DW_OP_skip:
 			{
 				unsigned off = RD2(p);
 				p = p + off;
-			}
-			--stackDepth;
-		}   break;
+			}   break;
+
+			case DW_OP_bra:
+			{
+				Location& op1 = stack[stackDepth - 1];
+				if (!op1.is_abs())
+					return invalid;
+				if (op1.off != 0)
+				{
+					unsigned off = RD2(p);
+					p = p + off;
+				}
+				--stackDepth;
+			}   break;
 
 			case DW_OP_nop:
 				break;
 
+			case DW_OP_deref:
+			case DW_OP_deref_size:
 			case DW_OP_push_object_address:
 			case DW_OP_call2:
 			case DW_OP_call4:
@@ -249,13 +275,12 @@ bool decodeLocation(byte* loc, long len, Location& result, Location* frameBase)
 			case DW_OP_implicit_value:
 			case DW_OP_stack_value:
 			default:
-				return false;
+				return invalid;
 		}
 	}
 
 	assert(stackDepth > 0);
-	result = stack[0];
-	return true;
+	return stack[0];
 }
 
 // declare hasher for pair<T1,T2>
