@@ -200,3 +200,9 @@ unreleased Version 0.22
 2014-03-01 Version 0.31
 
   * added support for local variables accessed through esp
+
+2014-09-24 Version 0.32
+
+  * DWARF: fixed relocations in .debug_line section
+  * tweaked visualizer macros to display void[], limit array preview to 64 entries
+

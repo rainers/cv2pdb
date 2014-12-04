@@ -25,14 +25,38 @@ dchar[]|const(dchar)[]|immutable(dchar)[] {
 const void[]|void[] {
 	preview ( 
 		#if ($e.ptr == 0) ( "null" )
-		#else ( 
-			#( "[", $e.length, "] ", [(void*) $e.ptr] )
+		#elif($e.length > 4096) (
+			#( "[", $e.length, "] ", (void*) $e.ptr, " too large for expansion" )
+		)
+		#elif($e.length > 64) (
+			#( "[", $e.length, "]( ",
+			   	#array( expr:((unsigned char*)$e.ptr)[$i], size:64 ),
+			   	",...)" 
+			)
+		)
+		#else (
+			#(
+				"[", $e.length, "](",
+				#array ( expr : ((unsigned char*)$e.ptr)[$i], size : $e.length ),
+				")"
+			)
 		)
 	)
 	children (
-		#(
-			length: [$e.length],
-			ptr: [(void*) $e.ptr]
+		#if($e.length > 4096) (
+			#(
+				length: [$e.length],
+				ptr: [(void*) $e.ptr]
+			)
+		)
+		#else (
+			#(
+				length: [$e.length],
+				#array (
+					expr: ((unsigned char*)$e.ptr)[$i],
+					size: $e.length
+				)
+			)
 		)
 	)
 }
@@ -41,19 +65,20 @@ const void[]|void[] {
 *[]|dArray* {
 	preview ( 
 		#if ($e.ptr == 0) ( "null" )
-		#else ( 
-			#if($e.length > 1024) (
-				#( "[", $e.length, "] ", (void*) $e.ptr, " too large for expansion" )
+		#elif($e.length > 4096) (
+			#( "[", $e.length, "] ", (void*) $e.ptr, " too large for expansion" )
+		)
+		#elif($e.length > 64) (
+			#( "[", $e.length, "]( ",
+			   	#array( expr:($e.ptr)[$i], size:64 ),
+			   	",...)" 
 			)
-			#else (
-				#(
-					"[", $e.length, "](",
-					#array (
-						expr : ($e.ptr)[$i],
-						size : $e.length
-					),
-					")"
-				)
+		)
+		#else (
+			#(
+				"[", $e.length, "](",
+				#array ( expr : ($e.ptr)[$i], size : $e.length ),
+				")"
 			)
 		)
 	)
