@@ -206,3 +206,7 @@ unreleased Version 0.22
   * DWARF: fixed relocations in .debug_line section
   * tweaked visualizer macros to display void[], limit array preview to 64 entries
 
+2014-12-19 Version 0.33
+
+  * DWARF: revamped location expression evaluator by Vadim Chugunov
+  * 
