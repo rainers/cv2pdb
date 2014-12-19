@@ -104,16 +104,20 @@
     <ClCompile Include="main.cpp" />
     <ClCompile Include="mspdb.cpp" />
     <ClCompile Include="PEImage.cpp" />
+    <ClCompile Include="readDwarf.cpp" />
     <ClCompile Include="symutil.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="cv2pdb.h" />
     <ClInclude Include="cvutil.h" />
+    <ClInclude Include="dcvinfo.h" />
     <ClInclude Include="demangle.h" />
+    <ClInclude Include="dwarf.h" />
     <ClInclude Include="LastError.h" />
     <ClInclude Include="mscvpdb.h" />
     <ClInclude Include="mspdb.h" />
     <ClInclude Include="PEImage.h" />
+    <ClInclude Include="readDwarf.h" />
     <ClInclude Include="symutil.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

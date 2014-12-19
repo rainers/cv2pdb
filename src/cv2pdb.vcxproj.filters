@@ -31,6 +31,9 @@
     <ClCompile Include="symutil.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="readDwarf.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="cv2pdb.h">
@@ -55,6 +58,15 @@
       <Filter>Source Files</Filter>
     </ClInclude>
     <ClInclude Include="symutil.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="readDwarf.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="dwarf.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="dcvinfo.h">
       <Filter>Source Files</Filter>
     </ClInclude>
   </ItemGroup>
