@@ -187,7 +187,7 @@ mspdb::PDB* CreatePDB(const wchar_t* pdbname)
 	mspdb::PDB* pdb = 0;
 	long data[194] = { 193, 0 };
 	wchar_t ext[256] = L".exe";
-	if (!(*pPDBOpen2W) (pdbname, "wf", data, ext, 0x400, &pdb))
+	if (!((*pPDBOpen2W) (pdbname, "wf", data, ext, 0x400, &pdb)))
 		return 0;
 
 	return pdb;
