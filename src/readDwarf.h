@@ -1,6 +1,7 @@
 #ifndef __READDWARF_H__
 #define __READDWARF_H__
 
+#include <cstring>
 #include <string>
 #include <vector>
 #include "mspdb.h"

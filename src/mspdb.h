@@ -199,8 +199,8 @@ public: virtual void MRECmp::structIsBoring(unsigned long);
 //public: virtual void * Pool<65536>::AllocBytes(unsigned int);
 //public: virtual void EnumSyms::get(unsigned char * *);
 
-typedef int __cdecl fnPDBOpen2W(unsigned short const *path,char const *mode,long *p,
-				unsigned short *ext,unsigned int flags,struct PDB **pPDB);
+typedef int __cdecl fnPDBOpen2W(const wchar_t *path,char const *mode,long *p,
+				wchar_t *ext,unsigned int flags,struct PDB **pPDB);
 
 struct PDB_part1 {
 public: virtual unsigned long QueryInterfaceVersion(void);
