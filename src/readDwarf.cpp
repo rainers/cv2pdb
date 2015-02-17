@@ -426,7 +426,7 @@ bool DIECursor::readNext(DWARF_InfoData& id, bool stopAtNull)
 			case DW_FORM_sdata:          a.type = Const; a.cons = SLEB128(ptr); break;
 			case DW_FORM_udata:          a.type = Const; a.cons = LEB128(ptr); break;
 			case DW_FORM_string:         a.type = String; a.string = (const char*)ptr; ptr += strlen(a.string) + 1; break;
-			case DW_FORM_strp:           a.type = String; a.string = (const char*)(img->debug_str + RDsize(ptr, cu->address_size)); break;
+            case DW_FORM_strp:           a.type = String; a.string = (const char*)(img->debug_str + RDsize(ptr, cu->isDWARF64() ? 8 : 4)); break;
 			case DW_FORM_flag:           a.type = Flag; a.flag = (*ptr++ != 0); break;
 			case DW_FORM_flag_present:   a.type = Flag; a.flag = true; break;
 			case DW_FORM_ref1:           a.type = Ref; a.ref = (byte*)cu + *ptr++; break;
@@ -444,7 +444,11 @@ bool DIECursor::readNext(DWARF_InfoData& id, bool stopAtNull)
 
 		switch (attr)
 		{
-			case DW_AT_byte_size: assert(a.type == Const); id.byte_size = a.cons; break;
+			case DW_AT_byte_size: 
+				assert(a.type == Const || a.type == Ref || a.type == ExprLoc);
+				if (a.type == Const) // TODO: other types not supported yet
+					id.byte_size = a.cons; 
+				break;
 			case DW_AT_sibling:   assert(a.type == Ref); id.sibling = a.ref; break;
 			case DW_AT_encoding:  assert(a.type == Const); id.encoding = a.cons; break;
 			case DW_AT_name:      assert(a.type == String); id.name = a.string; break;
@@ -458,13 +462,21 @@ bool DIECursor::readNext(DWARF_InfoData& id, bool stopAtNull)
 					id.pchi = id.pclo + a.cons;
 				else
 					assert(false);
-			break;
+			    break;
 			case DW_AT_ranges:    assert(a.type == SecOffset); id.ranges = a.sec_offset; break;
 			case DW_AT_type:      assert(a.type == Ref); id.type = a.ref; break;
 			case DW_AT_inline:    assert(a.type == Const); id.inlined = a.cons; break;
 			case DW_AT_external:  assert(a.type == Flag); id.external = a.flag; break;
-			case DW_AT_upper_bound: assert(a.type == Const); id.upper_bound = a.cons; break;
-			case DW_AT_lower_bound: assert(a.type == Const); id.lower_bound = a.cons; break;
+			case DW_AT_upper_bound: 
+				assert(a.type == Const || a.type == Ref || a.type == ExprLoc);
+				if (a.type == Const) // TODO: other types not supported yet
+					id.upper_bound = a.cons;
+				break;
+			case DW_AT_lower_bound: 
+				assert(a.type == Const || a.type == Ref || a.type == ExprLoc);
+				if (a.type == Const) // TODO: other types not supported yet
+					id.lower_bound = a.cons;
+				break;
 			case DW_AT_containing_type: assert(a.type == Ref); id.containing_type = a.ref; break;
 			case DW_AT_specification: assert(a.type == Ref); id.specification = a.ref; break;
 			case DW_AT_data_member_location: id.member_location = a; break;

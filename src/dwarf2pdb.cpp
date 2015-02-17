@@ -539,6 +539,7 @@ int CV2PDB::addDWARFBasicType(const char*name, int encoding, int byte_size)
 		case 2: size = 1; break;
 		case 4: size = 2; break;
 		case 8: size = 3; break;
+		case 16: size = 4; break; // __int128? experimental, type exists with GCC for Win64
 		default:
 			setError("unsupported integer type size");
 		}
