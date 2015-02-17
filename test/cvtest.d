@@ -258,6 +258,15 @@ int args(int a, int b, int c, int abc)
 	return d + e + abc;
 }
 
+extern(C) int cargs(int a, int b, int c, int abc)
+{
+	int d = a + b;
+	int e = b + c;
+	foreach(x; global_oem_int_assoc_array)
+		e += x;
+	return d + e + abc;
+}
+
 size_t arrays()
 {
 	int[] iarr;
@@ -301,7 +310,7 @@ Action convertEnum()
 	return Accept;
 }
 
-int main2(char[][]argv)
+int main2(string[]argv)
 {
 	convertEnum();
 	
@@ -367,12 +376,13 @@ int main2(char[][]argv)
 }
 
 
-int main(char[][]argv)
+int main(string[]argv)
 {
 	long lng = 3;
 	ulong ulng = 4;
 
 	args(3, 4, 5, 345);
+	cargs(3, 4, 5, 345);
 	voidpointers(null);
 	arrays();
 	lexical_scope();
@@ -387,6 +397,7 @@ int main(char[][]argv)
 	main2(argv);
 
 	writefln("Hello world");
+	getchar();
 
 	int[int] int_arr;
 	int_arr[1] = 100;
@@ -473,9 +484,9 @@ int strings()
 	const(wchar)[] cws = ws;
 	const(dchar)[] cds = ds;
 
-	immutable char[]  i2cs = cs;
-	immutable wchar[] i2ws = ws;
-	immutable dchar[] i2ds = ds;
+	immutable char[]  i2cs = cs[0..$-1];
+	immutable wchar[] i2ws = ws[0..$-1];
+	immutable dchar[] i2ds = ds[0..$-1];
 
 	const char[]  c2cs = cs;
 	const wchar[] c2ws = ws;
