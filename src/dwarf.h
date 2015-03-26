@@ -696,6 +696,7 @@ extern "C" {
 #define DW_ATE_signed_fixed             0xd  /* DWARF3f */
 #define DW_ATE_unsigned_fixed           0xe  /* DWARF3f */
 #define DW_ATE_decimal_float            0xf  /* DWARF3f */
+#define DW_ATE_UTF                      0x10 /* DWARF4 */
 
 
 /* ALTIUM extensions. x80, x81 */

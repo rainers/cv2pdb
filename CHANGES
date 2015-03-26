@@ -212,5 +212,7 @@ unreleased Version 0.22
 
 2015-02-17 Version 0.34
 
-  * DWARF: fixed issues with DW_FORM_ref_addr, DW_AT_upper_bound and DW_AT_lower_bound
+  * DWARF: fixed issues with DW_FORM_strp, DW_AT_upper_bound and DW_AT_lower_bound
   * DWARF: translate __int128 to CV code 0x14, just a wild guesss
+
+  * DWARF: add support for DW_ATE_UTF, remove bad assert

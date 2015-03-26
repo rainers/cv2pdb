@@ -525,6 +525,7 @@ int CV2PDB::addDWARFBasicType(const char*name, int encoding, int byte_size)
 	case DW_ATE_unsigned:       type = 2; break;
 	case DW_ATE_unsigned_char:  type = 7; break;
 	case DW_ATE_imaginary_float:type = 4; break;
+	case DW_ATE_UTF:            type = 7; break;
 	default:
 		setError("unknown basic type encoding");
 	}
@@ -692,7 +693,8 @@ bool CV2PDB::createTypes()
 				DIECursor specCursor(cu, id.specification);
 				DWARF_InfoData idspec;
 				specCursor.readNext(idspec);
-				assert(id.tag == idspec.tag);
+                //assert seems invalid, combination DW_TAG_member and DW_TAG_variable found in the wild
+				//assert(id.tag == idspec.tag);
 				id.merge(idspec);
 			}
 
