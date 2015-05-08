@@ -56,12 +56,17 @@ public:
 		return 0;
 	}
 
-	bool load(const TCHAR* iname);
+	bool readAll(const TCHAR* iname);
+	bool loadExe(const TCHAR* iname);
+	bool loadObj(const TCHAR* iname);
 	bool save(const TCHAR* oname);
 
 	bool replaceDebugSection (const void* data, int datalen, bool initCV);
 	bool initCVPtr(bool initDbgDir);
 	bool initDWARFPtr(bool initDbgDir);
+    bool initDWARFObject();
+    void initDWARFSegments();
+	bool relocateDebugLineInfo(unsigned int img_base);
 
 	bool hasDWARF() const { return debug_line != 0; }
 	bool isX64() const { return hdr64 != 0; }
@@ -75,13 +80,21 @@ public:
 	static void* alloc_aligned(unsigned int size, unsigned int align, unsigned int alignoff = 0);
 	static void free_aligned(void* p);
 
-	int countSections() const { return IMGHDR(FileHeader.NumberOfSections); }
+	int countSections() const { return nsec; }
 	int findSection(unsigned int off) const;
 	int findSymbol(const char* name, unsigned long& off) const;
+	const char* findSectionSymbolName(int s) const;
 	const IMAGE_SECTION_HEADER& getSection(int s) const { return sec[s]; }
 	unsigned long long getImageBase() const { return IMGHDR(OptionalHeader.ImageBase); }
+    int getRelocationInLineSegment(unsigned int offset) const;
+    int getRelocationInSegment(int segment, unsigned int offset) const;
+
+    int dumpDebugLineInfoCOFF();
+    int dumpDebugLineInfoOMF();
 
 private:
+    template<typename SYM> const char* t_findSectionSymbolName(int s) const;
+
 	int fd;
 	void* dump_base;
 	int dump_total_len;
@@ -94,6 +107,11 @@ private:
 	IMAGE_DEBUG_DIRECTORY* dbgDir;
 	OMFDirHeader* dirHeader;
 	OMFDirEntry* dirEntry;
+    int nsec;
+    int nsym;
+    const char* symtable;
+    const char* strtable;
+    bool bigobj;
 	
 public:
 	//dwarf
@@ -109,6 +127,7 @@ public:
 	char* debug_ranges;   unsigned long debug_ranges_length;
 	char* reloc;          unsigned long reloc_length;
 
+	int linesSegment;
 	int codeSegment;
 	int cv_base;
 };

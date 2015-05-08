@@ -164,7 +164,6 @@ public:
 	bool addDWARFTypes();
 	bool addDWARFLines();
 	bool addDWARFPublics();
-	bool relocateDebugLineInfo();
 	bool writeDWARFImage(const TCHAR* opath);
 
 	bool addDWARFSectionContrib(mspdb::Mod* mod, unsigned long pclo, unsigned long pchi);
@@ -259,6 +258,5 @@ public:
 	int codeSegOff;
 	std::unordered_map<byte*, int> mapOffsetToType;
 };
-
 
 #endif //__CV2PDB_H__

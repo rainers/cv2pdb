@@ -255,6 +255,7 @@ struct DWARF_LineState
 	// not part of the "documented" state
 	DWARF_FileName* file_ptr;
 	unsigned long seg_offset;
+	unsigned long section;
 	unsigned long last_addr;
 	std::vector<mspdb::LineInfoEntry> lineInfo;
 
@@ -266,6 +267,7 @@ struct DWARF_LineState
 
 	void init(DWARF_LineNumberProgramHeader* hdr)
 	{
+        section = -1;
 		address = 0;
 		op_index = 0;
 		file = 1;
@@ -365,5 +367,9 @@ public:
 	// Otherwise, it will skip null DIEs and stop only at the end of the subtree for which this DIECursor was created.
 	bool readNext(DWARF_InfoData& id, bool stopAtNull = false);
 };
+
+// iterate over DWARF debug_line information
+// if mod is null, print them out, otherwise add to module
+bool interpretDWARFLines(const PEImage& img, mspdb::Mod* mod);
 
 #endif

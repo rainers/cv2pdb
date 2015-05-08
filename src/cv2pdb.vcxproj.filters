@@ -34,6 +34,9 @@
     <ClCompile Include="readDwarf.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="dwarflines.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="cv2pdb.h">

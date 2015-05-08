@@ -216,3 +216,7 @@ unreleased Version 0.22
   * DWARF: translate __int128 to CV code 0x14, just a wild guesss
 
   * DWARF: add support for DW_ATE_UTF, remove bad assert
+
+2015-05-08 Version 0.35
+
+  * new tool dumplines to display the debug line number info

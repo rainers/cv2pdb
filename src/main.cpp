@@ -105,7 +105,6 @@ void makefullpath(TCHAR* pdbname)
 
 int T_main(int argc, TCHAR* argv[])
 {
-	PEImage img;
 	double Dversion = 2.043;
 	const TCHAR* pdbref = 0;
 
@@ -143,7 +142,8 @@ int T_main(int argc, TCHAR* argv[])
 		return -1;
 	}
 
-	if (!img.load(argv[1]))
+	PEImage img;
+	if (!img.loadExe(argv[1]))
 		fatal(SARG ": %s", argv[1], img.getLastError());
 	if (img.countCVEntries() == 0 && !img.hasDWARF())
 		fatal(SARG ": no codeview debug entries found", argv[1]);
@@ -177,7 +177,7 @@ int T_main(int argc, TCHAR* argv[])
 
 	if(img.hasDWARF())
 	{
-		if(!cv2pdb.relocateDebugLineInfo())
+		if(!img.relocateDebugLineInfo(0x400000))
 			fatal(SARG ": %s", argv[1], cv2pdb.getLastError());
 
 		if(!cv2pdb.createDWARFModules())
