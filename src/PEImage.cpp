@@ -552,7 +552,7 @@ unsigned _getIndex(const BYTE* &p)
     if (*p & 0x80)
     {
         p += 2;
-        return *(unsigned short*)(p - 2) & 0x7fff;
+        return ((p[-2] << 8) | p[-1]) & 0x7fff;
     }
     return *p++;
 }
