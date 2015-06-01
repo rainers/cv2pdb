@@ -180,6 +180,7 @@ struct DWARF_InfoData
 		encoding = 0;
 		pclo = 0;
 		pchi = 0;
+		ranges = 0;
 		type = 0;
 		containing_type = 0;
 		specification = 0;

@@ -463,7 +463,14 @@ bool DIECursor::readNext(DWARF_InfoData& id, bool stopAtNull)
 				else
 					assert(false);
 			    break;
-			case DW_AT_ranges:    assert(a.type == SecOffset); id.ranges = a.sec_offset; break;
+			case DW_AT_ranges:
+				if (a.type == SecOffset)
+					id.ranges = a.sec_offset;
+				else if (a.type == Const)
+					id.ranges = a.cons;
+				else
+					assert(false);
+			    break;
 			case DW_AT_type:      assert(a.type == Ref); id.type = a.ref; break;
 			case DW_AT_inline:    assert(a.type == Const); id.inlined = a.cons; break;
 			case DW_AT_external:  assert(a.type == Flag); id.external = a.flag; break;

@@ -371,6 +371,11 @@ bool PEImage::initDWARFObject()
     return true;
 }
 
+static DWORD sizeInImage(const IMAGE_SECTION_HEADER& sec)
+{
+    return sec.SizeOfRawData < sec.Misc.VirtualSize ? sec.SizeOfRawData : sec.Misc.VirtualSize;
+}
+
 void PEImage::initDWARFSegments()
 {
 	for(int s = 0; s < nsec; s++)
@@ -382,27 +387,27 @@ void PEImage::initDWARFSegments()
 			name = strtable + off;
 		}
 		if(strcmp(name, ".debug_aranges") == 0)
-			debug_aranges = DPV<char>(sec[s].PointerToRawData, sec[s].SizeOfRawData);
+			debug_aranges = DPV<char>(sec[s].PointerToRawData, sizeInImage(sec[s]));
 		if(strcmp(name, ".debug_pubnames") == 0)
-			debug_pubnames = DPV<char>(sec[s].PointerToRawData, sec[s].SizeOfRawData);
+			debug_pubnames = DPV<char>(sec[s].PointerToRawData, sizeInImage(sec[s]));
 		if(strcmp(name, ".debug_pubtypes") == 0)
-			debug_pubtypes = DPV<char>(sec[s].PointerToRawData, sec[s].SizeOfRawData);
+			debug_pubtypes = DPV<char>(sec[s].PointerToRawData, sizeInImage(sec[s]));
 		if(strcmp(name, ".debug_info") == 0)
-			debug_info = DPV<char>(sec[s].PointerToRawData, debug_info_length = sec[s].SizeOfRawData);
+			debug_info = DPV<char>(sec[s].PointerToRawData, debug_info_length = sizeInImage(sec[s]));
 		if(strcmp(name, ".debug_abbrev") == 0)
-			debug_abbrev = DPV<char>(sec[s].PointerToRawData, debug_abbrev_length = sec[s].SizeOfRawData);
+			debug_abbrev = DPV<char>(sec[s].PointerToRawData, debug_abbrev_length = sizeInImage(sec[s]));
 		if(strcmp(name, ".debug_line") == 0)
-			debug_line = DPV<char>(sec[linesSegment = s].PointerToRawData, debug_line_length = sec[s].SizeOfRawData);
+			debug_line = DPV<char>(sec[linesSegment = s].PointerToRawData, debug_line_length = sizeInImage(sec[s]));
 		if(strcmp(name, ".debug_frame") == 0)
-			debug_frame = DPV<char>(sec[s].PointerToRawData, sec[s].SizeOfRawData);
+			debug_frame = DPV<char>(sec[s].PointerToRawData, sizeInImage(sec[s]));
 		if(strcmp(name, ".debug_str") == 0)
-			debug_str = DPV<char>(sec[s].PointerToRawData, sec[s].SizeOfRawData);
+			debug_str = DPV<char>(sec[s].PointerToRawData, sizeInImage(sec[s]));
 		if(strcmp(name, ".debug_loc") == 0)
-			debug_loc = DPV<char>(sec[s].PointerToRawData, sec[s].SizeOfRawData);
+			debug_loc = DPV<char>(sec[s].PointerToRawData, sizeInImage(sec[s]));
 		if(strcmp(name, ".debug_ranges") == 0)
-			debug_ranges = DPV<char>(sec[s].PointerToRawData, debug_ranges_length = sec[s].SizeOfRawData);
+			debug_ranges = DPV<char>(sec[s].PointerToRawData, debug_ranges_length = sizeInImage(sec[s]));
 		if(strcmp(name, ".reloc") == 0)
-			reloc = DPV<char>(sec[s].PointerToRawData, reloc_length = sec[s].SizeOfRawData);
+			reloc = DPV<char>(sec[s].PointerToRawData, reloc_length = sizeInImage(sec[s]));
 		if(strcmp(name, ".text") == 0)
 			codeSegment = s;
 	}
