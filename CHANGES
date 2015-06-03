@@ -225,3 +225,4 @@ unreleased Version 0.22
 
   * last version introduced a regression that could cause DWARF conversion to crash
   * DWARF sections now stripped from image (if last sections)
+  * add support for VS 2015

@@ -17,6 +17,7 @@ char* mspdb80_dll = "mspdb80.dll";
 char* mspdb100_dll = "mspdb100.dll";
 char* mspdb110_dll = "mspdb110.dll";
 char* mspdb120_dll = "mspdb120.dll";
+char* mspdb140_dll = "mspdb140.dll";
 // char* mspdb110shell_dll = "mspdbst.dll"; // the VS 2012 Shell uses this file instead of mspdb110.dll, but is missing mspdbsrv.exe
 
 int mspdb::vsVersion = 8;
@@ -134,6 +135,21 @@ void tryLoadMsPdb120(bool throughPath)
 	}
 }
 
+void tryLoadMsPdb140(bool throughPath)
+{
+	if (!modMsPdb)
+	{
+		if(throughPath)
+			modMsPdb = LoadLibraryA(mspdb140_dll);
+		if (!modMsPdb && !throughPath)
+			tryLoadMsPdb("VisualStudio\\14.0", mspdb140_dll, "..\\..\\VC\\bin\\");
+		if (!modMsPdb && !throughPath)
+			tryLoadMsPdb("VSWinExpress\\14.0", mspdb140_dll, "..\\..\\VC\\bin\\");
+		if (modMsPdb)
+			mspdb::vsVersion = 14;
+	}
+}
+
 bool initMsPdb()
 {
 #if 0 // might cause problems when combining VS Shell 2010 with VS 2008 or similar
@@ -149,11 +165,13 @@ bool initMsPdb()
 #endif
 
 	// try loading through the PATH first to best match current setup
+	tryLoadMsPdb140(true);
 	tryLoadMsPdb120(true);
 	tryLoadMsPdb110(true);
 	tryLoadMsPdb100(true);
 	tryLoadMsPdb80(true);
 
+	tryLoadMsPdb140(false);
 	tryLoadMsPdb120(false);
 	tryLoadMsPdb110(false);
 	tryLoadMsPdb100(false);
