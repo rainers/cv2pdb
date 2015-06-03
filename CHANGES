@@ -220,3 +220,8 @@ unreleased Version 0.22
 2015-05-08 Version 0.35
 
   * new tool dumplines to display the debug line number info
+
+2015-06-03 Version 0.36
+
+  * last version introduced a regression that could cause DWARF conversion to crash
+  * DWARF sections now stripped from image (if last sections)

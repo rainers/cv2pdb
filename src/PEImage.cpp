@@ -146,10 +146,22 @@ bool PEImage::replaceDebugSection (const void* data, int datalen, bool initCV)
 	// assume there is place for another section because of section alignment
 	int s;
 	DWORD lastVirtualAddress = 0;
+    int firstDWARFsection = -1;
 	int cntSections = countSections();
 	for(s = 0; s < cntSections; s++)
 	{
-		if (strcmp ((char*) sec [s].Name, ".debug") == 0)
+		const char* name = (const char*) sec[s].Name;
+		if(name[0] == '/')
+		{
+			int off = strtol(name + 1, 0, 10);
+			name = strtable + off;
+		}
+		if (strncmp (name, ".debug_", 7) != 0)
+			firstDWARFsection = -1;
+		else if (firstDWARFsection < 0)
+			firstDWARFsection = s;
+
+		if (strcmp (name, ".debug") == 0)
 		{
 			if (s == cntSections - 1)
 			{
@@ -159,9 +171,14 @@ bool PEImage::replaceDebugSection (const void* data, int datalen, bool initCV)
 			strcpy ((char*) sec [s].Name, ".ddebug");
 			printf("warning: .debug not last section, cannot remove section\n");
 		}
-		lastVirtualAddress = sec [s].VirtualAddress + sec[s].Misc.VirtualSize;
+		lastVirtualAddress = sec[s].VirtualAddress + sec[s].Misc.VirtualSize;
 	}
-
+    if (firstDWARFsection > 0)
+    {
+        s = firstDWARFsection;
+		dump_total_len = sec[s].PointerToRawData;
+		lastVirtualAddress = sec[s-1].VirtualAddress + sec[s-1].Misc.VirtualSize;
+    }
 	int align = IMGHDR(OptionalHeader.FileAlignment);
 	int align_len = xdatalen;
 	int fill = 0;
@@ -373,6 +390,8 @@ bool PEImage::initDWARFObject()
 
 static DWORD sizeInImage(const IMAGE_SECTION_HEADER& sec)
 {
+    if (sec.Misc.VirtualSize == 0)
+        return sec.SizeOfRawData; // for object files
     return sec.SizeOfRawData < sec.Misc.VirtualSize ? sec.SizeOfRawData : sec.Misc.VirtualSize;
 }
 
