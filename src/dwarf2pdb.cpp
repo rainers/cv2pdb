@@ -56,21 +56,41 @@ enum CV_X86_REG
 	CV_REG_EIP = 33,
 	CV_REG_EFLAGS = 34,
 	CV_REG_ST0 = 128, /* this includes ST1 to ST7 */
-	CV_REG_XMM0 = 154 /* this includes XMM1 to XMM7 */
+	CV_REG_XMM0 = 154, /* this includes XMM1 to XMM7 */
+
+	// 64-bit regular registers
+	CV_AMD64_RAX      =  328,
+	CV_AMD64_RBX      =  329,
+	CV_AMD64_RCX      =  330,
+	CV_AMD64_RDX      =  331,
+	CV_AMD64_RSI      =  332,
+	CV_AMD64_RDI      =  333,
+	CV_AMD64_RBP      =  334,
+	CV_AMD64_RSP      =  335,
+
+	// 64-bit integer registers with 8-, 16-, and 32-bit forms (B, W, and D)
+	CV_AMD64_R8       =  336,
+	CV_AMD64_R9       =  337,
+	CV_AMD64_R10      =  338,
+	CV_AMD64_R11      =  339,
+	CV_AMD64_R12      =  340,
+	CV_AMD64_R13      =  341,
+	CV_AMD64_R14      =  342,
+	CV_AMD64_R15      =  343,
 };
 
-CV_X86_REG dwarf_to_x86_reg(unsigned dwarf_reg)
+CV_X86_REG dwarf_to_x86_reg(unsigned dwarf_reg, bool x64)
 {
 	switch (dwarf_reg)
 	{
-		case  0: return CV_REG_EAX;
-		case  1: return CV_REG_ECX;
-		case  2: return CV_REG_EDX;
-		case  3: return CV_REG_EBX;
-		case  4: return CV_REG_ESP;
-		case  5: return CV_REG_EBP;
-		case  6: return CV_REG_ESI;
-		case  7: return CV_REG_EDI;
+		case  0: return x64 ? CV_AMD64_RAX : CV_REG_EAX;
+		case  1: return x64 ? CV_AMD64_RCX : CV_REG_ECX;
+		case  2: return x64 ? CV_AMD64_RDX : CV_REG_EDX;
+		case  3: return x64 ? CV_AMD64_RBX : CV_REG_EBX;
+		case  4: return x64 ? CV_AMD64_RSP : CV_REG_ESP;
+		case  5: return x64 ? CV_AMD64_RBP : CV_REG_EBP;
+		case  6: return x64 ? CV_AMD64_RSI : CV_REG_ESI;
+		case  7: return x64 ? CV_AMD64_RDI : CV_REG_EDI;
 		case  8: return CV_REG_EIP;
 		case  9: return CV_REG_EFLAGS;
 		case 10: return CV_REG_CS;
@@ -98,7 +118,7 @@ void CV2PDB::appendStackVar(const char* name, int type, Location& loc)
 
 	codeview_symbol*cvs = (codeview_symbol*) (udtSymbols + cbUdtSymbols);
 
-	CV_X86_REG baseReg = dwarf_to_x86_reg(loc.reg);
+	CV_X86_REG baseReg = dwarf_to_x86_reg(loc.reg, img.isX64());
 	if (baseReg == CV_REG_NONE)
 		return;
 
@@ -242,6 +262,9 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, DWARF_CompilationUnit* cu, DIE
 #endif
 
 	Location frameBase = decodeLocation(procid.frame_base);
+    if (frameBase.is_abs()) // pointer into location list in .debug_loc?
+		// assume standard ebp stack frame, we cannot have different locations anyway
+        frameBase = Location{ Location::RegRel, 5, img.isX64() ? 16 : 8 };
 
 	if (cu)
 	{
@@ -251,11 +274,11 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, DWARF_CompilationUnit* cu, DIE
 		int cvid;
 
 		DIECursor prev = cursor;
-		while (cursor.readSibling(id) && id.tag == DW_TAG_formal_parameter)
+		while (cursor.readNext(id, true) && id.tag == DW_TAG_formal_parameter)
 		{
 			if (id.tag == DW_TAG_formal_parameter)
 			{
-				if (id.name && id.location.type == ExprLoc)
+				if (id.name && (id.location.type == ExprLoc || id.location.type == Block))
 				{
 					Location loc = decodeLocation(id.location, &frameBase);
 					if (loc.is_regrel())
@@ -287,7 +310,7 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, DWARF_CompilationUnit* cu, DIE
 				}
 				else if (id.tag == DW_TAG_variable)
 				{
-					if (id.name && id.location.type == ExprLoc)
+					if (id.name && (id.location.type == ExprLoc || id.location.type == Block))
 					{
 						Location loc = decodeLocation(id.location, &frameBase);
 						if (loc.is_regrel())

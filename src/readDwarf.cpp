@@ -43,7 +43,7 @@ Location decodeLocation(const DWARF_Attribute& attr, const Location* frameBase)
 	if (attr.type == Const)
 		return mkAbs(attr.cons);
 
-	if (attr.type != ExprLoc)
+	if (attr.type != ExprLoc && attr.type != Block) // same memory layout
 		return invalid;
 
 	byte* p = attr.expr.ptr;
