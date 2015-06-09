@@ -356,6 +356,9 @@ public:
 	// Create a new DIECursor
 	DIECursor(DWARF_CompilationUnit* cu_, byte* ptr);
 
+	// Goto next sibling DIE.  If the last read DIE had any children, they will be skipped over.
+	void gotoSibling();
+
 	// Reads next sibling DIE.  If the last read DIE had any children, they will be skipped over.
 	// Returns 'false' upon reaching the last sibling on the current level.
 	bool readSibling(DWARF_InfoData& id);

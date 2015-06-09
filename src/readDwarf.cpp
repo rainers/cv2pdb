@@ -318,7 +318,7 @@ DIECursor::DIECursor(DWARF_CompilationUnit* cu_, byte* ptr_)
 }
 
 
-bool DIECursor::readSibling(DWARF_InfoData& id)
+void DIECursor::gotoSibling()
 {
 	if (sibling)
 	{
@@ -337,7 +337,11 @@ bool DIECursor::readSibling(DWARF_InfoData& id)
 		while (level > currLevel)
 			readNext(dummy);
 	}
+}
 
+bool DIECursor::readSibling(DWARF_InfoData& id)
+{
+    gotoSibling();
 	return readNext(id, true);
 }
 

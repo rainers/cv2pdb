@@ -297,15 +297,20 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, DWARF_CompilationUnit* cu, DIE
 			cursor = lexicalBlocks.back();
 			lexicalBlocks.pop_back();
 
-			while (cursor.readSibling(id))
+		L_nextBlock:
+			if (cursor.readNext(id))
 			{
+			L_nextSibling:
 				if (id.tag == DW_TAG_lexical_block)
 				{
 					if (id.hasChild && id.pchi != id.pclo)
 					{
 						appendLexicalBlock(id, pclo + codeSegOff);
-						lexicalBlocks.push_back(cursor);
+		                DIECursor next = cursor;
+                        next.gotoSibling();
+						lexicalBlocks.push_back(next);
 						cursor = cursor.getSubtreeCursor();
+						goto L_nextBlock;
 					}
 				}
 				else if (id.tag == DW_TAG_variable)
@@ -317,6 +322,8 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, DWARF_CompilationUnit* cu, DIE
 							appendStackVar(id.name, getTypeByDWARFPtr(cu, id.type), loc);
 					}
 				}
+			    if (cursor.readSibling(id))
+					goto L_nextSibling;
 			}
 			appendEnd();
 		}
