@@ -36,7 +36,7 @@ static Location mkRegRel(int reg, int off)
 	return l;
 }
 
-Location decodeLocation(const DWARF_Attribute& attr, const Location* frameBase)
+Location decodeLocation(const DWARF_Attribute& attr, const Location* frameBase, int at)
 {
 	static Location invalid = { Location::Invalid };
 
@@ -49,6 +49,8 @@ Location decodeLocation(const DWARF_Attribute& attr, const Location* frameBase)
 	byte* p = attr.expr.ptr;
 	Location stack[256];
 	int stackDepth = 0;
+    if (at == DW_AT_data_member_location)
+        stack[stackDepth++] = Location { Location::Abs, 0, 0 };
 
 	for (;;)
 	{

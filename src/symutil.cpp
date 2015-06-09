@@ -268,6 +268,11 @@ int cstrcpy_v(bool v3, BYTE* d, const char* s)
 	}
 
 	memcpy(d, s, len + 1);
+
+	for(int i = 0; i < len; i++)
+		if (d[i] == '.')
+			d[i] = dotReplacementChar;
+
 	return len + 1;
 }
 

@@ -333,7 +333,7 @@ struct Location
 // Attemots to partially evaluate DWARF location expressions.
 // The only supported expressions are those, whose result may be represented
 // as either an absolute value, a register, or a register-relative address.
-Location decodeLocation(const DWARF_Attribute& attr, const Location* frameBase = 0);
+Location decodeLocation(const DWARF_Attribute& attr, const Location* frameBase = 0, int at = 0);
 
 class PEImage;
 

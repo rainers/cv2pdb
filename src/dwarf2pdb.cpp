@@ -297,20 +297,18 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, DWARF_CompilationUnit* cu, DIE
 			cursor = lexicalBlocks.back();
 			lexicalBlocks.pop_back();
 
-		L_nextBlock:
-			if (cursor.readNext(id))
+			while (cursor.readNext(id))
 			{
-			L_nextSibling:
 				if (id.tag == DW_TAG_lexical_block)
 				{
 					if (id.hasChild && id.pchi != id.pclo)
 					{
 						appendLexicalBlock(id, pclo + codeSegOff);
-		                DIECursor next = cursor;
-                        next.gotoSibling();
+						DIECursor next = cursor;
+						next.gotoSibling();
 						lexicalBlocks.push_back(next);
 						cursor = cursor.getSubtreeCursor();
-						goto L_nextBlock;
+						continue;
 					}
 				}
 				else if (id.tag == DW_TAG_variable)
@@ -322,8 +320,7 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, DWARF_CompilationUnit* cu, DIE
 							appendStackVar(id.name, getTypeByDWARFPtr(cu, id.type), loc);
 					}
 				}
-			    if (cursor.readSibling(id))
-					goto L_nextSibling;
+				cursor.gotoSibling();
 			}
 			appendEnd();
 		}
@@ -366,9 +363,10 @@ int CV2PDB::addDWARFStructure(DWARF_InfoData& structid, DWARF_CompilationUnit* c
 			nfields++;
 		}
 #endif
+        // cursor points to the first member
 		DWARF_InfoData id;
 		int len = 0;
-		while (cursor.readSibling(id))
+		while (cursor.readNext(id, true))
 		{
 			int cvid = -1;
 			if (id.tag == DW_TAG_member && id.name)
@@ -377,7 +375,7 @@ int CV2PDB::addDWARFStructure(DWARF_InfoData& structid, DWARF_CompilationUnit* c
 				int off = 0;
 				if (!isunion)
 				{
-					Location loc = decodeLocation(id.member_location);
+					Location loc = decodeLocation(id.member_location, 0, DW_AT_data_member_location);
 					if (loc.is_abs())
 					{
 						off = loc.off;
@@ -396,7 +394,7 @@ int CV2PDB::addDWARFStructure(DWARF_InfoData& structid, DWARF_CompilationUnit* c
 			else if(id.tag == DW_TAG_inheritance)
 			{
 				int off;
-				Location loc = decodeLocation(id.member_location);
+				Location loc = decodeLocation(id.member_location, 0, DW_AT_data_member_location);
 				if (loc.is_abs())
 				{   
 					cvid = S_CONSTANT_V2;
@@ -415,6 +413,7 @@ int CV2PDB::addDWARFStructure(DWARF_InfoData& structid, DWARF_CompilationUnit* c
 					nfields++;
 				}
 			}
+			cursor.gotoSibling();
 		}
 		fl = (codeview_reftype*) (dwarfTypes + flbegin);
 		fl->fieldlist.len = cbDwarfTypes - flbegin - 2;
@@ -443,7 +442,7 @@ int CV2PDB::getDWARFArrayBounds(DWARF_InfoData& arrayid, DWARF_CompilationUnit* 
 	if (cu)
 	{
 		DWARF_InfoData id;
-		while (cursor.readSibling(id))
+		while (cursor.readNext(id, true))
 		{
 			int cvid = -1;
 			if (id.tag == DW_TAG_subrange_type)
@@ -451,6 +450,7 @@ int CV2PDB::getDWARFArrayBounds(DWARF_InfoData& arrayid, DWARF_CompilationUnit* 
 				lowerBound = id.lower_bound;
 				upperBound = id.upper_bound;
 			}
+			cursor.gotoSibling();
 		}
 	}
 	return lowerBound;
