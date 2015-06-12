@@ -57,6 +57,7 @@ enum CV_X86_REG
 	CV_REG_EFLAGS = 34,
 	CV_REG_ST0 = 128, /* this includes ST1 to ST7 */
 	CV_REG_XMM0 = 154, /* this includes XMM1 to XMM7 */
+	CV_REG_XMM8 = 252, /* this includes XMM9 to XMM15 */
 
 	// 64-bit regular registers
 	CV_AMD64_RAX      =  328,
@@ -79,18 +80,18 @@ enum CV_X86_REG
 	CV_AMD64_R15      =  343,
 };
 
-CV_X86_REG dwarf_to_x86_reg(unsigned dwarf_reg, bool x64)
+CV_X86_REG dwarf_to_x86_reg(unsigned dwarf_reg)
 {
 	switch (dwarf_reg)
 	{
-		case  0: return x64 ? CV_AMD64_RAX : CV_REG_EAX;
-		case  1: return x64 ? CV_AMD64_RCX : CV_REG_ECX;
-		case  2: return x64 ? CV_AMD64_RDX : CV_REG_EDX;
-		case  3: return x64 ? CV_AMD64_RBX : CV_REG_EBX;
-		case  4: return x64 ? CV_AMD64_RSP : CV_REG_ESP;
-		case  5: return x64 ? CV_AMD64_RBP : CV_REG_EBP;
-		case  6: return x64 ? CV_AMD64_RSI : CV_REG_ESI;
-		case  7: return x64 ? CV_AMD64_RDI : CV_REG_EDI;
+		case  0: return CV_REG_EAX;
+		case  1: return CV_REG_ECX;
+		case  2: return CV_REG_EDX;
+		case  3: return CV_REG_EBX;
+		case  4: return CV_REG_ESP;
+		case  5: return CV_REG_EBP;
+		case  6: return CV_REG_ESI;
+		case  7: return CV_REG_EDI;
 		case  8: return CV_REG_EIP;
 		case  9: return CV_REG_EFLAGS;
 		case 10: return CV_REG_CS;
@@ -99,12 +100,56 @@ CV_X86_REG dwarf_to_x86_reg(unsigned dwarf_reg, bool x64)
 		case 13: return CV_REG_ES;
 		case 14: return CV_REG_FS;
 		case 15: return CV_REG_GS;
+
 		case 16: case 17: case 18: case 19:
 		case 20: case 21: case 22: case 23:
 			return (CV_X86_REG)(CV_REG_ST0 + dwarf_reg - 16);
 		case 32: case 33: case 34: case 35:
 		case 36: case 37: case 38: case 39:
 			return (CV_X86_REG)(CV_REG_XMM0 + dwarf_reg - 32);
+		default:
+			return CV_REG_NONE;
+	}
+}
+
+CV_X86_REG dwarf_to_amd64_reg(unsigned dwarf_reg)
+{
+	switch (dwarf_reg)
+	{
+		case  0: return CV_AMD64_RAX;
+		case  1: return CV_AMD64_RDX;
+		case  2: return CV_AMD64_RCX;
+		case  3: return CV_AMD64_RBX;
+		case  4: return CV_AMD64_RSI;
+		case  5: return CV_AMD64_RDI;
+		case  6: return CV_AMD64_RBP;
+		case  7: return CV_AMD64_RSP;
+		case  8: return CV_AMD64_R8;
+		case  9: return CV_AMD64_R9;
+		case 10: return CV_AMD64_R10;
+		case 11: return CV_AMD64_R11;
+		case 12: return CV_AMD64_R12;
+		case 13: return CV_AMD64_R13;
+		case 14: return CV_AMD64_R14;
+		case 15: return CV_AMD64_R15;
+		case 16: return CV_REG_IP;
+		case 49: return CV_REG_EFLAGS;
+		case 50: return CV_REG_ES;
+		case 51: return CV_REG_CS;
+		case 52: return CV_REG_SS;
+		case 53: return CV_REG_DS;
+		case 54: return CV_REG_FS;
+		case 55: return CV_REG_GS;
+
+		case 17: case 18: case 19: case 20: 
+		case 21: case 22: case 23: case 24: 
+			return (CV_X86_REG)(CV_REG_XMM0 + dwarf_reg - 17);
+		case 25: case 26: case 27: case 28: 
+		case 29: case 30: case 31: case 32: 
+			return (CV_X86_REG)(CV_REG_XMM8 + dwarf_reg - 25);
+		case 33: case 34: case 35: case 36: 
+		case 37: case 38: case 39: case 40: 
+			return (CV_X86_REG)(CV_REG_ST0 + dwarf_reg - 33);
 		default:
 			return CV_REG_NONE;
 	}
@@ -118,14 +163,25 @@ void CV2PDB::appendStackVar(const char* name, int type, Location& loc)
 
 	codeview_symbol*cvs = (codeview_symbol*) (udtSymbols + cbUdtSymbols);
 
-	CV_X86_REG baseReg = dwarf_to_x86_reg(loc.reg, img.isX64());
+	int off = loc.off;
+	CV_X86_REG baseReg;
+	if (loc.reg == DW_REG_CFA)
+	{
+		baseReg = (img.isX64() ? CV_AMD64_RBP : CV_REG_EBP);
+		off += (img.isX64() ? 16 : 8);
+	}
+	else if (img.isX64())
+		baseReg = dwarf_to_amd64_reg(loc.reg);
+    else
+		baseReg = dwarf_to_x86_reg(loc.reg);
+
 	if (baseReg == CV_REG_NONE)
 		return;
 
 	if (baseReg == CV_REG_EBP)
 	{
 		cvs->stack_v2.id = v3 ? S_BPREL_V3 : S_BPREL_V2;
-		cvs->stack_v2.offset = loc.off;
+		cvs->stack_v2.offset = off;
 		cvs->stack_v2.symtype = type;
 		len = cstrcpy_v(v3, (BYTE*)&cvs->stack_v2.p_name, name);
 		len += (BYTE*)&cvs->stack_v2.p_name - (BYTE*)cvs;
@@ -134,7 +190,7 @@ void CV2PDB::appendStackVar(const char* name, int type, Location& loc)
 	{
 		cvs->regrel_v3.id = S_REGREL_V3;
 		cvs->regrel_v3.reg = baseReg;
-		cvs->regrel_v3.offset = loc.off;
+		cvs->regrel_v3.offset = off;
 		cvs->regrel_v3.symtype = type;
 		len = cstrcpy_v(true, (BYTE*)cvs->regrel_v3.name, name);
 		len += (BYTE*)&cvs->regrel_v3.name - (BYTE*)cvs;
@@ -261,10 +317,10 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, DWARF_CompilationUnit* cu, DIE
 	addStackVar("local_var", 0x1001, 8);
 #endif
 
-	Location frameBase = decodeLocation(procid.frame_base);
+	Location frameBase = decodeLocation(procid.frame_base, 0, DW_AT_frame_base);
     if (frameBase.is_abs()) // pointer into location list in .debug_loc?
 		// assume standard ebp stack frame, we cannot have different locations anyway
-        frameBase = Location{ Location::RegRel, 5, img.isX64() ? 16 : 8 };
+        frameBase = Location{ Location::RegRel, DW_REG_CFA, 0 };
 
 	if (cu)
 	{

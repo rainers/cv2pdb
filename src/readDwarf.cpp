@@ -265,13 +265,16 @@ Location decodeLocation(const DWARF_Attribute& attr, const Location* frameBase, 
 			case DW_OP_nop:
 				break;
 
+			case DW_OP_call_frame_cfa: // assume ebp+8/rbp+16
+				stack[stackDepth++] = Location{ Location::RegRel, DW_REG_CFA, 0 };
+				break;
+
 			case DW_OP_deref:
 			case DW_OP_deref_size:
 			case DW_OP_push_object_address:
 			case DW_OP_call2:
 			case DW_OP_call4:
 			case DW_OP_form_tls_address:
-			case DW_OP_call_frame_cfa:
 			case DW_OP_call_ref:
 			case DW_OP_bit_piece:
 			case DW_OP_implicit_value:
