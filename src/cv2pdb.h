@@ -40,11 +40,11 @@ public:
 	const BYTE* getLibrary(int i);
 	bool initSegMap();
 
-	enum 
-	{ 
-		kCmdAdd, 
-		kCmdCount, 
-		kCmdNestedTypes, 
+	enum
+	{
+		kCmdAdd,
+		kCmdCount,
+		kCmdNestedTypes,
 		kCmdOffsetFirstVirtualMethod,
 		kCmdHasClassTypeEnum,
 		kCmdCountBaseClasses
@@ -54,13 +54,13 @@ public:
 	int countFields(const codeview_reftype* fieldlist);
 	int countNestedTypes(const codeview_reftype* fieldlist, int type);
 
-	int addAggregate(codeview_type* dtype, bool clss, int n_element, int fieldlist, int property, 
+	int addAggregate(codeview_type* dtype, bool clss, int n_element, int fieldlist, int property,
 	                 int derived, int vshape, int structlen, const char*name);
-	int addClass(codeview_type* dtype, int n_element, int fieldlist, int property, 
+	int addClass(codeview_type* dtype, int n_element, int fieldlist, int property,
 	                                   int derived, int vshape, int structlen, const char*name);
-	int addStruct(codeview_type* dtype, int n_element, int fieldlist, int property, 
+	int addStruct(codeview_type* dtype, int n_element, int fieldlist, int property,
 	                                    int derived, int vshape, int structlen, const char*name);
-	int addEnum(codeview_type* dtype, int count, int fieldlist, int property, 
+	int addEnum(codeview_type* dtype, int count, int fieldlist, int property,
 	                                  int type, const char*name);
 
 	int addPointerType(codeview_type* dtype, int type, int attr = 0x800A);
@@ -121,7 +121,7 @@ public:
 	void appendTypedefs();
 	int  appendEnumerator(const char* typeName, const char* enumName, int enumValue, int prop);
 	int  appendClassTypeEnum(const codeview_type* fieldlist, int type, const char* name);
-	void appendStackVar(const char* name, int type, Location& loc);
+	void appendStackVar(const char* name, int type, Location& loc, Location& cfa);
 	void appendGlobalVar(const char* name, int type, int seg, int offset);
 	bool appendEndArg();
 	void appendEnd();
@@ -225,7 +225,7 @@ public:
 	int nextUserType;
 	int nextDwarfType;
 	int objectType;
-	
+
 	int emptyFieldListType;
 	int classEnumType;
 	int ifaceEnumType;

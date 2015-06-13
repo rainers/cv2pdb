@@ -17,7 +17,7 @@
 
 #include "dwarf.h"
 
-#include <assert.h> 
+#include <assert.h>
 #include <string>
 #include <vector>
 
@@ -141,21 +141,406 @@ CV_X86_REG dwarf_to_amd64_reg(unsigned dwarf_reg)
 		case 54: return CV_REG_FS;
 		case 55: return CV_REG_GS;
 
-		case 17: case 18: case 19: case 20: 
-		case 21: case 22: case 23: case 24: 
+		case 17: case 18: case 19: case 20:
+		case 21: case 22: case 23: case 24:
 			return (CV_X86_REG)(CV_REG_XMM0 + dwarf_reg - 17);
-		case 25: case 26: case 27: case 28: 
-		case 29: case 30: case 31: case 32: 
+		case 25: case 26: case 27: case 28:
+		case 29: case 30: case 31: case 32:
 			return (CV_X86_REG)(CV_REG_XMM8 + dwarf_reg - 25);
-		case 33: case 34: case 35: case 36: 
-		case 37: case 38: case 39: case 40: 
+		case 33: case 34: case 35: case 36:
+		case 37: case 38: case 39: case 40:
 			return (CV_X86_REG)(CV_REG_ST0 + dwarf_reg - 33);
 		default:
 			return CV_REG_NONE;
 	}
 }
 
-void CV2PDB::appendStackVar(const char* name, int type, Location& loc)
+// Call Frame Information entry (CIE or FDE)
+class CFIEntry
+{
+public:
+	enum Type
+	{
+		CIE,
+		FDE
+	};
+
+	byte* ptr;
+	byte* end;
+	byte type;
+	unsigned long CIE_pointer; //
+
+	// CIE
+	byte version;
+	const char* augmentation;
+	byte address_size;
+	byte segment_size;
+	unsigned long code_alignment_factor;
+	unsigned long data_alignment_factor;
+	unsigned long return_address_register;
+	byte* initial_instructions;
+	unsigned long initial_instructions_length;
+
+	// FDE
+	unsigned long segment;
+	unsigned long initial_location;
+	unsigned long address_range;
+	byte* instructions;
+	unsigned long instructions_length;
+};
+
+// Call Frame Information Cursor
+class CFICursor
+{
+public:
+	CFICursor(const PEImage& img)
+	: beg((byte*)img.debug_frame)
+	, end((byte*)img.debug_frame + img.debug_frame_length)
+	, ptr(beg)
+	{
+		default_address_size = img.isX64() ? 8 : 4;
+	}
+
+	byte* beg;
+	byte* end;
+	byte* ptr;
+	byte default_address_size;
+
+	bool readCIE(CFIEntry& entry, byte* &p)
+	{
+		entry.version = *p++;
+		entry.augmentation = (char*) p++;
+		if(entry.augmentation[0])
+		{
+			// not supporting any augmentation
+			entry.address_size = 4;
+			entry.segment_size = 0;
+			entry.code_alignment_factor = 0;
+			entry.data_alignment_factor = 0;
+			entry.return_address_register = 0;
+		}
+		else
+		{
+			if (entry.version >= 4)
+			{
+				entry.address_size = *p++;
+				entry.segment_size = *p++;
+			}
+			else
+			{
+				entry.address_size = default_address_size;
+				entry.segment_size = 0;
+			}
+			entry.code_alignment_factor = LEB128(p);
+			entry.data_alignment_factor = SLEB128(p);
+			entry.return_address_register = LEB128(p);
+		}
+		entry.initial_instructions = p;
+		entry.initial_instructions_length = 0; // to be calculated outside
+		return true;
+	}
+
+	bool readHeader(byte* &p, byte* &pend, unsigned long& CIE_pointer)
+	{
+		if (p >= end)
+			return false;
+		long long len = RDsize(p, 4);
+		bool dwarf64 = (len == 0xffffffff);
+		int ptrsize = dwarf64 ? 8 : 4;
+		if(dwarf64)
+			len = RDsize(p, 8);
+		if(p + len > end)
+			return false;
+
+		pend = p + (unsigned long) len;
+		CIE_pointer = (unsigned long) RDsize(p, ptrsize);
+		return true;
+	}
+
+	bool readNext(CFIEntry& entry)
+	{
+		byte* p = ptr;
+		if(!readHeader(p, entry.end, entry.CIE_pointer))
+			return false;
+
+		entry.ptr = ptr;
+
+		if (entry.CIE_pointer == 0xffffffff)
+		{
+			entry.type = CFIEntry::CIE;
+			readCIE(entry, p);
+			entry.initial_instructions_length = entry.end - p;
+		}
+		else
+		{
+			entry.type = CFIEntry::FDE;
+
+			byte* q = beg + entry.CIE_pointer, *qend;
+			unsigned long cie_off;
+			if (!readHeader(q, qend, cie_off))
+				return false;
+			if (cie_off != 0xffffffff)
+				return false;
+			readCIE(entry, q);
+			entry.initial_instructions_length = qend - entry.initial_instructions;
+
+			entry.segment = (unsigned long)(entry.segment_size > 0 ? RDsize(p, entry.segment_size) : 0);
+			entry.initial_location = (unsigned long)RDsize(p, entry.address_size);
+			entry.address_range = (unsigned long)RDsize(p, entry.address_size);
+			entry.instructions = p;
+			entry.instructions_length = entry.end - p;
+		}
+		ptr = entry.end;
+		return true;
+	}
+};
+
+class CFACursor
+{
+public:
+	CFACursor(const CFIEntry& cfientry, unsigned long location)
+	: entry (cfientry)
+	{
+		loc = location;
+		cfa = { Location::RegRel, DW_REG_CFA, 0 };
+		setInstructions(entry.initial_instructions, entry.initial_instructions_length);
+	}
+
+	void setInstructions(byte* instructions, int length)
+	{
+		beg = instructions;
+		end = instructions + length;
+		ptr = beg;
+	}
+
+	bool beforeRestore()
+	{
+		if(ptr >= end)
+			return false;
+		byte instr = *ptr;
+		if ((instr & 0xc0) == DW_CFA_restore || instr == DW_CFA_restore_extended || instr == DW_CFA_restore_state)
+			return true;
+		return false;
+	}
+
+	bool processNext()
+	{
+		if(ptr >= end)
+			return false;
+		byte instr = *ptr++;
+		int reg, off;
+
+		switch(instr & 0xc0)
+		{
+			case DW_CFA_advance_loc:
+				loc += (instr & 0x3f) * entry.code_alignment_factor;
+				break;
+			case DW_CFA_offset:
+				reg = instr & 0x3f; // set register rule to "factored offset"
+				off = LEB128(ptr) * entry.data_alignment_factor;
+				break;
+			case DW_CFA_restore:
+				reg = instr & 0x3f; // restore register to initial state
+				break;
+
+			case DW_CFA_extended:
+			switch(instr)
+			{
+			case DW_CFA_set_loc:
+				loc = RDsize(ptr, entry.address_size);
+				break;
+			case DW_CFA_advance_loc1:
+				loc = *ptr++;
+				break;
+			case DW_CFA_advance_loc2:
+				loc = RDsize(ptr, 2);
+				break;
+			case DW_CFA_advance_loc4:
+				loc = RDsize(ptr, 4);
+				break;
+
+			case DW_CFA_def_cfa:
+				cfa.reg = LEB128(ptr);
+				cfa.off = LEB128(ptr);
+				break;
+			case DW_CFA_def_cfa_sf:
+				cfa.reg = LEB128(ptr);
+				cfa.off = SLEB128(ptr) * entry.data_alignment_factor;
+				break;
+			case DW_CFA_def_cfa_register:
+				cfa.reg = LEB128(ptr);
+				break;
+			case DW_CFA_def_cfa_offset:
+				cfa.off = LEB128(ptr);
+				break;
+			case DW_CFA_def_cfa_offset_sf:
+				cfa.off = SLEB128(ptr) * entry.data_alignment_factor;
+				break;
+			case DW_CFA_def_cfa_expression:
+			{
+				DWARF_Attribute attr;
+				attr.type = ExprLoc;
+				attr.expr.len = LEB128(ptr);
+				attr.expr.ptr = ptr;
+				cfa = decodeLocation(attr);
+				ptr += attr.expr.len;
+				break;
+			}
+
+			case DW_CFA_undefined:
+				reg = LEB128(ptr); // set register rule to "undefined"
+				break;
+			case DW_CFA_same_value:
+				reg = LEB128(ptr); // set register rule to "same value"
+				break;
+			case DW_CFA_offset_extended:
+				reg = LEB128(ptr); // set register rule to "factored offset"
+				off = LEB128(ptr) * entry.data_alignment_factor;
+				break;
+			case DW_CFA_offset_extended_sf:
+				reg = LEB128(ptr); // set register rule to "factored offset"
+				off = SLEB128(ptr) * entry.data_alignment_factor;
+				break;
+			case DW_CFA_val_offset:
+				reg = LEB128(ptr); // set register rule to "val offset"
+				off = LEB128(ptr) * entry.data_alignment_factor;
+				break;
+			case DW_CFA_val_offset_sf:
+				reg = LEB128(ptr); // set register rule to "val offset"
+				off = SLEB128(ptr) * entry.data_alignment_factor;
+				break;
+			case DW_CFA_register:
+				reg = LEB128(ptr); // set register rule to "register"
+				reg = LEB128(ptr);
+				break;
+			case DW_CFA_expression:
+			case DW_CFA_val_expression:
+			{
+				reg = LEB128(ptr); // set register rule to "expression"
+				DWARF_Attribute attr;
+				attr.type = Block;
+				attr.block.len = LEB128(ptr);
+				attr.block.ptr = ptr;
+				cfa = decodeLocation(attr); // TODO: push cfa on stack
+				ptr += attr.expr.len;
+				break;
+			}
+			case DW_CFA_restore_extended:
+				reg = LEB128(ptr); // restore register to initial state
+				break;
+
+			case DW_CFA_remember_state:
+			case DW_CFA_restore_state:
+			case DW_CFA_nop:
+				break;
+			}
+		}
+		return true;
+	}
+
+	const CFIEntry& entry;
+	byte* beg;
+	byte* end;
+	byte* ptr;
+
+	unsigned long long loc;
+	Location cfa;
+};
+
+Location findBestCFA(const PEImage& img, unsigned int pclo, unsigned int pchi)
+{
+	bool x64 = img.isX64();
+	Location ebp = { Location::RegRel, x64 ? 6 : 5, x64 ? 16 : 8 };
+	if (!img.debug_frame)
+		return ebp;
+
+	CFIEntry entry;
+	CFICursor cursor(img);
+	while(cursor.readNext(entry))
+	{
+		if (entry.type == CFIEntry::FDE &&
+			entry.initial_location <= pclo && entry.initial_location + entry.address_range >= pchi)
+		{
+			CFACursor cfa(entry, pclo);
+			while(cfa.processNext()) {}
+			cfa.setInstructions(entry.instructions, entry.instructions_length);
+			while(!cfa.beforeRestore() && cfa.processNext()) {}
+			return cfa.cfa;
+		}
+	}
+	return ebp;
+}
+
+// Location list entry
+class LOCEntry
+{
+public:
+	byte* ptr;
+	unsigned long beg_offset;
+	unsigned long end_offset;
+	Location loc;
+
+	bool eol() const { return beg_offset == 0 && end_offset == 0; }
+};
+
+// Location list cursor
+class LOCCursor
+{
+public:
+	LOCCursor(const PEImage& img, DWARF_CompilationUnit* cu, unsigned long off)
+	: beg((byte*)img.debug_loc)
+	, end((byte*)img.debug_loc + img.debug_loc_length)
+	, ptr(beg + off)
+	{
+		default_address_size = img.isX64() ? 8 : 4;
+	}
+
+	byte* beg;
+	byte* end;
+	byte* ptr;
+	byte default_address_size;
+
+	bool readNext(LOCEntry& entry)
+	{
+		if(ptr >= end)
+			return false;
+		entry.beg_offset = (unsigned long) RDsize(ptr, default_address_size);
+		entry.end_offset = (unsigned long) RDsize(ptr, default_address_size);
+		if (entry.eol())
+			return true;
+
+		DWARF_Attribute attr;
+		attr.type = Block;
+		attr.block.len = RD2(ptr);
+		attr.block.ptr = ptr;
+		entry.loc = decodeLocation(attr);
+		ptr += attr.expr.len;
+		return true;
+	}
+};
+
+Location findBestFBLoc(const PEImage& img, DWARF_CompilationUnit* cu, unsigned long fblocoff)
+{
+	int regebp = img.isX64() ? 6 : 5;
+	LOCCursor cursor(img, cu, fblocoff);
+	LOCEntry entry;
+	Location longest = { Location::RegRel, DW_REG_CFA, 0 };
+	unsigned long longest_range = 0;
+	while(cursor.readNext(entry) && !entry.eol())
+	{
+		if(entry.loc.is_regrel() && entry.loc.reg == regebp)
+			return entry.loc;
+		unsigned long range = entry.end_offset - entry.beg_offset;
+		if(range > longest_range)
+		{
+			longest_range = range;
+			longest = entry.loc;
+		}
+	}
+	return longest;
+}
+
+void CV2PDB::appendStackVar(const char* name, int type, Location& loc, Location& cfa)
 {
 	unsigned int len;
 	unsigned int align = 4;
@@ -163,17 +548,18 @@ void CV2PDB::appendStackVar(const char* name, int type, Location& loc)
 
 	codeview_symbol*cvs = (codeview_symbol*) (udtSymbols + cbUdtSymbols);
 
+	int reg = loc.reg;
 	int off = loc.off;
 	CV_X86_REG baseReg;
-	if (loc.reg == DW_REG_CFA)
+	if (reg == DW_REG_CFA)
 	{
-		baseReg = (img.isX64() ? CV_AMD64_RBP : CV_REG_EBP);
-		off += (img.isX64() ? 16 : 8);
+		reg = cfa.reg;
+		off += cfa.off;
 	}
-	else if (img.isX64())
-		baseReg = dwarf_to_amd64_reg(loc.reg);
+	if (img.isX64())
+		baseReg = dwarf_to_amd64_reg(reg);
     else
-		baseReg = dwarf_to_x86_reg(loc.reg);
+		baseReg = dwarf_to_x86_reg(reg);
 
 	if (baseReg == CV_REG_NONE)
 		return;
@@ -318,16 +704,16 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, DWARF_CompilationUnit* cu, DIE
 #endif
 
 	Location frameBase = decodeLocation(procid.frame_base, 0, DW_AT_frame_base);
-    if (frameBase.is_abs()) // pointer into location list in .debug_loc?
-		// assume standard ebp stack frame, we cannot have different locations anyway
-        frameBase = Location{ Location::RegRel, DW_REG_CFA, 0 };
+	if (frameBase.is_abs()) // pointer into location list in .debug_loc? assume CFA
+		frameBase = findBestFBLoc(img, cu, frameBase.off);
+
+    Location cfa = findBestCFA(img, procid.pclo, procid.pchi);
 
 	if (cu)
 	{
 		bool endarg = false;
 		DWARF_InfoData id;
 		int off = 8;
-		int cvid;
 
 		DIECursor prev = cursor;
 		while (cursor.readNext(id, true) && id.tag == DW_TAG_formal_parameter)
@@ -338,7 +724,7 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, DWARF_CompilationUnit* cu, DIE
 				{
 					Location loc = decodeLocation(id.location, &frameBase);
 					if (loc.is_regrel())
-						appendStackVar(id.name, getTypeByDWARFPtr(cu, id.type), loc);
+						appendStackVar(id.name, getTypeByDWARFPtr(cu, id.type), loc, cfa);
 				}
 			}
 			prev = cursor;
@@ -373,7 +759,7 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, DWARF_CompilationUnit* cu, DIE
 					{
 						Location loc = decodeLocation(id.location, &frameBase);
 						if (loc.is_regrel())
-							appendStackVar(id.name, getTypeByDWARFPtr(cu, id.type), loc);
+							appendStackVar(id.name, getTypeByDWARFPtr(cu, id.type), loc, cfa);
 					}
 				}
 				cursor.gotoSibling();
@@ -452,7 +838,7 @@ int CV2PDB::addDWARFStructure(DWARF_InfoData& structid, DWARF_CompilationUnit* c
 				int off;
 				Location loc = decodeLocation(id.member_location, 0, DW_AT_data_member_location);
 				if (loc.is_abs())
-				{   
+				{
 					cvid = S_CONSTANT_V2;
 					off = loc.off;
 				}
@@ -490,7 +876,7 @@ int CV2PDB::addDWARFStructure(DWARF_InfoData& structid, DWARF_CompilationUnit* c
 	return cvtype;
 }
 
-int CV2PDB::getDWARFArrayBounds(DWARF_InfoData& arrayid, DWARF_CompilationUnit* cu, 
+int CV2PDB::getDWARFArrayBounds(DWARF_InfoData& arrayid, DWARF_CompilationUnit* cu,
 								DIECursor cursor, int& upperBound)
 {
 	int lowerBound = 0;
@@ -512,11 +898,11 @@ int CV2PDB::getDWARFArrayBounds(DWARF_InfoData& arrayid, DWARF_CompilationUnit* 
 	return lowerBound;
 }
 
-int CV2PDB::addDWARFArray(DWARF_InfoData& arrayid, DWARF_CompilationUnit* cu, 
+int CV2PDB::addDWARFArray(DWARF_InfoData& arrayid, DWARF_CompilationUnit* cu,
 						  DIECursor cursor)
 {
 	int upperBound, lowerBound = getDWARFArrayBounds(arrayid, cu, cursor, upperBound);
-	
+
 	checkUserTypeAlloc(kMaxNameLen + 100);
 	codeview_type* cvt = (codeview_type*) (userTypes + cbUserTypes);
 
@@ -562,7 +948,7 @@ bool CV2PDB::addDWARFTypes()
 	// COMPILAND
 	cvs = (codeview_symbol*) (data + off);
 	cvs->compiland_v1.id = S_COMPILAND_V1;
-	cvs->compiland_v1.unknown = 0x800100; // ?, 0x100: C++, 
+	cvs->compiland_v1.unknown = 0x800100; // ?, 0x100: C++,
 	cvs->compiland_v1.unknown |= img.isX64() ? 0xd0 : 6; //0x06: Pentium Pro/II, 0xd0: x64
 	len = sizeof(cvs->compiland_v1) - sizeof(cvs->compiland_v1.p_name);
 	len += c2p("cv2pdb", cvs->compiland_v1.p_name);

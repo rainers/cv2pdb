@@ -24,13 +24,13 @@ public:
 
 	template<class P> P* DP(int off) const
 	{
-		return (P*) ((char*) dump_base + off); 
+		return (P*) ((char*) dump_base + off);
 	}
 	template<class P> P* DPV(int off, int size) const
-	{ 
+	{
 		if(off < 0 || off + size > dump_total_len)
 			return 0;
-		return (P*) ((char*) dump_base + off); 
+		return (P*) ((char*) dump_base + off);
 	}
 	template<class P> P* DPV(int off) const
 	{
@@ -112,7 +112,7 @@ private:
     const char* symtable;
     const char* strtable;
     bool bigobj;
-	
+
 public:
 	//dwarf
 	char* debug_aranges;
@@ -121,9 +121,9 @@ public:
 	char* debug_info;     unsigned long debug_info_length;
 	char* debug_abbrev;   unsigned long debug_abbrev_length;
 	char* debug_line;     unsigned long debug_line_length;
-	char* debug_frame;
+	char* debug_frame;    unsigned long debug_frame_length;
 	char* debug_str;
-	char* debug_loc;
+	char* debug_loc;      unsigned long debug_loc_length;
 	char* debug_ranges;   unsigned long debug_ranges_length;
 	char* reloc;          unsigned long reloc_length;
 

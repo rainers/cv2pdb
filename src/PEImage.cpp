@@ -38,17 +38,16 @@ PEImage::PEImage(const TCHAR* iname)
 , debug_aranges(0)
 , debug_pubnames(0)
 , debug_pubtypes(0)
-, debug_info(0)
-, debug_abbrev(0)
-, debug_line(0)
-, debug_frame(0)
+, debug_info(0), debug_info_length(0)
+, debug_abbrev(0), debug_abbrev_length(0)
+, debug_line(0), debug_line_length(0)
+, debug_frame(0), debug_frame_length(0)
 , debug_str(0)
-, debug_loc(0)
-, debug_ranges(0)
+, debug_loc(0), debug_loc_length(0)
+, debug_ranges(0), debug_ranges_length(0)
 , codeSegment(0)
 , linesSegment(-1)
-, reloc(0)
-, reloc_length(0)
+, reloc(0), reloc_length(0)
 , nsec(0)
 , nsym(0)
 , symtable(0)
@@ -74,7 +73,7 @@ bool PEImage::readAll(const TCHAR* iname)
 		return setError("file already open");
 
 	fd = T_sopen(iname, O_RDONLY | O_BINARY, SH_DENYWR);
-	if (fd == -1) 
+	if (fd == -1)
 		return setError("Can't open file");
 
 	struct stat s;
@@ -85,9 +84,9 @@ bool PEImage::readAll(const TCHAR* iname)
 	dump_base = alloc_aligned(dump_total_len, 0x1000);
 	if (!dump_base)
 		return setError("Out of memory");
-	if (read(fd, dump_base, dump_total_len) != dump_total_len) 
+	if (read(fd, dump_base, dump_total_len) != dump_total_len)
 		return setError("Cannot read file");
-	
+
 	close(fd);
 	fd = -1;
 	return true;
@@ -121,10 +120,10 @@ bool PEImage::save(const TCHAR* oname)
 		return setError("no data to dump");
 
 	fd = T_open(oname, O_WRONLY | O_CREAT | O_BINARY | O_TRUNC, S_IREAD | S_IWRITE | S_IEXEC);
-	if (fd == -1) 
+	if (fd == -1)
 		return setError("Can't create file");
 
-	if (write(fd, dump_base, dump_total_len) != dump_total_len) 
+	if (write(fd, dump_base, dump_total_len) != dump_total_len)
 		return setError("Cannot write file");
 
 	close(fd);
@@ -286,7 +285,7 @@ bool PEImage::initCVPtr(bool initDbgDir)
 	{
 		int off = IMGHDR(OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_DEBUG].VirtualAddress) + i*sizeof(IMAGE_DEBUG_DIRECTORY);
 		dbgDir = RVA<IMAGE_DEBUG_DIRECTORY>(off, sizeof(IMAGE_DEBUG_DIRECTORY));
-		if (!dbgDir) 
+		if (!dbgDir)
 			continue; //return setError("debug directory not placed in image");
 		if (dbgDir->Type != IMAGE_DEBUG_TYPE_CODEVIEW)
 			continue; //return setError("debug directory not of type CodeView");
@@ -418,11 +417,11 @@ void PEImage::initDWARFSegments()
 		if(strcmp(name, ".debug_line") == 0)
 			debug_line = DPV<char>(sec[linesSegment = s].PointerToRawData, debug_line_length = sizeInImage(sec[s]));
 		if(strcmp(name, ".debug_frame") == 0)
-			debug_frame = DPV<char>(sec[s].PointerToRawData, sizeInImage(sec[s]));
+			debug_frame = DPV<char>(sec[s].PointerToRawData, debug_frame_length = sizeInImage(sec[s]));
 		if(strcmp(name, ".debug_str") == 0)
 			debug_str = DPV<char>(sec[s].PointerToRawData, sizeInImage(sec[s]));
 		if(strcmp(name, ".debug_loc") == 0)
-			debug_loc = DPV<char>(sec[s].PointerToRawData, sizeInImage(sec[s]));
+			debug_loc = DPV<char>(sec[s].PointerToRawData, debug_loc_length = sizeInImage(sec[s]));
 		if(strcmp(name, ".debug_ranges") == 0)
 			debug_ranges = DPV<char>(sec[s].PointerToRawData, debug_ranges_length = sizeInImage(sec[s]));
 		if(strcmp(name, ".reloc") == 0)
@@ -710,12 +709,12 @@ int PEImage::findSymbol(const char* name, unsigned long& off) const
 ///////////////////////////////////////////////////////////////////////
 int PEImage::countCVEntries() const
 {
-	return dirHeader ? dirHeader->cDir : 0; 
+	return dirHeader ? dirHeader->cDir : 0;
 }
 
 OMFDirEntry* PEImage::getCVEntry(int i) const
 {
-	return dirEntry + i; 
+	return dirEntry + i;
 }
 
 
