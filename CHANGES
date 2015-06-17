@@ -226,3 +226,9 @@ unreleased Version 0.22
   * last version introduced a regression that could cause DWARF conversion to crash
   * DWARF sections now stripped from image (if last sections)
   * add support for VS 2015
+
+2015-06-17 Version 0.37
+
+  * DWARF: improved support for gcc 4.9.0 and clang 3.6
+  * DWARF: support debug_frame (CFA) and debug_loc (for frame base) for better support for locals
+  * write correct machine type for x64 to PDB
