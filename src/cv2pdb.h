@@ -247,6 +247,7 @@ public:
 	bool useGlobalMod;
 	bool thisIsNotRef;
 	bool v3;
+	bool debug;
 	const char* lastError;
 
 	int srcLineSections;

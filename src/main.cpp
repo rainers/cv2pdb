@@ -107,6 +107,7 @@ int T_main(int argc, TCHAR* argv[])
 {
 	double Dversion = 2.043;
 	const TCHAR* pdbref = 0;
+	bool debug = false;
 
 	while (argc > 1 && argv[1][0] == '-')
 	{
@@ -122,6 +123,8 @@ int T_main(int argc, TCHAR* argv[])
 			demangleSymbols = false;
 		else if (argv[0][1] == 'e')
 			useTypedefEnum = true;
+		else if (argv[0][1] == 'd' && argv[0][2] == 'e' && argv[0][3] == 'b') // deb[ug]
+			debug = true;
 		else if (argv[0][1] == 's' && argv[0][2])
 			dotReplacementChar = (char)argv[0][2];
 		else if (argv[0][1] == 'p' && argv[0][2])
@@ -150,6 +153,7 @@ int T_main(int argc, TCHAR* argv[])
 
 	CV2PDB cv2pdb(img);
 	cv2pdb.Dversion = Dversion;
+	cv2pdb.debug = debug;
 	cv2pdb.initLibraries();
 
 	TCHAR* outname = argv[1];

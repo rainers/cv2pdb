@@ -53,7 +53,7 @@ bool getInstallDir(const char* version, char* installDir, DWORD size)
 	HKEY hkey;
 	if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, key, 0, KEY_QUERY_VALUE, &hkey) != ERROR_SUCCESS)
 		return false;
-	
+
 	bool rc = RegQueryValueExA(hkey, "InstallDir", 0, 0, (LPBYTE)installDir, &size) == ERROR_SUCCESS;
 	RegCloseKey(hkey);
 	return rc;
