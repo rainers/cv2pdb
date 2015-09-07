@@ -3016,7 +3016,7 @@ bool CV2PDB::addUdtSymbol(int type, const char* name)
 	codeview_symbol* sym = (codeview_symbol*) (udtSymbols + cbUdtSymbols);
 	sym->udt_v1.id = S_UDT_V1;
 	sym->udt_v1.type = translateType(type);
-	strcpy (sym->udt_v1.p_name.name, name);
+	strcpy (sym->udt_v1.p_name.name, name ? name : ""); // allow anonymous typedefs
 	sym->udt_v1.p_name.namelen = strlen(sym->udt_v1.p_name.name);
 	sym->udt_v1.len = sizeof(sym->udt_v1) + sym->udt_v1.p_name.namelen - 1 - 2;
 	cbUdtSymbols += sym->udt_v1.len + 2;
