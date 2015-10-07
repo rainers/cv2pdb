@@ -73,14 +73,19 @@ bool tryLoadMsPdb(const char* version, const char* mspdb, const char* path = 0)
 		*p++ = '\\';
 	if(path)
 		p += strlen(strcpy(p, path));
-#ifdef _M_X64
-	p += strlen(strcpy(p, "amd64\\"));
-#endif
 	strcpy(p, mspdb);
 
 	tryLoadLibrary(installDir);
 	return modMsPdb != 0;
 }
+
+#ifdef _M_X64
+#define MSPDB_DIR_NEW "..\\..\\VC\\bin\\amd64\\"
+#define MSPDB_DIR_OLD MSPDB_DIR_NEW
+#else
+#define MSPDB_DIR_NEW "..\\..\\VC\\bin\\"
+#define MSPDB_DIR_OLD 0
+#endif
 
 void tryLoadMsPdb80(bool throughPath)
 {
@@ -88,13 +93,13 @@ void tryLoadMsPdb80(bool throughPath)
 		tryLoadLibrary(mspdb80_dll);
 
 	if (!modMsPdb && !throughPath)
-		tryLoadMsPdb("VisualStudio\\9.0", mspdb80_dll);
+		tryLoadMsPdb("VisualStudio\\9.0", mspdb80_dll, MSPDB_DIR_OLD);
 	if (!modMsPdb && !throughPath)
-		tryLoadMsPdb("VisualStudio\\8.0", mspdb80_dll);
+		tryLoadMsPdb("VisualStudio\\8.0", mspdb80_dll, MSPDB_DIR_OLD);
 	if (!modMsPdb && !throughPath)
-		tryLoadMsPdb("VCExpress\\9.0", mspdb80_dll);
+		tryLoadMsPdb("VCExpress\\9.0", mspdb80_dll, MSPDB_DIR_OLD);
 	if (!modMsPdb && !throughPath)
-		tryLoadMsPdb("VCExpress\\8.0", mspdb80_dll);
+		tryLoadMsPdb("VCExpress\\8.0", mspdb80_dll, MSPDB_DIR_OLD);
 }
 
 void tryLoadMsPdb100(bool throughPath)
@@ -104,9 +109,9 @@ void tryLoadMsPdb100(bool throughPath)
 		if(throughPath)
 			modMsPdb = LoadLibraryA(mspdb100_dll);
 		if (!modMsPdb && !throughPath)
-			tryLoadMsPdb("VisualStudio\\10.0", mspdb100_dll);
+			tryLoadMsPdb("VisualStudio\\10.0", mspdb100_dll, MSPDB_DIR_OLD);
 		if (!modMsPdb && !throughPath)
-			tryLoadMsPdb("VCExpress\\10.0", mspdb100_dll);
+			tryLoadMsPdb("VCExpress\\10.0", mspdb100_dll, MSPDB_DIR_OLD);
 		if (modMsPdb)
 			mspdb::vsVersion = 10;
 	}
@@ -119,9 +124,9 @@ void tryLoadMsPdb110(bool throughPath)
 		if (throughPath)
 			modMsPdb = LoadLibraryA(mspdb110_dll);
 		if (!modMsPdb && !throughPath)
-			tryLoadMsPdb("VisualStudio\\11.0", mspdb110_dll);
+			tryLoadMsPdb("VisualStudio\\11.0", mspdb110_dll, MSPDB_DIR_OLD);
 		if (!modMsPdb && !throughPath)
-			tryLoadMsPdb("VSWinExpress\\11.0", mspdb110_dll);
+			tryLoadMsPdb("VSWinExpress\\11.0", mspdb110_dll, MSPDB_DIR_OLD);
 		if (modMsPdb)
 			mspdb::vsVersion = 11;
 	}
@@ -134,9 +139,9 @@ void tryLoadMsPdb120(bool throughPath)
 		if(throughPath)
 			modMsPdb = LoadLibraryA(mspdb120_dll);
 		if (!modMsPdb && !throughPath)
-			tryLoadMsPdb("VisualStudio\\12.0", mspdb120_dll, "..\\..\\VC\\bin\\");
+			tryLoadMsPdb("VisualStudio\\12.0", mspdb120_dll, MSPDB_DIR_NEW);
 		if (!modMsPdb && !throughPath)
-			tryLoadMsPdb("VSWinExpress\\12.0", mspdb120_dll, "..\\..\\VC\\bin\\");
+			tryLoadMsPdb("VSWinExpress\\12.0", mspdb120_dll, MSPDB_DIR_NEW);
 		if (modMsPdb)
 			mspdb::vsVersion = 12;
 	}
@@ -149,9 +154,9 @@ void tryLoadMsPdb140(bool throughPath)
 		if(throughPath)
 			modMsPdb = LoadLibraryA(mspdb140_dll);
 		if (!modMsPdb && !throughPath)
-			tryLoadMsPdb("VisualStudio\\14.0", mspdb140_dll, "..\\..\\VC\\bin\\");
+			tryLoadMsPdb("VisualStudio\\14.0", mspdb140_dll, MSPDB_DIR_NEW);
 		if (!modMsPdb && !throughPath)
-			tryLoadMsPdb("VSWinExpress\\14.0", mspdb140_dll, "..\\..\\VC\\bin\\");
+			tryLoadMsPdb("VSWinExpress\\14.0", mspdb140_dll, MSPDB_DIR_NEW);
 		if (modMsPdb)
 			mspdb::vsVersion = 14;
 	}
