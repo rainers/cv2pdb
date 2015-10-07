@@ -18,6 +18,10 @@
 
 #include "symutil.h"
 
+#ifdef _M_X64
+extern "C" void cvt80to64(void * in, long double * out);
+#endif
+
 #define USE_STDSTRING 1
 
 #if USE_STDSTRING
@@ -458,10 +462,14 @@ public:
 			p[i] = b;
 		}
 		// extract 10-byte double from rdata
+#ifdef _M_X64
+		cvt80to64(rdata, &r);
+#else
 		__asm {
 			fld TBYTE PTR rdata;
 			fstp r;
 		}
+#endif
 
 		char num[30];
 		sprintf(num, "%g", r);

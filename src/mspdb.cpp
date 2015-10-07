@@ -51,7 +51,11 @@ bool getInstallDir(const char* version, char* installDir, DWORD size)
 	strcat(key, version);
 
 	HKEY hkey;
-	if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, key, 0, KEY_QUERY_VALUE, &hkey) != ERROR_SUCCESS)
+	if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, key, 0, KEY_QUERY_VALUE
+#if _M_X64
+		| KEY_WOW64_32KEY
+#endif
+	, &hkey) != ERROR_SUCCESS)
 		return false;
 
 	bool rc = RegQueryValueExA(hkey, "InstallDir", 0, 0, (LPBYTE)installDir, &size) == ERROR_SUCCESS;
@@ -69,6 +73,9 @@ bool tryLoadMsPdb(const char* version, const char* mspdb, const char* path = 0)
 		*p++ = '\\';
 	if(path)
 		p += strlen(strcpy(p, path));
+#ifdef _M_X64
+	p += strlen(strcpy(p, "amd64\\"));
+#endif
 	strcpy(p, mspdb);
 
 	tryLoadLibrary(installDir);
