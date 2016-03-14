@@ -4,6 +4,8 @@
 // License for redistribution is given by the Artistic License 2.0
 // see file LICENSE for further details
 
+#include <algorithm>
+
 #include "symutil.h"
 #include "demangle.h"
 
@@ -266,8 +268,10 @@ int cstrcpy_v(bool v3, BYTE* d, const char* s)
 		assert(len < 256);
 		*d++ = len;
 	}
+	len = (std::min)(len, kMaxNameLen-1);
 
 	memcpy(d, s, len + 1);
+	d[len] = '\0';
 
 	for(int i = 0; i < len; i++)
 		if (d[i] == '.')
