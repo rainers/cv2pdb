@@ -232,3 +232,11 @@ unreleased Version 0.22
   * DWARF: improved support for gcc 4.9.0 and clang 3.6
   * DWARF: support debug_frame (CFA) and debug_loc (for frame base) for better support for locals
   * write correct machine type for x64 to PDB
+
+2016-08-09 Version 0.38
+
+  * allow anonymous typedefs
+  * cv2pdb now builds as x64 application
+  * truncate symbols that are to long
+  * do not uncompress names in field lists
+  * copy symbol unmodified if uncompression fails
