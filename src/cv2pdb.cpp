@@ -340,9 +340,11 @@ static int copy_p2dsym(unsigned char* dp, int& dpos, const unsigned char* p, int
 {
 	const BYTE* q = p + pos;
 	int plen = pstrlen(q);
-	int len = dsym2c(q, plen, (char*) dp + dpos, maxdlen - dpos);
+	int len = min(plen, maxdlen - dpos);
+	memcpy(dp + dpos, q, len);
+	dp[dpos + len] = 0;
 	dpos += len + 1;
-	pos = q - p + len;
+	pos = q - p + plen;
 	return len;
 }
 

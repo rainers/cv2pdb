@@ -46,7 +46,7 @@ struct stringpool
 		*(char**)p = _first;
 		_first = p;
 	}
-	
+
 	char* _first;
 };
 stringpool pool;
@@ -65,7 +65,7 @@ struct string
 	size_t length() const { return _len; }
 
 	char operator[] (size_t idx) const
-	{ 
+	{
 		return _p[idx];
 	}
 	string substr(size_t pos, size_t len) const
@@ -97,29 +97,29 @@ struct string
 		_len += N - 1;
 		return *this;
 	}
-	string operator+=(const string& s) 
-	{ 
+	string operator+=(const string& s)
+	{
 		assert(!_const);
 		assert(_len + s._len < maxLen);
 		memcpy(_p + _len, s._p, s._len);
 		_len += s._len;
 		return *this;
 	}
-	string operator+=(char c) 
-	{ 
+	string operator+=(char c)
+	{
 		assert(!_const);
 		assert(_len < maxLen);
 		_p[_len++] = c;
 		return *this;
 	}
-	template<int N>string operator=(const char (&p)[N]) 
+	template<int N>string operator=(const char (&p)[N])
 	{
 		_len = N-1;
 		memcpy(_p, p, _len);
 		_const = true;
 		return *this;
 	}
-	string operator=(const string& s) 
+	string operator=(const string& s)
 	{
 		assert(!_const);
 		_len = s._len;
@@ -176,7 +176,7 @@ class Demangle
 public:
 	size_t ni;
 	string name;
-	
+
 	static void error()
 	{
 		//writefln("error()");
@@ -185,7 +185,7 @@ public:
 
 	static ubyte ascii2hex(char c)
 	{
-		if (!isxdigit(c))
+		if (!isxdigit((ubyte)c))
 			error();
 		return (ubyte)
 			( (c >= 'a') ? c - 'a' + 10 :
@@ -197,7 +197,7 @@ public:
 		//writefln("parseNumber() %d", ni);
 		size_t result = 0;
 
-		while (ni < name.length && isdigit(name[ni]))
+		while (ni < name.length && isdigit((ubyte)name[ni]))
 		{
 			int i = name[ni] - '0';
 			if (result > (size_t_max - i) / 10)
@@ -250,7 +250,7 @@ public:
 		//writefln("parseQualifiedName() %d", ni);
 		string result;
 
-		while (ni < name.length && isdigit(name[ni]))
+		while (ni < name.length && isdigit((ubyte)name[ni]))
 		{
 			if (result.length)
 				result += ".";
@@ -507,14 +507,14 @@ public:
 				case '0': case '1': case '2': case '3': case '4':
 				case '5': case '6': case '7': case '8': case '9':
 					i = ni - 1;
-					while (ni < name.length && isdigit(name[ni]))
+					while (ni < name.length && isdigit((ubyte)name[ni]))
 						ni++;
 					result += name.substr(i, ni - i);
 					break;
 
 				case 'N':
 					i = ni;
-					while (ni < name.length && isdigit(name[ni]))
+					while (ni < name.length && isdigit((ubyte)name[ni]))
 						ni++;
 					if (i == ni)
 						error();
@@ -590,7 +590,7 @@ public:
 		if (name.length < 3 ||
 			name[0] != '_' ||
 			name[1] != 'D' ||
-			!isdigit(name[2]))
+			!isdigit((ubyte)name[2]))
 		{
 			goto Lnot;
 		}
@@ -627,7 +627,7 @@ void unittest()
 {
 	// debug(demangle) printf("demangle.demangle.unittest\n");
 
-	static string table[][2] = 
+	static string table[][2] =
 	{
 		{ "_D6object14_moduleTlsCtorUZv15_moduleTlsCtor2MFAPS6object10ModuleInfoiZv", "void object._moduleTlsCtor._moduleTlsCtor2(struct object.ModuleInfo*[], int)"},
 		{ "_D7dparser3dmd8Template21TemplateTypeParameter13overloadMatchMFC7dparser3dmd8Template17TemplateParameterZi", "int dparser.dmd.Template.TemplateTypeParameter.overloadMatch(class dparser.dmd.Template.TemplateParameter)"},

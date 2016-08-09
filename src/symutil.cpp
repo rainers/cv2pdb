@@ -21,6 +21,7 @@ bool useTypedefEnum = false;
 
 int dsym2c(const BYTE* p, int len, char* cname, int maxclen)
 {
+	const BYTE* beg = p;
 	const BYTE* end = p + len;
 	int zlen, zpos, cpos = 0;
 
@@ -74,7 +75,7 @@ int dsym2c(const BYTE* p, int len, char* cname, int maxclen)
 			for(int z = 0; z < zlen; z++)
 				cname[cpos + z] = cname[cpos - zpos + z];
 			cpos += zlen;
-		} 
+		}
 		else if (ch > 0x80)
 		{
 			zlen = (ch & 0x7) + 1;
@@ -87,7 +88,12 @@ int dsym2c(const BYTE* p, int len, char* cname, int maxclen)
 		else
 			cname[cpos++] = ch;
 	}
-
+	if (p < end)
+	{
+		// decompression failed, assume it's containing UTF8 encoded characters
+		cpos = min(maxclen, len);
+		memcpy(cname, beg, cpos);
+	}
 	cname[cpos] = 0;
 	if(demangleSymbols)
 		if (cname[0] == '_' && cname[1] == 'D' && isdigit(cname[2]))
