@@ -238,5 +238,9 @@ unreleased Version 0.22
   * allow anonymous typedefs
   * cv2pdb now builds as x64 application
   * truncate symbols that are to long
-  * do not uncompress names in field lists
+  * better support for symbols that contain non-ascii characters: do not uncompress names in field lists
   * copy symbol unmodified if uncompression fails
+
+2017-01-20 Version 0.39
+
+  * do not assume sorted line numbers per segment

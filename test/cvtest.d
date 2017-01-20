@@ -21,6 +21,7 @@ version(none)
 version(all):
 import std.string;
 import std.stdio;
+import std.range;
 
 ///////////////// field types ////////////////////////
 // field type LF_ENUMERATE_V1
@@ -80,9 +81,9 @@ class class_method
 {
 	int member = 3;
 	static int stmember = 2;
-	int method() 
-	{ 
-		return member + stmember + this.member; 
+	int method()
+	{
+		return member + stmember + this.member;
 	}
 };
 
@@ -129,9 +130,9 @@ struct struct_name
 	int member;
 	static int static_member;
 
-	int method() 
-	{ 
-		return member + static_member + this.member; 
+	int method()
+	{
+		return member + static_member + this.member;
 	}
 }
 
@@ -147,7 +148,7 @@ class this_is_a_rather_long_classname_to_test_what_happens_if_the_classname_gets
 {
 	int member;
 };
-	
+
 int longfoo(this_is_a_rather_long_classname_to_test_what_happens_if_the_classname_gets_longer_than_the_limit_imposed_by_the_old_codeview_format_which_limits_the_length_of_names_to_tw0_hundred_and_fifty_five_characters_because_it_uses_pascal_strings_with_a_length_byte_and_chars_appended x)
 {
 	return 1;
@@ -271,12 +272,12 @@ size_t arrays()
 {
 	int[] iarr;
 	iarr ~= 4;
-	
+
 	void[] varr;
 	varr = new char[102];
-	
+
 	const void[] cvarr;
-	
+
 	int[7] xarr = [ 1, 2, 3, 4, 5, 6, 7 ];
 	string[7] sarr = [ "a", "b", "c", "d", "e", "f", "g" ];
 	wstring[7] wsarr = [ "a", "b", "c", "d", "e", "f", "g" ];
@@ -286,17 +287,55 @@ size_t arrays()
 }
 
 size_t lexical_scope()
+/*in
+{
+	int i = 13;
+	int j = 5;
+}*/
+out
+{
+	int i = 42;
+	i++;
+}
+body
 {
 	int[10] arr1;
-	for(int i = 0; i < 10; i++)
+	for(int i = 0; i < 5; i++)
 		arr1[i] = i;
 
-	for(int i = 0; i < 10; i++)
+	foreach(int i; 0..4)
+		arr1[i] += i;
+
+	foreach(int i; iota(0,3))
 		arr1[i] += i;
 
 	foreach(i; "hello")
 		if(i == 'e')
 			break;
+
+	{
+		long i = 7;
+		i = i + 1;
+	}
+
+	while(arr1[5] != 9)
+	{
+		int i = 9;
+		arr1[5] = i;
+	}
+	do
+	{
+		int i = 6;
+		arr1[5] = i;
+	}
+	while(arr1[5] != 6);
+
+	Object obj;
+	with(obj)
+	{
+		int i = 3;
+		i = i + 4;
+	}
 
 	return arr1.length;
 }
@@ -313,7 +352,7 @@ Action convertEnum()
 int main2(string[]argv)
 {
 	convertEnum();
-	
+
 	enum_name inst_enum = enum_name.kEnum2;
 	class_member inst_member = new class_member;
 	base_class inst_base = new base_class;
@@ -330,29 +369,29 @@ int main2(string[]argv)
 	this_is_a_rather_long_classname_to_test_what_happens_if_the_classname_gets_longer_than_the_limit_imposed_by_the_old_codeview_format_which_limits_the_length_of_names_to_tw0_hundred_and_fifty_five_characters_because_it_uses_pascal_strings_with_a_length_byte_and_chars_appended long_class_name;
 	int this_is_a_rather_long_varname_to_test_what_happens_if_the_classname_gets_longer_than_the_limit_imposed_by_the_old_codeview_format_which_limits_the_length_of_names_to_tw0_hundred_and_fifty_five_characters_because_it_uses_pascal_strings_with_a_length_byte_and_chars_appended = 1;
 	int *plongname = &this_is_a_rather_long_varname_to_test_what_happens_if_the_classname_gets_longer_than_the_limit_imposed_by_the_old_codeview_format_which_limits_the_length_of_names_to_tw0_hundred_and_fifty_five_characters_because_it_uses_pascal_strings_with_a_length_byte_and_chars_appended;
-	
+
 	iface_impl impl = new iface_impl;
 	iface face = impl;
 	iface_impl nimpl = cast(iface_impl) face;
-	
+
 	CUnknown unkn = new CUnknown;
 	IUnknown iunkn = unkn;
 //	CUnknown nunkn = cast(CUnknown) iunkn;
-	
+
 	FILE stdfile;
 	inst_member.member1 = 2;
 
 	union_name inst_union;
 	inst_union.float_member = 1;
-	
+
 	int* pointer_int = null;
 	struct_name* pointer_struct_name = &inst_struct;
 	class_member* pointer_class_member = &inst_member;
-	
+
 	alias_int_array int_array;
-	
+
 	int[] int_oem_long_dynarray; int_oem_long_dynarray ~= 12;
-	int[int] local_oem_int_assoc_array; 
+	int[int] local_oem_int_assoc_array;
 
 	for (int i = 0; i < 1024; i++)
 	    local_oem_int_assoc_array[i] = 2*i;
@@ -412,7 +451,7 @@ int main(string[]argv)
 	if(d == f)
 		d = 0;
 	assert(2.4 == 2.4f);
-	
+
 	struct ab {
 		int a;
 		int b;
@@ -426,7 +465,7 @@ int main(string[]argv)
 	struc_arr[ab3] = 7;
 
 	struc s = { 2, null };
-	
+
 	Templ!(int) templ = new Templ!(int);
 	int y = templ.foo(3);
 	version(D2)

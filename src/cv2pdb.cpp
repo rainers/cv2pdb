@@ -2659,13 +2659,17 @@ bool CV2PDB::addSrcLines()
 					int segend = getNextSrcLine(seg, sourceLine->offset[cnt-1]);
 					int seglength = (segend >= 0 ? segend - 1 - segoff : lnSegStartEnd[2*s + 1] - segoff);
 
+					int lineMin = lineNo[0];
+					for (int ln = 1; ln < cnt; ln++)
+						if (lineMin > lineNo[ln])
+							lineMin = lineNo[ln];
 					mspdb::LineInfoEntry* lineInfo = new mspdb::LineInfoEntry[cnt];
 					for (int ln = 0; ln < cnt; ln++)
 					{
 						lineInfo[ln].offset = sourceLine->offset[ln] - segoff;
-						lineInfo[ln].line = lineNo[ln] - lineNo[0];
+						lineInfo[ln].line = lineNo[ln] - lineMin;
 					}
-					int rc = mod->AddLines(name, seg, segoff, seglength, segoff, lineNo[0],
+					int rc = mod->AddLines(name, seg, segoff, seglength, segoff, lineMin,
 					                       (unsigned char*) lineInfo, cnt * sizeof(*lineInfo));
 					if (rc <= 0)
 						return setError("cannot add line number info to module");

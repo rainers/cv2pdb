@@ -81,3 +81,10 @@ IDEDIR = $(VSINSTALLDIR)\Common7\IDE
 $(BIN): $(SRC) $(ADD) $(TEST) VERSION
 	if     exist "$(IDEDIR)\VCExpress.exe" "$(IDEDIR)\VCExpress.exe" /Build Release src\cv2pdb.sln
 	if not exist "$(IDEDIR)\VCExpress.exe" "$(IDEDIR)\devenv.exe" /Build Release src\cv2pdb.sln
+
+###############################
+cv2pdb_exe:
+    devenv /Project "cv2pdb"  /Build "Release|Win32" src\cv2pdb_vs12.sln
+
+test: cv2pdb_exe
+	cd ..\test && nmake test
