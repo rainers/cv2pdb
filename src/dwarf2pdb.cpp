@@ -716,7 +716,7 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, DWARF_CompilationUnit* cu, DIE
 		int off = 8;
 
 		DIECursor prev = cursor;
-		while (cursor.readNext(id, true) && id.tag == DW_TAG_formal_parameter)
+		while (cursor.readNext(id, true))
 		{
 			if (id.tag == DW_TAG_formal_parameter)
 			{
