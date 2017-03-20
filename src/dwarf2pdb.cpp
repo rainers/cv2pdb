@@ -1229,6 +1229,7 @@ bool CV2PDB::createTypes()
 				break;
 
 			case DW_TAG_compile_unit:
+				currentBaseAddress = id.pclo;
 #if !FULL_CONTRIB
 				if (id.dir && id.name)
 				{

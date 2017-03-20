@@ -264,6 +264,11 @@ public:
 	// DWARF
 	int codeSegOff;
 	std::unordered_map<byte*, int> mapOffsetToType;
+
+	// Value of the DW_AT_low_pc attribute for the current compilation unit.
+	// Specify the default base address for use in location lists and range
+	// lists.
+	uint32_t currentBaseAddress;
 };
 
 #endif //__CV2PDB_H__
