@@ -727,7 +727,6 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, DWARF_CompilationUnit* cu, DIE
 						appendStackVar(id.name, getTypeByDWARFPtr(cu, id.type), loc, cfa);
 				}
 			}
-			prev = cursor;
 		}
 		appendEndArg();
 
