@@ -742,7 +742,32 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, DWARF_CompilationUnit* cu, DIE
 			{
 				if (id.tag == DW_TAG_lexical_block)
 				{
-					if (id.hasChild && id.pchi != id.pclo)
+					// It seems it is not possible to describe blocks with
+					// non-contiguous address ranges in CodeView. Instead,
+					// just create a range that is large enough to cover
+					// all continuous ranges.
+					if (id.hasChild && id.ranges != -1u)
+					{
+						id.pclo = -1u;
+						id.pchi = 0;
+
+						// TODO: handle base address selection
+						byte *r = (byte *)img.debug_ranges + id.ranges;
+						byte *rend = (byte *)img.debug_ranges + img.debug_ranges_length;
+						while (r < rend)
+						{
+							uint32_t pclo = RD4(r);
+							uint32_t pchi = RD4(r);
+							if (pclo == 0 && pchi == 0)
+								break;
+							if (pclo >= pchi)
+								continue;
+							id.pclo = min(id.pclo, pclo + currentBaseAddress);
+							id.pchi = max(id.pchi, pchi + currentBaseAddress);
+						}
+					}
+
+					if (id.hasChild && id.pchi > id.pclo)
 					{
 						appendLexicalBlock(id, pclo + codeSegOff);
 						DIECursor next = cursor;
