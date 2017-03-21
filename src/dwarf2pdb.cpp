@@ -902,39 +902,58 @@ int CV2PDB::addDWARFStructure(DWARF_InfoData& structid, DWARF_CompilationUnit* c
 	return cvtype;
 }
 
-int CV2PDB::getDWARFArrayBounds(DWARF_InfoData& arrayid, DWARF_CompilationUnit* cu,
-								DIECursor cursor, int& upperBound)
+void CV2PDB::getDWARFArrayBounds(DWARF_InfoData& arrayid, DWARF_CompilationUnit* cu,
+								DIECursor cursor, int& basetype, int& lowerBound, int& upperBound)
 {
-	int lowerBound = 0;
+	DWARF_InfoData id;
 
+	// TODO: handle multi-dimensional arrays
 	if (cu)
 	{
-		DWARF_InfoData id;
 		while (cursor.readNext(id, true))
 		{
-			int cvid = -1;
 			if (id.tag == DW_TAG_subrange_type)
 			{
-				lowerBound = id.lower_bound;
-				upperBound = id.upper_bound;
+				getDWARFSubrangeInfo(id, cu, basetype, lowerBound, upperBound);
+				return;
 			}
 			cursor.gotoSibling();
 		}
 	}
-	return lowerBound;
+
+	// In case of error, return plausible defaults
+	getDWARFSubrangeInfo(id, NULL, basetype, lowerBound, upperBound);
+}
+
+void CV2PDB::getDWARFSubrangeInfo(DWARF_InfoData& subrangeid, DWARF_CompilationUnit* cu,
+	int& basetype, int& lowerBound, int& upperBound)
+{
+	// In case of error, return plausible defaults. Assume the array
+	// contains one item: this is probably helpful to users.
+	basetype = T_INT4;
+	lowerBound = 0;
+	upperBound = lowerBound;
+
+	if (!cu || subrangeid.tag != DW_TAG_subrange_type)
+		return;
+
+	basetype = T_INT4; // TODO: somehow use subrangeid.type
+	lowerBound = subrangeid.lower_bound;
+	upperBound = subrangeid.upper_bound;
 }
 
 int CV2PDB::addDWARFArray(DWARF_InfoData& arrayid, DWARF_CompilationUnit* cu,
 						  DIECursor cursor)
 {
-	int upperBound, lowerBound = getDWARFArrayBounds(arrayid, cu, cursor, upperBound);
+	int basetype, upperBound, lowerBound;
+	getDWARFArrayBounds(arrayid, cu, cursor, basetype, lowerBound, upperBound);
 
 	checkUserTypeAlloc(kMaxNameLen + 100);
 	codeview_type* cvt = (codeview_type*) (userTypes + cbUserTypes);
 
 	cvt->array_v2.id = v3 ? LF_ARRAY_V3 : LF_ARRAY_V2;
 	cvt->array_v2.elemtype = getTypeByDWARFPtr(cu, arrayid.type);
-	cvt->array_v2.idxtype = 0x74;
+	cvt->array_v2.idxtype = basetype;
 	int len = (BYTE*)&cvt->array_v2.arrlen - (BYTE*)cvt;
 	int size = (upperBound - lowerBound + 1) * getDWARFTypeSize(cu, arrayid.type);
 	len += write_numeric_leaf(size, &cvt->array_v2.arrlen);
@@ -1104,7 +1123,8 @@ int CV2PDB::getDWARFTypeSize(DWARF_CompilationUnit* cu, byte* typePtr)
 			return cu->address_size;
 		case DW_TAG_array_type:
 		{
-			int upperBound, lowerBound = getDWARFArrayBounds(id, cu, cursor, upperBound);
+			int basetype, upperBound, lowerBound;
+			getDWARFArrayBounds(id, cu, cursor, basetype, lowerBound, upperBound);
 			return (upperBound + lowerBound + 1) * getDWARFTypeSize(cu, id.type);
 		}
 		default:

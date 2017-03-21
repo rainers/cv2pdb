@@ -175,7 +175,10 @@ public:
 	int  addDWARFBasicType(const char*name, int encoding, int byte_size);
 	int  getTypeByDWARFPtr(DWARF_CompilationUnit* cu, byte* ptr);
 	int  getDWARFTypeSize(DWARF_CompilationUnit* cu, byte* ptr);
-	int  getDWARFArrayBounds(DWARF_InfoData& arrayid, DWARF_CompilationUnit* cu, DIECursor cursor, int& upperBound);
+	void getDWARFArrayBounds(DWARF_InfoData& arrayid, DWARF_CompilationUnit* cu, DIECursor cursor,
+		int& basetype, int& lowerBound, int& upperBound);
+	void getDWARFSubrangeInfo(DWARF_InfoData& subrangeid, DWARF_CompilationUnit* cu,
+		int& basetype, int& lowerBound, int& upperBound);
 
 	bool mapTypes();
 	bool createTypes();
