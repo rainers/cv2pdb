@@ -163,6 +163,7 @@ struct DWARF_InfoData
 	DWARF_Attribute frame_base;
 	long upper_bound;
 	long lower_bound;
+	bool has_lower_bound;
 	unsigned language;
 
 	void clear()
@@ -192,6 +193,7 @@ struct DWARF_InfoData
 		frame_base.type = Invalid;
 		upper_bound = 0;
 		lower_bound = 0;
+		has_lower_bound = false;
 		language = 0;
 	}
 
