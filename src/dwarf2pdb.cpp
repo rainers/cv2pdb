@@ -1275,6 +1275,24 @@ bool CV2PDB::createTypes()
 
 			case DW_TAG_compile_unit:
 				currentBaseAddress = id.pclo;
+				switch (id.language)
+				{
+				case DW_LANG_Ada83:
+				case DW_LANG_Cobol74:
+				case DW_LANG_Cobol85:
+				case DW_LANG_Fortran77:
+				case DW_LANG_Fortran90:
+				case DW_LANG_Pascal83:
+				case DW_LANG_Modula2:
+				case DW_LANG_Ada95:
+				case DW_LANG_Fortran95:
+				case DW_LANG_PLI:
+					currentDefaultLowerBound = 1;
+					break;
+
+				default:
+					currentDefaultLowerBound = 0;
+				}
 #if !FULL_CONTRIB
 				if (id.dir && id.name)
 				{
