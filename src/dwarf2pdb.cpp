@@ -1125,7 +1125,7 @@ int CV2PDB::getDWARFTypeSize(DWARF_CompilationUnit* cu, byte* typePtr)
 		{
 			int basetype, upperBound, lowerBound;
 			getDWARFArrayBounds(id, cu, cursor, basetype, lowerBound, upperBound);
-			return (upperBound + lowerBound + 1) * getDWARFTypeSize(cu, id.type);
+			return (upperBound - lowerBound + 1) * getDWARFTypeSize(cu, id.type);
 		}
 		default:
 			if(id.type)
