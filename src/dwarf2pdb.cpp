@@ -1238,6 +1238,12 @@ bool CV2PDB::createTypes()
 				cvtype = appendPointerType(getTypeByDWARFPtr(cu, id.type), pointerAttr | 0x20);
 				break;
 
+			case DW_TAG_subrange_type:
+				// It seems we cannot materialize bounds for scalar types in
+				// CodeView, so just redirect to a mere base type.
+				cvtype = appendModifierType(getTypeByDWARFPtr(cu, id.type), 0);
+				break;
+
 			case DW_TAG_class_type:
 			case DW_TAG_structure_type:
 			case DW_TAG_union_type:
@@ -1247,7 +1253,6 @@ bool CV2PDB::createTypes()
 				cvtype = addDWARFArray(id, cu, cursor.getSubtreeCursor());
 				break;
 			case DW_TAG_subroutine_type:
-			case DW_TAG_subrange_type:
 
 			case DW_TAG_enumeration_type:
 			case DW_TAG_string_type:
