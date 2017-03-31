@@ -1112,7 +1112,6 @@ int CV2PDB::addDWARFEnum(DWARF_InfoData& enumid, DWARF_CompilationUnit* cu, DIEC
 
 	int fieldlistType = nextDwarfType++;
 	int count = 0;
-	int basetype = T_INT4;
 
 	rdtype = (codeview_reftype*)(dwarfTypes + cbDwarfTypes);
 	int rdbegin = cbDwarfTypes;
@@ -1135,17 +1134,9 @@ int CV2PDB::addDWARFEnum(DWARF_InfoData& enumid, DWARF_CompilationUnit* cu, DIEC
 	rdtype = (codeview_reftype*)(dwarfTypes + rdbegin);
 	rdtype->fieldlist.len += cbDwarfTypes - rdbegin - 2;
 
-	if (enumid.type != 0)
-	{
-		basetype = getTypeByDWARFPtr(cu, enumid.type);
-	}
-	else
-	{
-		// TODO: refactor addDWARFBasicType to reuse the part that creates a
-		// primitive type ID without creating an user type.
-		basetype = T_INT4;
-	}
-
+	int basetype = (enumid.type != 0)
+				   ? getTypeByDWARFPtr(cu, enumid.type)
+				   : getDWARFBasicType(enumid.encoding, enumid.byte_size);
 	dtype = (codeview_type*)(userTypes + cbUserTypes);
 	cbUserTypes += addEnum(dtype, count, fieldlistType, 0, basetype, enumid.name);
 	int enumType = nextUserType++;
