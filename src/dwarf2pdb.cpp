@@ -943,6 +943,68 @@ void CV2PDB::getDWARFSubrangeInfo(DWARF_InfoData& subrangeid, DWARF_CompilationU
 	upperBound = subrangeid.upper_bound;
 }
 
+int CV2PDB::getDWARFBasicType(int encoding, int byte_size)
+{
+	int type = 0, mode = 0, size = 0;
+	switch (encoding)
+	{
+	case DW_ATE_boolean:        type = 3; break;
+	case DW_ATE_complex_float:  type = 5; byte_size /= 2; break;
+	case DW_ATE_float:          type = 4; break;
+	case DW_ATE_signed:         type = 1; break;
+	case DW_ATE_signed_char:    type = 7; break;
+	case DW_ATE_unsigned:       type = 2; break;
+	case DW_ATE_unsigned_char:  type = 7; break;
+	case DW_ATE_imaginary_float:type = 4; break;
+	case DW_ATE_UTF:            type = 7; break;
+	default:
+		setError("unknown basic type encoding");
+	}
+	switch (type)
+	{
+	case 1: // signed
+	case 2: // unsigned
+	case 3: // boolean
+		switch (byte_size)
+		{
+		case 1: size = 0; break;
+		case 2: size = 1; break;
+		case 4: size = 2; break;
+		case 8: size = 3; break;
+		case 16: size = 4; break; // __int128? experimental, type exists with GCC for Win64
+		default:
+			setError("unsupported integer type size");
+		}
+		break;
+	case 4:
+	case 5:
+		switch (byte_size)
+		{
+		case 4:  size = 0; break;
+		case 8:  size = 1; break;
+		case 10: size = 2; break;
+		case 12: size = 2; break; // with padding bytes
+		case 16: size = 3; break;
+		case 6:  size = 4; break;
+		default:
+			setError("unsupported real type size");
+		}
+		break;
+	case 7:
+		switch (byte_size)
+		{
+		case 1:  size = 0; break;
+		case 2:  size = encoding == DW_ATE_signed_char ? 2 : 3; break;
+		case 4:  size = encoding == DW_ATE_signed_char ? 4 : 5; break;
+		case 8:  size = encoding == DW_ATE_signed_char ? 6 : 7; break;
+		default:
+			setError("unsupported real int type size");
+		}
+	}
+	int t = size | (type << 4);
+	return translateType(t);
+}
+
 int CV2PDB::addDWARFArray(DWARF_InfoData& arrayid, DWARF_CompilationUnit* cu,
 						  DIECursor cursor)
 {
@@ -1033,64 +1095,7 @@ bool CV2PDB::addDWARFSectionContrib(mspdb::Mod* mod, unsigned long pclo, unsigne
 
 int CV2PDB::addDWARFBasicType(const char*name, int encoding, int byte_size)
 {
-	int type = 0, mode = 0, size = 0;
-	switch(encoding)
-	{
-	case DW_ATE_boolean:        type = 3; break;
-	case DW_ATE_complex_float:  type = 5; byte_size /= 2; break;
-	case DW_ATE_float:          type = 4; break;
-	case DW_ATE_signed:         type = 1; break;
-	case DW_ATE_signed_char:    type = 7; break;
-	case DW_ATE_unsigned:       type = 2; break;
-	case DW_ATE_unsigned_char:  type = 7; break;
-	case DW_ATE_imaginary_float:type = 4; break;
-	case DW_ATE_UTF:            type = 7; break;
-	default:
-		setError("unknown basic type encoding");
-	}
-	switch(type)
-	{
-	case 1: // signed
-	case 2: // unsigned
-	case 3: // boolean
-		switch(byte_size)
-		{
-		case 1: size = 0; break;
-		case 2: size = 1; break;
-		case 4: size = 2; break;
-		case 8: size = 3; break;
-		case 16: size = 4; break; // __int128? experimental, type exists with GCC for Win64
-		default:
-			setError("unsupported integer type size");
-		}
-		break;
-	case 4:
-	case 5:
-		switch(byte_size)
-		{
-		case 4:  size = 0; break;
-		case 8:  size = 1; break;
-		case 10: size = 2; break;
-		case 12: size = 2; break; // with padding bytes
-		case 16: size = 3; break;
-		case 6:  size = 4; break;
-		default:
-			setError("unsupported real type size");
-		}
-		break;
-	case 7:
-		switch(byte_size)
-		{
-		case 1:  size = 0; break;
-		case 2:  size = encoding == DW_ATE_signed_char ? 2 : 3; break;
-		case 4:  size = encoding == DW_ATE_signed_char ? 4 : 5; break;
-		case 8:  size = encoding == DW_ATE_signed_char ? 6 : 7; break;
-		default:
-			setError("unsupported real int type size");
-		}
-	}
-	int t = size | (type << 4);
-	t = translateType(t);
+	int t = getDWARFBasicType(encoding, byte_size);
 	int cvtype = appendTypedef(t, name, false);
 	if(useTypedefEnum)
 		addUdtSymbol(cvtype, name);

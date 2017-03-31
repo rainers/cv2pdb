@@ -180,6 +180,7 @@ public:
 		int& basetype, int& lowerBound, int& upperBound);
 	void getDWARFSubrangeInfo(DWARF_InfoData& subrangeid, DWARF_CompilationUnit* cu,
 		int& basetype, int& lowerBound, int& upperBound);
+	int getDWARFBasicType(int encoding, int byte_size);
 
 	bool mapTypes();
 	bool createTypes();
