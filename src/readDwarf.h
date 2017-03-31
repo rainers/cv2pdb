@@ -165,6 +165,8 @@ struct DWARF_InfoData
 	long lower_bound;
 	bool has_lower_bound;
 	unsigned language;
+	unsigned long const_value;
+	bool has_const_value;
 
 	void clear()
 	{
@@ -195,6 +197,8 @@ struct DWARF_InfoData
 		lower_bound = 0;
 		has_lower_bound = false;
 		language = 0;
+		const_value = 0;
+		has_const_value = false;
 	}
 
 	void merge(const DWARF_InfoData& id)

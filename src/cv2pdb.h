@@ -173,6 +173,7 @@ public:
 	int  addDWARFStructure(DWARF_InfoData& id, DWARF_CompilationUnit* cu, DIECursor cursor);
 	int  addDWARFArray(DWARF_InfoData& arrayid, DWARF_CompilationUnit* cu, DIECursor cursor);
 	int  addDWARFBasicType(const char*name, int encoding, int byte_size);
+	int  addDWARFEnum(DWARF_InfoData& enumid, DWARF_CompilationUnit* cu, DIECursor cursor);
 	int  getTypeByDWARFPtr(DWARF_CompilationUnit* cu, byte* ptr);
 	int  getDWARFTypeSize(DWARF_CompilationUnit* cu, byte* ptr);
 	void getDWARFArrayBounds(DWARF_InfoData& arrayid, DWARF_CompilationUnit* cu, DIECursor cursor,

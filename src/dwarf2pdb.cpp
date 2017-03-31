@@ -1097,6 +1097,58 @@ int CV2PDB::addDWARFBasicType(const char*name, int encoding, int byte_size)
 	return cvtype;
 }
 
+int CV2PDB::addDWARFEnum(DWARF_InfoData& enumid, DWARF_CompilationUnit* cu, DIECursor cursor)
+{
+	codeview_reftype* rdtype;
+	codeview_type* dtype;
+
+	checkUserTypeAlloc();
+	checkDWARFTypeAlloc(100);
+
+	int fieldlistType = nextDwarfType++;
+	int count = 0;
+	int basetype = T_INT4;
+
+	rdtype = (codeview_reftype*)(dwarfTypes + cbDwarfTypes);
+	int rdbegin = cbDwarfTypes;
+	rdtype->fieldlist.id = LF_FIELDLIST_V2;
+	rdtype->fieldlist.len = 0;
+	cbDwarfTypes += 4;
+
+	DWARF_InfoData id;
+	while (cursor.readNext(id, true))
+	{
+		if (id.tag == DW_TAG_enumerator && id.has_const_value)
+		{
+			checkDWARFTypeAlloc(kMaxNameLen + 100);
+			codeview_fieldtype* dfieldtype
+				= (codeview_fieldtype*)(dwarfTypes + cbDwarfTypes);
+			cbDwarfTypes += addFieldEnumerate(dfieldtype, id.name, id.const_value);
+			count++;
+		}
+	}
+	rdtype = (codeview_reftype*)(dwarfTypes + rdbegin);
+	rdtype->fieldlist.len += cbDwarfTypes - rdbegin - 2;
+
+	if (enumid.type != 0)
+	{
+		basetype = getTypeByDWARFPtr(cu, enumid.type);
+	}
+	else
+	{
+		// TODO: refactor addDWARFBasicType to reuse the part that creates a
+		// primitive type ID without creating an user type.
+		basetype = T_INT4;
+	}
+
+	dtype = (codeview_type*)(userTypes + cbUserTypes);
+	cbUserTypes += addEnum(dtype, count, fieldlistType, 0, basetype, enumid.name);
+	int enumType = nextUserType++;
+
+	addUdtSymbol(enumType, enumid.name);
+	return enumType;
+}
+
 int CV2PDB::getTypeByDWARFPtr(DWARF_CompilationUnit* cu, byte* ptr)
 {
 	std::unordered_map<byte*, int>::iterator it = mapOffsetToType.find(ptr);
@@ -1255,6 +1307,9 @@ bool CV2PDB::createTypes()
 			case DW_TAG_subroutine_type:
 
 			case DW_TAG_enumeration_type:
+				cvtype = addDWARFEnum(id, cu, cursor.getSubtreeCursor());
+				break;
+
 			case DW_TAG_string_type:
 			case DW_TAG_ptr_to_member_type:
 			case DW_TAG_set_type:

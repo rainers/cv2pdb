@@ -505,6 +505,11 @@ bool DIECursor::readNext(DWARF_InfoData& id, bool stopAtNull)
 			case DW_AT_location: id.location = a; break;
 			case DW_AT_frame_base: id.frame_base = a; break;
 			case DW_AT_language: assert(a.type == Const); id.language = a.cons; break;
+			case DW_AT_const_value:
+				assert(a.type == Const);
+				id.const_value = a.cons;
+				id.has_const_value = true;
+				break;
 		}
 	}
 
