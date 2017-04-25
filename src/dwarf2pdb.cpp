@@ -17,6 +17,7 @@
 
 #include "dwarf.h"
 
+#include <algorithm>
 #include <assert.h>
 #include <string>
 #include <vector>
@@ -154,6 +155,41 @@ CV_X86_REG dwarf_to_amd64_reg(unsigned dwarf_reg)
 			return CV_REG_NONE;
 	}
 }
+
+// Index for efficient lookups in Call Frame Information entries
+class CFIIndex
+{
+public:
+	// Build the index, which will be tied to IMG.
+	CFIIndex(const PEImage& img);
+
+	// Look for a FDE whose PC range covers the PCLO/PCHI range and return a
+	// pointer to the FDE in the .debug_frame section. Return NULL if no such
+	// FDE exists.
+	byte *lookup(unsigned int pclo, unsigned pchi) const;
+
+private:
+	struct index_entry
+	{
+		// PC range for the FDE
+		unsigned int pclo, pchi;
+		// Pointer to the FDE in the .debug_frame section
+		byte *ptr;
+
+		// Sort entries by PCLO first and then by PCHI.
+		bool operator<(const index_entry& other) const {
+			if (pclo < other.pclo)
+				return true;
+			else if (pclo == other.pclo)
+				return pchi < other.pchi;
+			else
+				return false;
+		}
+
+	};
+
+	std::vector<index_entry> index;
+};
 
 // Call Frame Information entry (CIE or FDE)
 class CFIEntry
@@ -447,28 +483,27 @@ public:
 	Location cfa;
 };
 
-Location findBestCFA(const PEImage& img, unsigned int pclo, unsigned int pchi)
+Location findBestCFA(const PEImage& img, const CFIIndex* index, unsigned int pclo, unsigned int pchi)
 {
 	bool x64 = img.isX64();
 	Location ebp = { Location::RegRel, x64 ? 6 : 5, x64 ? 16 : 8 };
 	if (!img.debug_frame)
 		return ebp;
 
+	byte *fde_ptr = index->lookup(pclo, pchi);
+	if (fde_ptr == NULL)
+		return ebp;
+
 	CFIEntry entry;
 	CFICursor cursor(img);
-	while(cursor.readNext(entry))
-	{
-		if (entry.type == CFIEntry::FDE &&
-			entry.initial_location <= pclo && entry.initial_location + entry.address_range >= pchi)
-		{
-			CFACursor cfa(entry, pclo);
-			while(cfa.processNext()) {}
-			cfa.setInstructions(entry.instructions, entry.instructions_length);
-			while(!cfa.beforeRestore() && cfa.processNext()) {}
-			return cfa.cfa;
-		}
-	}
-	return ebp;
+	cursor.ptr = fde_ptr;
+
+	assert(cursor.readNext(entry));
+	CFACursor cfa(entry, pclo);
+	while(cfa.processNext()) {}
+	cfa.setInstructions(entry.instructions, entry.instructions_length);
+	while(!cfa.beforeRestore() && cfa.processNext()) {}
+	return cfa.cfa;
 }
 
 // Location list entry
@@ -707,7 +742,7 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, DWARF_CompilationUnit* cu, DIE
 	if (frameBase.is_abs()) // pointer into location list in .debug_loc? assume CFA
 		frameBase = findBestFBLoc(img, cu, frameBase.off);
 
-    Location cfa = findBestCFA(img, procid.pclo, procid.pchi);
+    Location cfa = findBestCFA(img, cfi_index, procid.pclo, procid.pchi);
 
 	if (cu)
 	{
@@ -1542,4 +1577,51 @@ bool CV2PDB::writeDWARFImage(const TCHAR* opath)
 		return setError(img.getLastError());
 
 	return true;
+}
+
+void CV2PDB::build_cfi_index()
+{
+	if (img.debug_frame == NULL)
+		return;
+	cfi_index = new CFIIndex(img);
+}
+
+CFIIndex::CFIIndex(const PEImage& img)
+{
+	CFIEntry entry;
+	CFICursor cursor(img);
+
+	// First register all FDE as index entries
+	while (cursor.readNext(entry))
+	{
+		if (entry.type != CFIEntry::FDE)
+			continue;
+
+		index_entry e = {
+			entry.initial_location,
+			entry.initial_location + entry.address_range,
+			entry.ptr
+		};
+		index.push_back(e);
+	}
+
+	// Then make them sorted so we can perform binary searches later on
+	std::sort(index.begin(), index.end());
+}
+
+byte *CFIIndex::lookup(unsigned int pclo, unsigned int pchi) const
+{
+	// TODO: here, we are just looking for the first entry whose range contains PCLO,
+	// assuming the found entry will have the same PCLO and PCHI as arguments. Maybe
+	// this is not always true.
+	index_entry e = { pclo, pclo, NULL };
+	std::vector<index_entry>::const_iterator it
+		= std::lower_bound(index.begin(), index.end(), e);
+	if (it == index.end())
+		return NULL;
+	e = *it;
+	if (e.pclo <= pclo && pchi <= e.pchi)
+		return e.ptr;
+	else
+		return NULL;
 }

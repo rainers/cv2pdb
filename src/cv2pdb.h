@@ -23,6 +23,7 @@ extern "C" {
 class PEImage;
 struct DWARF_InfoData;
 struct DWARF_CompilationUnit;
+class CFIIndex;
 
 class CV2PDB : public LastError
 {
@@ -182,6 +183,7 @@ public:
 		int& basetype, int& lowerBound, int& upperBound);
 	int getDWARFBasicType(int encoding, int byte_size);
 
+	void build_cfi_index();
 	bool mapTypes();
 	bool createTypes();
 
@@ -189,6 +191,7 @@ public:
 	BYTE* libraries;
 
 	PEImage& img;
+	CFIIndex* cfi_index;
 
 	mspdb::PDB* pdb;
 	mspdb::DBI *dbi;

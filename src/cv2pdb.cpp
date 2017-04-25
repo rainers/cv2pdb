@@ -49,6 +49,7 @@ CV2PDB::CV2PDB(PEImage& image)
 	thisIsNotRef = true;
 	v3 = true;
 	countEntries = img.countCVEntries();
+	build_cfi_index();
 }
 
 CV2PDB::~CV2PDB()
