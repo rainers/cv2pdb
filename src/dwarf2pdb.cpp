@@ -789,10 +789,21 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, DWARF_CompilationUnit* cu, DIE
 						// TODO: handle base address selection
 						byte *r = (byte *)img.debug_ranges + id.ranges;
 						byte *rend = (byte *)img.debug_ranges + img.debug_ranges_length;
+						bool is_= img.isX64() ? 8 : 4;
 						while (r < rend)
 						{
-							uint32_t pclo = RD4(r);
-							uint32_t pchi = RD4(r);
+							uint64_t pclo, pchi;
+
+							if (img.isX64())
+							{
+								pclo = RD8(r);
+								pchi = RD8(r);
+							}
+							else
+							{
+								pclo = RD4(r);
+								pchi = RD4(r);
+							}
 							if (pclo == 0 && pchi == 0)
 								break;
 							if (pclo >= pchi)
