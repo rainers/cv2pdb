@@ -301,14 +301,23 @@ struct DWARF_LineState
 
 	void addLineInfo()
 	{
+		unsigned long addr = address;
+
+		// The DWARF standard says about end_sequence: "indicating that the current
+		// address is that of the first byte after the end of a sequence of target
+		// machine instructions". So if this is a end_sequence row, make it apply
+		// to the last byte of the current sequence.
+		if (end_sequence)
+			addr = last_addr - 1;
+
 #if 0
 		const char* fname = (file == 0 ? file_ptr->file_name : files[file - 1].file_name);
 		printf("Adr:%08x Line: %5d File: %s\n", address, line, fname);
 #endif
-		if (address < seg_offset)
+		if (addr < seg_offset)
 			return;
 		mspdb::LineInfoEntry entry;
-		entry.offset = address - seg_offset;
+		entry.offset = addr - seg_offset;
 		entry.line = line;
 		lineInfo.push_back(entry);
 	}
