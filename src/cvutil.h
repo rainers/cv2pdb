@@ -38,7 +38,7 @@ static const int kPropHasOverAsgn = 0x20;
 static const int kPropHasCasting  = 0x40;
 static const int kPropIncomplete  = 0x80;
 static const int kPropScoped      = 0x100;
-static const int kPropReserved2   = 0x200;
+static const int kPropUniquename  = 0x200;
 
 bool isStruct(const codeview_type* cvtype);
 bool isClass(const codeview_type* cvtype);

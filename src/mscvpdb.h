@@ -1539,7 +1539,18 @@ union codeview_symbol
     {
         short int               len;
         short int               id;
-        unsigned int            unknown;
+        unsigned char           machine;    // target processor
+        unsigned char           language;   // language index: 0: C, 1: C++, 'D': D
+        unsigned short          flags;
+        /*struct  {
+            unsigned char   pcode       :1; // true if pcode present
+            unsigned char   floatprec   :2; // floating precision
+            unsigned char   floatpkg    :2; // float package
+            unsigned char   ambdata     :3; // ambient data model
+            unsigned char   ambcode     :3; // ambient code model
+            unsigned char   mode32      :1; // true if compiled 32 bit mode
+            unsigned char   pad         :4; // reserved
+        } flags;*/
         struct p_string         p_name;
     } compiland_v1;
 

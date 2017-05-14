@@ -105,7 +105,7 @@ void makefullpath(TCHAR* pdbname)
 
 int T_main(int argc, TCHAR* argv[])
 {
-	double Dversion = 2.043;
+	double Dversion = 2.072;
 	const TCHAR* pdbref = 0;
 	bool debug = false;
 

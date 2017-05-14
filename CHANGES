@@ -244,3 +244,10 @@ unreleased Version 0.22
 2017-01-20 Version 0.39
 
   * do not assume sorted line numbers per segment
+
+2017-05-13 Version 0.40
+
+  * set source language 'D' in compilation unit
+  * for D version >= 2.068, write AA debug info compatible with dmd COFF output
+  * prefer struct over class for internal structs
+  * handle class/struct property "uniquename"

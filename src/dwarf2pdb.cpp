@@ -867,7 +867,7 @@ int CV2PDB::addDWARFStructure(DWARF_InfoData& structid, DWARF_CompilationUnit* c
 
 	const char* name = (structid.name ? structid.name : "__noname");
 	int attr = fieldlistType ? 0 : kPropIncomplete;
-	int len = addAggregate(cvt, false, nfields, fieldlistType, attr, 0, 0, structid.byte_size, name);
+	int len = addAggregate(cvt, false, nfields, fieldlistType, attr, 0, 0, structid.byte_size, name, nullptr);
 	cbUserTypes += len;
 
 	//ensureUDT()?
@@ -948,8 +948,9 @@ bool CV2PDB::addDWARFTypes()
 	// COMPILAND
 	cvs = (codeview_symbol*) (data + off);
 	cvs->compiland_v1.id = S_COMPILAND_V1;
-	cvs->compiland_v1.unknown = 0x800100; // ?, 0x100: C++,
-	cvs->compiland_v1.unknown |= img.isX64() ? 0xd0 : 6; //0x06: Pentium Pro/II, 0xd0: x64
+	cvs->compiland_v1.language = 1; // C++
+	cvs->compiland_v1.flags = 0x80; // ?, data model
+	cvs->compiland_v1.machine = img.isX64() ? 0xd0 : 6; //0x06: Pentium Pro/II, 0xd0: x64
 	len = sizeof(cvs->compiland_v1) - sizeof(cvs->compiland_v1.p_name);
 	len += c2p("cv2pdb", cvs->compiland_v1.p_name);
 	for (; len & (align-1); len++)

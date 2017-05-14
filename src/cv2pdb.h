@@ -55,11 +55,11 @@ public:
 	int countNestedTypes(const codeview_reftype* fieldlist, int type);
 
 	int addAggregate(codeview_type* dtype, bool clss, int n_element, int fieldlist, int property,
-	                 int derived, int vshape, int structlen, const char*name);
+	                 int derived, int vshape, int structlen, const char*name, const char*uniquename);
 	int addClass(codeview_type* dtype, int n_element, int fieldlist, int property,
-	                                   int derived, int vshape, int structlen, const char*name);
+	                                   int derived, int vshape, int structlen, const char*name, const char*uniquename = 0);
 	int addStruct(codeview_type* dtype, int n_element, int fieldlist, int property,
-	                                    int derived, int vshape, int structlen, const char*name);
+	                                    int derived, int vshape, int structlen, const char*name, const char*uniquename = 0);
 	int addEnum(codeview_type* dtype, int count, int fieldlist, int property,
 	                                  int type, const char*name);
 
@@ -111,8 +111,9 @@ public:
 	int copy_leaf(unsigned char* dp, int& dpos, const unsigned char* p, int& pos);
 
 	const char* appendDynamicArray(int indexType, int elemType);
-	const char* appendAssocArray(int keyType, int elemType);
 	const char* appendDelegate(int thisType, int funcType);
+	int  appendAssocArray2068(codeview_type* dtype, int keyType, int elemType);
+	int  appendAssocArray(codeview_type* dtype, int keyType, int elemType);
 	int  appendObjectType (int object_derived_type, int enumType, const char* classSymbol);
 	int  appendPointerType(int pointedType, int attr);
 	int  appendModifierType(int type, int attr);

@@ -690,16 +690,18 @@ int CV2PDB::countNestedTypes(const codeview_reftype* fieldlist, int type)
 }
 
 int CV2PDB::addAggregate(codeview_type* dtype, bool clss, int n_element, int fieldlist, int property,
-                         int derived, int vshape, int structlen, const char*name)
+                         int derived, int vshape, int structlen, const char* name, const char* uniquename)
 {
 	dtype->struct_v2.id = clss ? (v3 ? LF_CLASS_V3 : LF_CLASS_V2) : (v3 ? LF_STRUCTURE_V3 : LF_STRUCTURE_V2);
 	dtype->struct_v2.n_element = n_element;
 	dtype->struct_v2.fieldlist = fieldlist;
-	dtype->struct_v2.property = property;
+	dtype->struct_v2.property = property | (uniquename ? kPropUniquename : 0);
 	dtype->struct_v2.derived = derived;
 	dtype->struct_v2.vshape = vshape;
 	dtype->struct_v2.structlen = structlen;
 	int len = cstrcpy_v(v3, (BYTE*)(&dtype->struct_v2 + 1), name);
+	if(uniquename)
+		len += cstrcpy_v(v3, (BYTE*)(&dtype->struct_v2 + 1) + len, uniquename);
 	len += sizeof (dtype->struct_v2);
 
 	unsigned char* p = (unsigned char*) dtype;
@@ -710,15 +712,15 @@ int CV2PDB::addAggregate(codeview_type* dtype, bool clss, int n_element, int fie
 }
 
 int CV2PDB::addClass(codeview_type* dtype, int n_element, int fieldlist, int property,
-                     int derived, int vshape, int structlen, const char*name)
+                     int derived, int vshape, int structlen, const char* name, const char* uniquename)
 {
-	return addAggregate(dtype, true, n_element, fieldlist, property, derived, vshape, structlen, name);
+	return addAggregate(dtype, true, n_element, fieldlist, property, derived, vshape, structlen, name, uniquename);
 }
 
 int CV2PDB::addStruct(codeview_type* dtype, int n_element, int fieldlist, int property,
-                      int derived, int vshape, int structlen, const char*name)
+                      int derived, int vshape, int structlen, const char* name, const char*uniquename)
 {
-	return addAggregate(dtype, false, n_element, fieldlist, property, derived, vshape, structlen, name);
+	return addAggregate(dtype, false, n_element, fieldlist, property, derived, vshape, structlen, name, uniquename);
 }
 
 int CV2PDB::addEnum(codeview_type* dtype, int count, int fieldlist, int property,
@@ -1367,7 +1369,9 @@ bool CV2PDB::nameOfDynamicArray(int indexType, int elemType, char* name, int max
 
 bool CV2PDB::nameOfAssocArray(int indexType, int elemType, char* name, int maxlen)
 {
-	if(Dversion >= 2.043)
+	if(Dversion >= 2.068)
+		strcpy(name, "aa3<");
+	else if(Dversion >= 2.043)
 		strcpy(name, "aa2<"); // to distinguish tree from list implementation
 	else
 		strcpy(name, "aa<");
@@ -1438,7 +1442,7 @@ const char* CV2PDB::appendDynamicArray(int indexType, int elemType)
 		char helpertype[kMaxNameLen];
 		strcat(strcpy(helpertype, name), "_viewhelper");
 		dtype = (codeview_type*) (userTypes + cbUserTypes);
-		cbUserTypes += addClass(dtype, 0, helpfieldlistType, 0, 0, 0, 4, helpertype);
+		cbUserTypes += addStruct(dtype, 0, helpfieldlistType, 0, 0, 0, 4, helpertype);
 		dstringType = nextUserType++;
 		addUdtSymbol(dstringType, helpertype);
 	}
@@ -1468,14 +1472,51 @@ const char* CV2PDB::appendDynamicArray(int indexType, int elemType)
 
 	cbUserTypes += rdtype->fieldlist.len + 2;
 	dtype = (codeview_type*) (userTypes + cbUserTypes);
-	cbUserTypes += addClass(dtype, numElem, fieldlistType, 0, 0, 0, 8, name);
+	cbUserTypes += addStruct(dtype, numElem, fieldlistType, 0, 0, 0, 8, name);
 	int udType = nextUserType++;
 
 	addUdtSymbol(udType, name);
 	return name;
 }
 
-const char* CV2PDB::appendAssocArray(int keyType, int elemType)
+int CV2PDB::appendAssocArray2068(codeview_type* dtype, int keyType, int elemType)
+{
+	codeview_reftype* rdtype;
+	codeview_fieldtype* dfieldtype;
+
+	checkUserTypeAlloc();
+
+	// struct AA {
+	//    void* ptr;
+	//    typedef keyType __key_t;
+	//    typedef elemType __val_t;
+	// };
+
+	// field list
+	rdtype = (codeview_reftype*) (userTypes + cbUserTypes);
+	rdtype->fieldlist.id = LF_FIELDLIST_V2;
+
+	// member void* ptr
+	dfieldtype = (codeview_fieldtype*)rdtype->fieldlist.list;
+	int len1 = addFieldMember(dfieldtype, 1, 0, img.isX64() ? 0x603 : 0x403, "ptr");
+
+	dfieldtype = (codeview_fieldtype*)(rdtype->fieldlist.list + len1);
+	int len2 = addFieldNestedType(dfieldtype, keyType, "__key_t");
+
+	dfieldtype = (codeview_fieldtype*)(rdtype->fieldlist.list + len1 + len2);
+	int len3 = addFieldNestedType(dfieldtype, elemType, "__val_t");
+
+	rdtype->fieldlist.len = len1 + len2 + len3 + 2;
+	cbUserTypes += rdtype->fieldlist.len + 2;
+	int aaFieldListType = nextUserType++;
+
+	char name[kMaxNameLen];
+	nameOfAssocArray(keyType, elemType, name, sizeof(name));
+
+	return addStruct(dtype, 3, aaFieldListType, 0, 0, 0, 4, "dAssocArray", name);
+}
+
+int CV2PDB::appendAssocArray(codeview_type* odtype, int keyType, int elemType)
 {
 	// rebuilding types
 	// struct aaA {
@@ -1496,6 +1537,9 @@ const char* CV2PDB::appendAssocArray(int keyType, int elemType)
 	checkUserTypeAlloc();
 
 	static char name[kMaxNameLen];
+	if(Dversion >= 2.068)
+		return appendAssocArray2068(odtype, keyType, elemType);
+
 #if 1
 	char keyname[kMaxNameLen];
 	char elemname[kMaxNameLen];
@@ -1508,7 +1552,7 @@ const char* CV2PDB::appendAssocArray(int keyType, int elemType)
 
 	// undefined struct aaA
 	dtype = (codeview_type*) (userTypes + cbUserTypes);
-	cbUserTypes += addClass(dtype, 0, 0, kPropIncomplete, 0, 0, 0, name);
+	cbUserTypes += addStruct(dtype, 0, 0, kPropIncomplete, 0, 0, 0, name);
 	int aaAType = nextUserType++;
 
 	// pointer to aaA
@@ -1562,7 +1606,7 @@ const char* CV2PDB::appendAssocArray(int keyType, int elemType)
 	int fieldListType = nextUserType++;
 
 	dtype = (codeview_type*) (userTypes + cbUserTypes);
-	cbUserTypes += addClass(dtype, len2 == 0 ? 4 : 5, fieldListType, 0, 0, 0, off, name);
+	cbUserTypes += addStruct(dtype, len2 == 0 ? 4 : 5, fieldListType, 0, 0, 0, off, name);
 	addUdtSymbol(nextUserType, name);
 	int completeAAAType = nextUserType++;
 
@@ -1592,7 +1636,7 @@ const char* CV2PDB::appendAssocArray(int keyType, int elemType)
 
 	// struct BB
 	dtype = (codeview_type*) (userTypes + cbUserTypes);
-	cbUserTypes += addClass(dtype, 2, bbFieldListType, 0, 0, 0, 12, name);
+	cbUserTypes += addStruct(dtype, 2, bbFieldListType, 0, 0, 0, 12, name);
 	addUdtSymbol(nextUserType, name);
 	int bbType = nextUserType++;
 
@@ -1619,13 +1663,8 @@ const char* CV2PDB::appendAssocArray(int keyType, int elemType)
 	int aaFieldListType = nextUserType++;
 
 	nameOfAssocArray(keyType, elemType, name, sizeof(name));
-	dtype = (codeview_type*) (userTypes + cbUserTypes);
-	cbUserTypes += addClass(dtype, 1, aaFieldListType, 0, 0, 0, 4, name);
 
-	addUdtSymbol(nextUserType, name);
-	nextUserType++;
-
-	return name;
+	return addStruct(odtype, 1, aaFieldListType, 0, 0, 0, 4, name);
 }
 
 const char* CV2PDB::appendDelegate(int thisType, int funcType)
@@ -1669,7 +1708,7 @@ const char* CV2PDB::appendDelegate(int thisType, int funcType)
 
 	// nextUserType + 3: struct delegate<>
 	dtype = (codeview_type*) (userTypes + cbUserTypes);
-	cbUserTypes += addClass(dtype, 2, nextUserType + (thisTypeIsVoid ? 1 : 2), 0, 0, 0, 8, name);
+	cbUserTypes += addStruct(dtype, 2, nextUserType + (thisTypeIsVoid ? 1 : 2), 0, 0, 0, 8, name);
 
 	nextUserType += thisTypeIsVoid ? 3 : 4;
 	addUdtSymbol(nextUserType - 1, name);
@@ -1695,7 +1734,7 @@ int CV2PDB::appendObjectType (int object_type, int enumType, const char* classSy
 		cbUserTypes += rdtype->fieldlist.len + 2;
 
 		dtype = (codeview_type*) (userTypes + cbUserTypes);
-		cbUserTypes += addClass(dtype, 0, helpfieldlistType, 0, 0, 0, 0, "object_viewhelper");
+		cbUserTypes += addStruct(dtype, 0, helpfieldlistType, 0, 0, 0, 0, "object_viewhelper");
 		viewHelperType = nextUserType++;
 		addUdtSymbol(viewHelperType, "object_viewhelper");
 	}
@@ -1805,7 +1844,7 @@ int CV2PDB::appendComplex(int cplxtype, int basetype, int elemsize, const char* 
 
 	// nextUserType + 3: struct delegate<>
 	dtype = (codeview_type*) (userTypes + cbUserTypes);
-	cbUserTypes += addClass(dtype, 2, fieldlistType, 0, 0, 0, 2*elemsize, name);
+	cbUserTypes += addStruct(dtype, 2, fieldlistType, 0, 0, 0, 2*elemsize, name);
 
 	int classType = nextUserType++;
 	addUdtSymbol(classType, name);
@@ -1940,7 +1979,7 @@ void CV2PDB::ensureUDT(int type, const codeview_type* cvtype)
 		cbUserTypes += rdtype->fieldlist.len + 2;
 
 		codeview_type*dtype = (codeview_type*) (userTypes + cbUserTypes);
-		cbUserTypes += addClass(dtype, 0, helpfieldlistType, 0, 0, 0, 4, name);
+		cbUserTypes += addAggregate(dtype, isClass(cvtype), 0, helpfieldlistType, 0, 0, 0, 4, name, nullptr);
 		int viewHelperType = nextUserType++;
 		// addUdtSymbol(viewHelperType, "object_viewhelper");
 		addUdtSymbol(viewHelperType, name);
@@ -1982,7 +2021,7 @@ int CV2PDB::appendTypedef(int type, const char* name, bool saveTranslation)
 		dtype->enumeration_v2.type = basetype;
 		dtype->enumeration_v2.fieldlist = fieldlistType;
 		dtype->enumeration_v2.count = 0;
-		dtype->enumeration_v2.property = kPropReserved2;
+		dtype->enumeration_v2.property = 0; //kPropReserved2;
 		int len = cstrcpy_v (v3, (BYTE*) &dtype->enumeration_v2.p_name, name);
 		len += sizeof(dtype->enumeration_v2) - sizeof(dtype->enumeration_v2.p_name);
 		writeUserTypeLen(dtype, len);
@@ -2108,18 +2147,17 @@ bool CV2PDB::initGlobalTypes()
 						else
 						{
 							const char* name = appendDynamicArray(oem->d_dyn_array.index_type, oem->d_dyn_array.elem_type);
-							len = addClass(dtype, 0, 0, kPropIncomplete, 0, 0, 0, name);
+							len = addStruct(dtype, 0, 0, kPropIncomplete, 0, 0, 0, name);
 						}
 					}
 					else if (oem->generic.oemid == 0x42 && oem->generic.id == 3)
 					{
 						const char* name = appendDelegate(oem->d_delegate.this_type, oem->d_delegate.func_type);
-						len = addClass(dtype, 0, 0, kPropIncomplete, 0, 0, 0, name);
+						len = addStruct(dtype, 0, 0, kPropIncomplete, 0, 0, 0, name);
 					}
 					else if (oem->generic.oemid == 0x42 && oem->generic.id == 2)
 					{
-						const char* name = appendAssocArray(oem->d_assoc_array.key_type, oem->d_assoc_array.elem_type);
-						len = addClass(dtype, 0, 0, kPropIncomplete, 0, 0, 0, name);
+						len = appendAssocArray(dtype, oem->d_assoc_array.key_type, oem->d_assoc_array.elem_type);
 					}
 					else
 					{
@@ -2163,7 +2201,7 @@ bool CV2PDB::initGlobalTypes()
 							if(td->generic.id == LF_FIELDLIST_V1 || td->generic.id == LF_FIELDLIST_V2)
 								dtype->struct_v2.n_element = countFields((const codeview_reftype*)td);
 					dtype->struct_v2.property = fixProperty(t + 0x1000, type->struct_v1.property,
-					                                        type->struct_v1.fieldlist) | kPropReserved2;
+					                                        type->struct_v1.fieldlist);
 #if REMOVE_LF_DERIVED
 					dtype->struct_v2.derived = 0;
 #else
@@ -2174,9 +2212,9 @@ bool CV2PDB::initGlobalTypes()
 					memcpy (&dtype->struct_v2.structlen, &type->struct_v1.structlen, leaf_len);
 					len = pstrcpy_v(v3, (BYTE*)       &dtype->struct_v2.structlen + leaf_len,
 					                    (const BYTE*)  &type->struct_v1.structlen + leaf_len);
+#if 1
 					// alternate name can be added here?
-#if 0
-					if (dtype->struct_v2.id == LF_CLASS_V2)
+					if (dtype->struct_v2.property & kPropUniquename)
 						len += pstrcpy((BYTE*)       &dtype->struct_v2.structlen + leaf_len + len,
 						               (const BYTE*)  &type->struct_v1.structlen + leaf_len);
 #endif
@@ -2906,8 +2944,8 @@ int CV2PDB::copySymbols(BYTE* srcSymbols, int srcSize, BYTE* destSymbols, int de
 			lastGProcSym = 0;
 			break;
 		case S_COMPILAND_V1:
-			if (((dsym->compiland_v1.unknown >> 8) & 0xFF) == 0) // C?
-				dsym->compiland_v1.unknown = (dsym->compiland_v1.unknown & ~0xFF00 | 0x100); // C++
+			if (dsym->compiland_v1.language == 0) // C?
+				dsym->compiland_v1.language = Dversion >= 2.072 ? 'D' : 1; // C++
 			break;
 		case S_PROCREF_V1:
 		case S_DATAREF_V1:
