@@ -208,6 +208,10 @@
 				>
 			</File>
 			<File
+				RelativePath=".\dwarflines.cpp"
+				>
+			</File>
+			<File
 				RelativePath=".\LastError.h"
 				>
 			</File>
@@ -233,6 +237,10 @@
 			</File>
 			<File
 				RelativePath=".\PEImage.h"
+				>
+			</File>
+			<File
+				RelativePath=".\readDwarf.cpp"
 				>
 			</File>
 			<File

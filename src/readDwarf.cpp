@@ -16,6 +16,7 @@ static Location mkInReg(unsigned reg)
 	Location l;
 	l.type = Location::InReg;
 	l.reg = reg;
+	l.off = 0;
 	return l;
 }
 
@@ -23,6 +24,7 @@ static Location mkAbs(int off)
 {
 	Location l;
 	l.type = Location::Abs;
+	l.reg = 0;
 	l.off = off;
 	return l;
 }
@@ -50,7 +52,7 @@ Location decodeLocation(const DWARF_Attribute& attr, const Location* frameBase, 
 	Location stack[256];
 	int stackDepth = 0;
     if (at == DW_AT_data_member_location)
-        stack[stackDepth++] = Location { Location::Abs, 0, 0 };
+        stack[stackDepth++] = mkAbs(0);
 
 	for (;;)
 	{
@@ -86,10 +88,10 @@ Location decodeLocation(const DWARF_Attribute& attr, const Location* frameBase, 
 			case DW_OP_constu:  stack[stackDepth++] = mkAbs(LEB128(p)); break;
 			case DW_OP_consts:  stack[stackDepth++] = mkAbs(SLEB128(p)); break;
 
-			case DW_OP_plus_uconst: 
+			case DW_OP_plus_uconst:
 				if (stack[stackDepth - 1].is_inreg())
 					return invalid;
-				stack[stackDepth - 1].off += LEB128(p); 
+				stack[stackDepth - 1].off += LEB128(p);
 				break;
 
 			case DW_OP_lit0:  case DW_OP_lit1:  case DW_OP_lit2:  case DW_OP_lit3:
@@ -330,7 +332,7 @@ void DIECursor::gotoSibling()
 		// use sibling pointer, if available
 		ptr = sibling;
 		hasChild = false;
-	} 
+	}
 	else if (hasChild)
 	{
 		int currLevel = level;
@@ -453,10 +455,10 @@ bool DIECursor::readNext(DWARF_InfoData& id, bool stopAtNull)
 
 		switch (attr)
 		{
-			case DW_AT_byte_size: 
+			case DW_AT_byte_size:
 				assert(a.type == Const || a.type == Ref || a.type == ExprLoc);
 				if (a.type == Const) // TODO: other types not supported yet
-					id.byte_size = a.cons; 
+					id.byte_size = a.cons;
 				break;
 			case DW_AT_sibling:   assert(a.type == Ref); id.sibling = a.ref; break;
 			case DW_AT_encoding:  assert(a.type == Const); id.encoding = a.cons; break;
@@ -483,12 +485,12 @@ bool DIECursor::readNext(DWARF_InfoData& id, bool stopAtNull)
 			case DW_AT_type:      assert(a.type == Ref); id.type = a.ref; break;
 			case DW_AT_inline:    assert(a.type == Const); id.inlined = a.cons; break;
 			case DW_AT_external:  assert(a.type == Flag); id.external = a.flag; break;
-			case DW_AT_upper_bound: 
+			case DW_AT_upper_bound:
 				assert(a.type == Const || a.type == Ref || a.type == ExprLoc);
 				if (a.type == Const) // TODO: other types not supported yet
 					id.upper_bound = a.cons;
 				break;
-			case DW_AT_lower_bound: 
+			case DW_AT_lower_bound:
 				assert(a.type == Const || a.type == Ref || a.type == ExprLoc);
 				if (a.type == Const) // TODO: other types not supported yet
 					id.lower_bound = a.cons;
