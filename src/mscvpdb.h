@@ -352,6 +352,26 @@ union codeview_type
         unsigned int            arglist;
         unsigned int            this_adjust;
     } mfunction_v2;
+
+    struct
+    {
+        unsigned short int      len;
+        short int               id;
+        unsigned short int      attr;
+        unsigned short int      fntype;
+        unsigned int            vbaseoff[1]; // vtbl offset if introducing virtual
+    } methodlist_v1;
+
+    struct
+    {
+        unsigned short int      len;
+        short int               id;
+        unsigned short int      attr;
+		unsigned short int      pad0;
+        unsigned int            fntype;
+        unsigned int            vbaseoff[1]; // vtbl offset if introducing virtual
+    } methodlist_v2;
+
 };
 
 union codeview_reftype

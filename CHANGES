@@ -251,3 +251,8 @@ unreleased Version 0.22
   * for D version >= 2.068, write AA debug info compatible with dmd COFF output
   * prefer struct over class for internal structs
   * handle class/struct property "uniquename"
+
+2017-05-13 Version 0.41
+
+  * when using mspdb120.dll (VS2013) or later, do not emit view helpers
+  * remove method declarations from struct or class records (they confuse mspdb*.dll if having forward references?)

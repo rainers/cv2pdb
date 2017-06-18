@@ -10,7 +10,7 @@
 #include "cv2pdb.h"
 #include "symutil.h"
 
-#define OBJECT_SYMBOL   "object@Object"
+#define OBJECT_SYMBOL   "object.Object"
 #define IFACE_SYMBOL    "DInterface"
 #define CPPIFACE_SYMBOL "CppInterface"
 

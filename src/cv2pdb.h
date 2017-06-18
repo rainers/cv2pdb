@@ -245,6 +245,9 @@ public:
 
 	bool addClassTypeEnum;
 	bool addStringViewHelper;
+	bool addObjectViewHelper;
+	bool methodListToOneMethod;
+	bool removeMethodLists;
 	bool useGlobalMod;
 	bool thisIsNotRef;
 	bool v3;

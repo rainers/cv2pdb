@@ -38,7 +38,10 @@ CV2PDB::CV2PDB(PEImage& image)
 	nextDwarfType = 0x1000;
 
 	addClassTypeEnum = true;
+	addObjectViewHelper = true;
 	addStringViewHelper = false;
+	methodListToOneMethod = true;
+	removeMethodLists = true;
 	useTypedefEnum = false;
 	useGlobalMod = true;
 	thisIsNotRef = true;
@@ -182,6 +185,10 @@ bool CV2PDB::openPDB(const TCHAR* pdbname, const TCHAR* pdbref)
 	printf("TPI::QueryImplementationVersion() = %d\n", tpi->QueryImplementationVersion());
 #endif
 
+	// only add helper for VS2012 or earlier, that default to the old debug engine
+	addClassTypeEnum = mspdb::vsVersion < 12;
+	addStringViewHelper = mspdb::vsVersion < 12;
+	addObjectViewHelper = mspdb::vsVersion < 12;
 	return true;
 }
 
@@ -479,12 +486,31 @@ int CV2PDB::_doFields(int cmd, codeview_reftype* dfieldlist, const codeview_reft
 			break;
 
 		case LF_METHOD_V1:
+		{
+			auto prevdpos = dpos;
+			auto mlisttype = getTypeData(fieldtype->method_v1.mlist);
 			if (dp)
 			{
-				dfieldtype->method_v2.id = v3 ? LF_METHOD_V3 : LF_METHOD_V2;
-				dfieldtype->method_v2.count = fieldtype->method_v1.count;
-				dfieldtype->method_v2.mlist = fieldtype->method_v1.mlist;
-				dpos += sizeof(dfieldtype->method_v2) - sizeof(dfieldtype->method_v2.p_name);
+				if (methodListToOneMethod && fieldtype->method_v1.count == 1 && mlisttype)
+				{
+					dfieldtype->onemethod_v2.id = v3 ? LF_ONEMETHOD_V3 : LF_ONEMETHOD_V2;
+					dfieldtype->onemethod_v2.attribute = mlisttype->methodlist_v1.attr;
+					dfieldtype->onemethod_v2.type = translateType(mlisttype->methodlist_v1.fntype);
+					dpos += sizeof(dfieldtype->onemethod_v2) - sizeof(dfieldtype->onemethod_v2.p_name);
+					int mode = (mlisttype->methodlist_v1.attr >> 2) & 7;
+					if (mode == 4 || mode == 6) // introducing virtual
+					{
+						*(unsigned*)(dp + dpos) = mlisttype->methodlist_v1.vbaseoff[0];
+						dpos += sizeof(unsigned);
+					}
+				}
+				else
+				{
+					dfieldtype->method_v2.id = v3 ? LF_METHOD_V3 : LF_METHOD_V2;
+					dfieldtype->method_v2.count = fieldtype->method_v1.count;
+					dfieldtype->method_v2.mlist = fieldtype->method_v1.mlist;
+					dpos += sizeof(dfieldtype->method_v2) - sizeof(dfieldtype->method_v2.p_name);
+				}
 			}
 			pos  += sizeof(dfieldtype->method_v1) - sizeof(dfieldtype->method_v1.p_name);
 			if (v3 && dp)
@@ -492,18 +518,22 @@ int CV2PDB::_doFields(int cmd, codeview_reftype* dfieldlist, const codeview_reft
 			else
 				copylen = pstrmemlen(&fieldtype->method_v1.p_name.namelen);
 
-			if(cmd == kCmdOffsetFirstVirtualMethod)
-				if(const codeview_type* cvtype = getTypeData(fieldtype->method_v1.mlist))
-					if (cvtype->generic.id == LF_METHODLIST_V1 && cvtype->generic.len > 2)
-					{
-						// just check the first entry
-						const unsigned short *pattr = (const unsigned short*)(&cvtype->generic + 1);
-						int mode =(*pattr >> 2) & 7;
-						if(mode == 4 || mode == 6)
-							return *(const unsigned*)(&pattr[2]);
-					}
+			if(removeMethodLists && cmd != kCmdOffsetFirstVirtualMethod)
+			{
+				dpos = prevdpos;
+				pos += copylen;
+				continue; // throw away copy and do not count
+			}
+			if(cmd == kCmdOffsetFirstVirtualMethod && mlisttype)
+				if (mlisttype->generic.id == LF_METHODLIST_V1 && mlisttype->generic.len > 2)
+				{
+					// just check the first entry
+					int mode = (mlisttype->methodlist_v1.attr >> 2) & 7;
+					if(mode == 4 || mode == 6)
+						return mlisttype->methodlist_v1.vbaseoff[0];
+				}
 			break;
-
+		}
 		case LF_METHOD_V2:
 			copylen = sizeof(dfieldtype->method_v2) - sizeof(dfieldtype->method_v2.p_name);
 			copylen += pstrmemlen(&fieldtype->method_v2.p_name.namelen);
@@ -1724,7 +1754,7 @@ int CV2PDB::appendObjectType (int object_type, int enumType, const char* classSy
 	codeview_type* dtype;
 
 	int viewHelperType = 0;
-	bool addViewHelper = object_type == kClassTypeObject;
+	bool addViewHelper = addObjectViewHelper && object_type == kClassTypeObject;
 	if(addViewHelper)
 	{
 		rdtype = (codeview_reftype*) (userTypes + cbUserTypes);
@@ -2101,7 +2131,10 @@ bool CV2PDB::initGlobalTypes()
 					ifaceBaseType    = appendObjectType (kClassTypeIface,    ifaceEnumType, IFACE_SYMBOL);
 					cppIfaceBaseType = appendObjectType (kClassTypeCppIface, cppIfaceEnumType, CPPIFACE_SYMBOL);
 				}
-				classBaseType = appendObjectType (kClassTypeObject, classEnumType, OBJECT_SYMBOL);
+				if (auto sym = findUdtSymbol(OBJECT_SYMBOL))
+					classBaseType = sym->udt_v1.type;
+				else
+					classBaseType = appendObjectType (kClassTypeObject, classEnumType, OBJECT_SYMBOL);
 			}
 
 			for (unsigned int t = 0; t < globalTypeHeader->cTypes && !hadError(); t++)
@@ -2332,20 +2365,29 @@ bool CV2PDB::initGlobalTypes()
 
 				case LF_METHODLIST_V1:
 				{
+					if (methodListToOneMethod || removeMethodLists)
+					{
+						dtype->generic.id = LF_NULL_V1;
+						len = 4;
+						break;
+					}
 					dtype->generic.id = LF_METHODLIST_V2;
 					const unsigned short* pattr = (const unsigned short*)((const char*)type + 4);
 					unsigned* dpattr = (unsigned*)((char*)dtype + 4);
 					while ((const char*)pattr + 4 <= (const char*)type + type->generic.len + 2)
 					{
-						// type translation?
 						switch ((*pattr >> 2) & 7)
 						{
 						case 4:
 						case 6:
-							*dpattr++ = *pattr++;
+							*dpattr++ = *pattr++; // attribute
+							*dpattr++ = translateType(*pattr++); // type
+							*dpattr++ = *(unsigned*)pattr; // vbaseoff
+							pattr += 2;
+							break;
 						default:
-							*dpattr++ = *pattr++;
-							*dpattr++ = *pattr++;
+							*dpattr++ = *pattr++; // attribute
+							*dpattr++ = translateType(*pattr++); // type
 							break;
 						}
 					}
