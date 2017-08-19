@@ -299,7 +299,7 @@ bool PEImage::initCVPtr(bool initDbgDir)
 			// return setError("can only handle debug info of type NB09 and NB11");
 			dirHeader = 0;
 			dirEntry = 0;
-			return true;
+			return false;
 		}
 		dirHeader = CVP<OMFDirHeader>(sig->filepos);
 		if (!dirHeader)
