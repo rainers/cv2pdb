@@ -279,6 +279,12 @@ bool PEImage::initCVPtr(bool initDbgDir)
 	if(IMGHDR(OptionalHeader.NumberOfRvaAndSizes) <= IMAGE_DIRECTORY_ENTRY_DEBUG)
 		return setError("too few entries in data directory");
 
+	dbgDir = 0;
+	dirHeader = 0;
+	dirEntry = 0;
+	if (!initDbgDir)
+		return true;
+
 	unsigned int i;
 	int found = false;
 	for(i = 0; i < IMGHDR(OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_DEBUG].Size)/sizeof(IMAGE_DEBUG_DIRECTORY); i++)
@@ -297,8 +303,6 @@ bool PEImage::initCVPtr(bool initDbgDir)
 		if (memcmp(sig->Signature, "NB09", 4) != 0 && memcmp(sig->Signature, "NB11", 4) != 0)
 		{
 			// return setError("can only handle debug info of type NB09 and NB11");
-			dirHeader = 0;
-			dirEntry = 0;
 			return false;
 		}
 		dirHeader = CVP<OMFDirHeader>(sig->filepos);
