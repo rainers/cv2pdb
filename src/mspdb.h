@@ -33,7 +33,6 @@ struct Mod;
 struct StreamCached;
 struct GSI;
 struct TPI;
-struct IPI;
 struct NameMap;
 struct EnumNameMap;
 
@@ -215,7 +214,7 @@ public: virtual int OpenTpi(char const *,struct TPI * *);
 };
 
 struct PDB_part_vs11 : public PDB_part1 {
-public: virtual int OpenIpi(char const *,struct IPI * *); // VS11
+public: virtual int OpenIpi(char const *,struct TPI * *); // VS11
 };
 
 template<class BASE>
@@ -235,8 +234,17 @@ public: virtual int QuerySignature2(struct _GUID *);
 public: virtual int CopyToW(unsigned short const *,unsigned long,unsigned long);
 public: virtual int fIsSZPDB(void)const ;
 public: virtual int containsW(unsigned short const *,unsigned long *);
+// mspdb140.dll!PDBCommon::OpenStreamW(unsigned short const *,struct Stream * *)
 public: virtual int CopyToW2(unsigned short const *,unsigned long,int (__cdecl*(__cdecl*)(void *,enum PCC))(void),void *);
 public: virtual int OpenStreamEx(char const *,char const *,struct Stream * *);
+// mspdb140.dll!PDB_Proxy::RegisterPDBMapping(unsigned short const *,unsigned short const *)
+// mspdb140.dll!PDB_Proxy::EnablePrefetching(void)
+// mspdb140.dll!PDB_Proxy::FLazy(void)
+// mspdb140.dll!PDB_Proxy::FMinimal(void)
+// mspdb140.dll!PDB_Proxy::ResetGUID(unsigned char *,unsigned long)
+// mspdb140.dll!PDB_Proxy::FReleaseGlobalSymbolBuffer(void)
+// mspdb140.dll!PDB_Proxy::UpdateSignature(unsigned long,struct _GUID,unsigned long)
+// mspdb140.dll!PDB_Proxy::`vector deleting destructor'(unsigned int)
 };
 
 struct PDB_VS10 : public PDB_part2<PDB_part1> {};
@@ -246,7 +254,7 @@ struct PDB
 {
 	PDB_VS10 vs10;
 
-public: 
+public:
 	static int __cdecl Open2W(unsigned short const *path,char const *mode,long *p,unsigned short *ext,unsigned int flags,struct PDB **pPDB);
 
 	unsigned long QueryAge() { return vs10.QueryAge(); }
@@ -271,6 +279,12 @@ public:
 		if(vsVersion >= 11)
 			return ((PDB_VS11*)&vs10)->QuerySignature2(guid);
 		return vs10.QuerySignature2(guid);
+	}
+	int OpenIpi(char const *name,struct TPI * *ipi)
+	{
+		if(vsVersion >= 11)
+			return ((PDB_VS11*)&vs10)->OpenIpi(name, ipi);
+		return 0;
 	}
 };
 
@@ -383,6 +397,33 @@ public: virtual int Mod::QueryPdbFileW(unsigned short * const,long *);
 public: virtual int Mod2::AddPublic2(char const *name,unsigned short sec,long off,unsigned long type);
 public: virtual int Mod::InsertLines(unsigned char *,long);
 public: virtual int Mod::QueryLines2(long,unsigned char *,long *);
+// mspdb140.dll:
+public: virtual int QueryCrossScopeExports(unsigned long,unsigned char *,unsigned long *);
+public: virtual int QueryCrossScopeImports(unsigned long,unsigned char *,unsigned long *);
+public: virtual int QueryInlineeLines(unsigned long,unsigned char *,unsigned long *);
+public: virtual int EnCReleaseCompilerGeneratedPDB(unsigned char *,unsigned long);
+public: virtual int QueryFuncMDTokenMap(unsigned long,unsigned char *,unsigned long *);
+public: virtual int QueryTypeMDTokenMap(unsigned long,unsigned char *,unsigned long *);
+public: virtual int QueryMergedAssemblyInput(unsigned long,unsigned char *,unsigned long *);
+public: virtual int QueryILLines(unsigned long,unsigned char *,unsigned long *);
+public: virtual int GetEnumILLines(struct EnumLines * *);
+public: virtual int QueryILLineFlags(unsigned long *);
+public: virtual int MergeTypes(unsigned char *,unsigned long);
+public: virtual int IsTypeServed(unsigned long,int);
+public: virtual int QueryTypes(unsigned char *,unsigned long *);
+public: virtual int QueryIDs(unsigned char *,unsigned long *);
+public: virtual int QueryCVRecordForTi(unsigned long,int,unsigned char *,unsigned long *);
+public: virtual int QueryPbCVRecordForTi(unsigned long,int,unsigned char * *);
+public: virtual int QueryTiForUDT(char const *,int,unsigned long *);
+public: virtual int QueryCoffSymRVAs(unsigned char *,unsigned long *);
+public: virtual int AddSecContrib2(unsigned short,unsigned long,unsigned long,unsigned long,unsigned long);
+public: virtual int AddSecContrib2Ex(unsigned short,unsigned long,unsigned long,unsigned long,unsigned long,unsigned long,unsigned long);
+public: virtual int AddSymbols2(unsigned char *,unsigned long,unsigned long);
+public: virtual int RemoveGlobalRefs(void);
+public: virtual int QueryPbCVRecordForTi_alias(unsigned long,int,unsigned char * *);
+public: virtual int FReleaseGlobalSymbolBuffer(void);
+public: virtual int EnCReleaseCompilerGeneratedPDB_alias(unsigned char *,unsigned long);
+// mspdb140.dll!Mod_Proxy2::`vector deleting destructor'(unsigned int)
 };
 
 
@@ -411,7 +452,7 @@ public: virtual int QueryNextItsm(unsigned char,unsigned char *);
 public: virtual int reinitialize(void); // returns 0 (QueryLazyTypes in 10.0)
 public: virtual int SetLazyTypes(int);
 public: virtual int FindTypeServers(long *,char *);
-public: virtual void noop(void); // noop (_Reserved_was_QueryMreLog in 10.0)
+public: virtual void noop(void); // noop (_Reserved_was_QueryMreLog in 10.0, (mspdb140.dll: DumpTypeServers(void))
 public: virtual int OpenDbg(enum DBGTYPE,struct Dbg * *);
 public: virtual int QueryDbgTypes(enum DBGTYPE *,long *);
 public: virtual int QueryAddrForSec(unsigned short *,long *,unsigned short,long,unsigned long,unsigned long);
@@ -421,7 +462,7 @@ struct DBI_part2 : public DBI_part1 {
 public: virtual int QueryAddrForSecEx(unsigned short *,long *,unsigned short,long,unsigned long,unsigned long);
 };
 
-template<class BASE> 
+template<class BASE>
 struct DBI_BASE : public BASE {
 public: virtual int QuerySupportsEC(void);
 public: virtual int QueryPdb(struct PDB * *);
@@ -452,6 +493,14 @@ public: virtual int FSetPfnNotePdbUsed(void *,void (__cdecl*)(void *,unsigned sh
 public: virtual int FCTypes(void);
 public: virtual int QueryFileInfo2(unsigned char *,long *);
 public: virtual int FSetPfnQueryCallback(void *,int (__cdecl*(__cdecl*)(void *,enum DOVC))(void));
+// mspdb140.dll!DBI_Proxy::FSetPfnNoteTypeMismatch(void *,void (*)(void *,unsigned short const *,unsigned short const *))
+// mspdb140.dll!DBI_Proxy::FSetPfnTmdTypeFilter(void *,int (*)(void *,unsigned short const *))
+// mspdb140.dll!DBI_Proxy::RemovePublic(char const *)
+// mspdb140.dll!DBI_Proxy2::getEnumContrib2(struct Enum * *)
+// mspdb140.dll!DBI_Proxy2::QueryModFromAddrEx(unsigned short,unsigned long,struct Mod * *,unsigned short *,unsigned long *,unsigned long *,unsigned long *,unsigned long *)
+// mspdb140.dll!DBI_Proxy2::QueryImodFromAddrEx(unsigned short,unsigned long,unsigned short *,unsigned short *,unsigned long *,unsigned long *,unsigned long *,unsigned long *)
+// mspdb140.dll!DBI_Proxy::UpdateGlobalDataAddr(char const *,unsigned short,unsigned long)
+// mspdb140.dll!DBI_Proxy2::`vector deleting destructor'(unsigned int)
 };
 
 struct DBI_VS9  : public DBI_BASE<DBI_part1> {};
@@ -530,6 +579,9 @@ public: virtual unsigned long TPI::QueryTiMac(void);
 public: virtual int TPI::AreTypesEqual(unsigned long,unsigned long);
 public: virtual int TPI2::IsTypeServed(unsigned long);
 public: virtual int TPI::QueryTiForUDTW(unsigned short const *,int,unsigned long *);
+// mspdb140.dll!TPI_Proxy::QueryModSrcLineForUDTDefn(unsigned long,unsigned short *,unsigned long *,unsigned long *)
+// mspdb140.dll!TPI_Proxy2::QueryTIsForCVRecords(unsigned char *,unsigned long,unsigned long,unsigned long,unsigned long *)
+// mspdb140.dll!TPI_Proxy2::`vector deleting destructor'(unsigned int)
 };
 
 

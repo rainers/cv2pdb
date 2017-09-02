@@ -137,6 +137,7 @@ public:
 
 	bool addTypes();
 	bool addSrcLines();
+	bool addSrcLines14();
 	bool addPublics();
 
 	codeview_symbol* findUdtSymbol(int type);
@@ -187,6 +188,7 @@ public:
 	mspdb::PDB* pdb;
 	mspdb::DBI *dbi;
 	mspdb::TPI *tpi;
+	mspdb::TPI *ipi;
 
 	mspdb::Mod** modules;
 	mspdb::Mod* globmod;

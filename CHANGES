@@ -256,3 +256,11 @@ unreleased Version 0.22
 
   * when using mspdb120.dll (VS2013) or later, do not emit view helpers
   * remove method declarations from struct or class records (they confuse mspdb*.dll if having forward references?)
+
+2017-09-02 Version 0.42
+
+  * search VS2017 registry entries to find mspdb140.dll
+  * when using mspdb140.dll (VS2015) or later, use symbols to emit line numbers
+  * translate S_UDT_V1 to V3 version
+  * translate S_BLOCK_V1 to V3 version
+  * remove "this" from delegate parameter list if inconsistent with procedure type

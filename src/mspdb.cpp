@@ -81,6 +81,28 @@ bool tryLoadMsPdb(const char* version, const char* mspdb, const char* path = 0)
 	return modMsPdb != 0;
 }
 
+bool tryLoadMsPdbVS2017(const char* mspdb, const char* path = 0)
+{
+	const char* key = "SOFTWARE\\Microsoft\\VisualStudio\\SxS\\VS7";
+
+	HKEY hkey;
+	if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, key, 0, KEY_OPEN_FLAGS, &hkey) != ERROR_SUCCESS)
+		return false;
+
+	char installDir[260];
+	DWORD size = sizeof(installDir);
+	bool rc = RegQueryValueExA(hkey, "15.0", 0, 0, (LPBYTE)installDir, &size) == ERROR_SUCCESS;
+	RegCloseKey(hkey);
+	if(!rc)
+		return false;
+
+	strncat(installDir, "Common7\\IDE\\", 260);
+	strncat(installDir, mspdb, 260);
+
+	tryLoadLibrary(installDir);
+	return modMsPdb != 0;
+}
+
 #ifdef _M_X64
 #define BIN_DIR_GE_VS12 "..\\..\\VC\\bin\\amd64\\"
 #define BIN_DIR_LT_VS12 BIN_DIR_GE_VS12
@@ -155,6 +177,8 @@ void tryLoadMsPdb140(bool throughPath)
 	{
 		if(throughPath)
 			modMsPdb = LoadLibraryA(mspdb140_dll);
+		if(!modMsPdb && !throughPath)
+			tryLoadMsPdbVS2017(mspdb140_dll);
 		if (!modMsPdb && !throughPath)
 			tryLoadMsPdb("VisualStudio\\14.0", mspdb140_dll, BIN_DIR_GE_VS12);
 		if (!modMsPdb && !throughPath)

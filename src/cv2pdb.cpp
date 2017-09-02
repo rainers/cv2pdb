@@ -15,8 +15,10 @@
 #define REMOVE_LF_DERIVED  1  // types wrong by DMD
 #define PRINT_INTERFACEVERSON 0
 
+static const int typePrefix = 4;
+
 CV2PDB::CV2PDB(PEImage& image)
-: img(image), pdb(0), dbi(0), libraries(0), rsds(0), modules(0), globmod(0)
+: img(image), pdb(0), dbi(0), tpi(0), ipi(0), libraries(0), rsds(0), modules(0), globmod(0)
 , segMap(0), segMapDesc(0), segFrame2Index(0), globalTypeHeader(0)
 , globalTypes(0), cbGlobalTypes(0), allocGlobalTypes(0)
 , userTypes(0), cbUserTypes(0), allocUserTypes(0)
@@ -71,6 +73,8 @@ bool CV2PDB::cleanup(bool commit)
 		dbi->Close();
 	if (tpi)
 		tpi->Close();
+	if (ipi)
+		ipi->Close();
 	if (pdb)
 		pdb->Commit();
 	if (pdb)
@@ -179,6 +183,15 @@ bool CV2PDB::openPDB(const TCHAR* pdbname, const TCHAR* pdbref)
 	rc = pdb->OpenTpi("", &tpi);
 	if (rc <= 0 || !tpi)
 		return setError("cannot create TPI");
+
+#if 0
+	if (mspdb::vsVersion >= 14)
+	{
+		rc = pdb->OpenIpi("", &ipi);
+		if (rc <= 0 || !ipi)
+			return setError("cannot create IPI");
+	}
+#endif
 
 #if PRINT_INTERFACEVERSON
 	printf("TPI::QueryInterfaceVersion() = %d\n", tpi->QueryInterfaceVersion());
@@ -908,7 +921,7 @@ const codeview_type* CV2PDB::getConvertedTypeData(int type)
 	if (type < 0 || type >= nextUserType - 0x1000)
 		return 0;
 
-	int pos = 4;
+	int pos = typePrefix;
 	while(type > 0 && pos < cbGlobalTypes)
 	{
 		const codeview_type* ptype = (codeview_type*)(globalTypes + pos);
@@ -2109,12 +2122,12 @@ bool CV2PDB::initGlobalTypes()
 			pointerTypes = new int[globalTypeHeader->cTypes];
 			memset(pointerTypes, 0, globalTypeHeader->cTypes * sizeof(*pointerTypes));
 
-			globalTypes = (unsigned char*) malloc(entry->cb + 4);
-			allocGlobalTypes = entry->cb + 4;
+			globalTypes = (unsigned char*) malloc(entry->cb + typePrefix);
+			allocGlobalTypes = entry->cb + typePrefix;
 			if (!globalTypes)
 				return setError("Out of memory");
 			*(DWORD*) globalTypes = 4;
-			cbGlobalTypes = 4;
+			cbGlobalTypes = typePrefix;
 
 			nextUserType = globalTypeHeader->cTypes + 0x1000;
 
@@ -2132,7 +2145,7 @@ bool CV2PDB::initGlobalTypes()
 					cppIfaceBaseType = appendObjectType (kClassTypeCppIface, cppIfaceEnumType, CPPIFACE_SYMBOL);
 				}
 				if (auto sym = findUdtSymbol(OBJECT_SYMBOL))
-					classBaseType = sym->udt_v1.type;
+					classBaseType = sym->generic.id == S_UDT_V1 ? sym->udt_v1.type : sym->udt_v2.type;
 				else
 					classBaseType = appendObjectType (kClassTypeObject, classEnumType, OBJECT_SYMBOL);
 			}
@@ -2479,7 +2492,7 @@ int CV2PDB::insertBaseClass(const codeview_type* fieldlist, int type)
 	int off = (unsigned char*) fieldlist - globalTypes;
 	checkGlobalTypeAlloc(len);
 
-	int copyoff = off + 4;
+	int copyoff = off + 4; // insert at beginning of field list
 	memmove(globalTypes + copyoff + len, globalTypes + copyoff, cbGlobalTypes - copyoff);
 	memcpy(globalTypes + copyoff, &cvtype, len);
 	cbGlobalTypes += len;
@@ -2491,7 +2504,7 @@ int CV2PDB::insertBaseClass(const codeview_type* fieldlist, int type)
 
 bool CV2PDB::insertClassTypeEnums()
 {
-	int pos = 4; // skip prefix
+	int pos = typePrefix; // skip prefix
 	for (unsigned int t = 0; pos < cbGlobalTypes && t < globalTypeHeader->cTypes; t++)
 	{
 		codeview_type* type = (codeview_type*)(globalTypes + pos);
@@ -2703,6 +2716,9 @@ int CV2PDB::getNextSrcLine(int seg, unsigned int off)
 
 bool CV2PDB::addSrcLines()
 {
+	if(mspdb::vsVersion >= 14)
+		return addSrcLines14();
+
 	for (int m = 0; m < countEntries; m++)
 	{
 		OMFDirEntry* entry = img.getCVEntry(m);
@@ -2739,7 +2755,7 @@ bool CV2PDB::addSrcLines()
 					int segend = getNextSrcLine(seg, sourceLine->offset[cnt-1]);
 					int seglength = (segend >= 0 ? segend - 1 - segoff : lnSegStartEnd[2*s + 1] - segoff);
 
-					int lineMin = lineNo[0];
+					int lineMin = max(1, lineNo[0]);
 					for (int ln = 1; ln < cnt; ln++)
 						if (lineMin > lineNo[ln])
 							lineMin = lineNo[ln];
@@ -2747,7 +2763,7 @@ bool CV2PDB::addSrcLines()
 					for (int ln = 0; ln < cnt; ln++)
 					{
 						lineInfo[ln].offset = sourceLine->offset[ln] - segoff;
-						lineInfo[ln].line = lineNo[ln] - lineMin;
+						lineInfo[ln].line = max(0, lineNo[ln] - lineMin); // | 0x80000000; // mark as statement
 					}
 					int rc = mod->AddLines(name, seg, segoff, seglength, segoff, lineMin,
 					                       (unsigned char*) lineInfo, cnt * sizeof(*lineInfo));
@@ -2758,6 +2774,158 @@ bool CV2PDB::addSrcLines()
 			}
 		}
 	}
+	return true;
+}
+
+////////////////////////////////////////
+template<typename T>
+void append(std::vector<char>& v, const T& x)
+{
+	size_t sz = v.size();
+	v.resize(sz + sizeof(T));
+	memcpy(v.data() + sz, &x, sizeof(T));
+}
+
+void append(std::vector<char>& v, const void* data, size_t len)
+{
+	size_t sz = v.size();
+	v.resize(sz + len);
+	memcpy(v.data() + sz, data, len);
+}
+
+void align(std::vector<char>& v, int algn)
+{
+	while(v.size() & (algn - 1))
+		v.push_back(0);
+}
+
+int addfile(std::vector<char>& f3, std::vector<char>& f4, const char* s)
+{
+	size_t slen = strlen(s);
+	const char* p = f3.data();
+	size_t plen = strlen(p);
+	int fileno = -1; // don't count initial 0
+	while(plen != slen || strncmp(p, s, slen) != 0)
+	{
+		p += plen + 1;
+		fileno++;
+		if (p - f3.data() >= (ptrdiff_t)f3.size())
+		{
+			size_t pos = f3.size();
+			append(f3, s, slen + 1);
+
+			append(f4, (int)pos);
+			append(f4, (int)0); // checksum
+			return fileno * 8;
+		}
+		plen = strlen(p);
+	}
+	return fileno * 8; // offset in source list
+}
+
+////////////////////////////////////////
+bool CV2PDB::addSrcLines14()
+{
+	if (!useGlobalMod)
+		return setError("unexpected call of addSrcLines14()");
+
+	std::vector<char> F2_buf; // lines
+	std::vector<char> F2_all; // multiple f2 blocks
+	std::vector<char> F3_buf; // filenames
+	std::vector<char> F4_buf; // file checksums
+
+	append(F3_buf, (char)0); // empty string
+
+	for (int m = 0; m < countEntries; m++)
+	{
+		OMFDirEntry* entry = img.getCVEntry(m);
+		if(entry->SubSection == sstSrcModule)
+		{
+			mspdb::Mod* mod = useGlobalMod ? globalMod() : modules[entry->iMod];
+			if (!mod)
+				return setError("sstSrcModule for non-existing module");
+
+			OMFSourceModule* sourceModule = img.CVP<OMFSourceModule>(entry->lfo);
+			int* segStartEnd = img.CVP<int>(entry->lfo + 4 + 4 * sourceModule->cFile);
+			short* seg = img.CVP<short>(entry->lfo + 4 + 4 * sourceModule->cFile + 8 * sourceModule->cSeg);
+
+			for (int f = 0; f < sourceModule->cFile; f++)
+			{
+				int cvoff = entry->lfo + sourceModule->baseSrcFile[f];
+				OMFSourceFile* sourceFile = img.CVP<OMFSourceFile> (cvoff);
+				int* lnSegStartEnd = img.CVP<int>(cvoff + 4 + 4 * sourceFile->cSeg);
+				BYTE* pname = (BYTE*)(lnSegStartEnd + 2 * sourceFile->cSeg);
+				char* name = p2c (pname);
+
+				int fileid = addfile(F3_buf, F4_buf, name);
+
+				for (int s = 0; s < sourceFile->cSeg; s++)
+				{
+					int lnoff = entry->lfo + sourceFile->baseSrcLn[s];
+					OMFSourceLine* sourceLine = img.CVP<OMFSourceLine> (lnoff);
+					unsigned short* lineNo = img.CVP<unsigned short> (lnoff + 4 + 4 * sourceLine->cLnOff);
+
+					int seg = sourceLine->Seg;
+					int cnt = sourceLine->cLnOff;
+					if(cnt <= 0)
+						continue;
+
+					int segoff = lnSegStartEnd[2*s];
+					// lnSegStartEnd[2*s + 1] only spans until the first byte of the last source line
+					int segend = getNextSrcLine(seg, sourceLine->offset[cnt-1]);
+					int seglength = (segend >= 0 ? segend - 1 - segoff : lnSegStartEnd[2*s + 1] - segoff);
+
+					append(F2_buf, segoff);
+					append(F2_buf, (short)seg);
+					append(F2_buf, (short)0); // flags (no columns)
+					append(F2_buf, seglength);
+
+					append(F2_buf, fileid);
+					append(F2_buf, cnt);
+					append(F2_buf, cnt * 8 + 12); // size of block
+
+					for (int ln = 0; ln < cnt; ln++)
+					{
+						append(F2_buf, (int)sourceLine->offset[ln] - segoff);
+						append(F2_buf, (int)lineNo[ln] | 0x80000000); // mark as statement
+					}
+#if 1
+					append(F2_all, (int)0xf2);
+					append(F2_all, (int)F2_buf.size());
+					append(F2_all, F2_buf.data(), F2_buf.size());
+					align(F2_all, 4);
+#endif
+					F2_buf.resize(0);
+				}
+			}
+		}
+	}
+
+	std::vector<char> buf;
+	append(buf, (int)4);
+	if (F3_buf.size() > 0)
+	{
+		append(buf, (int)0xf3);
+		append(buf, (int)F3_buf.size());
+		append(buf, F3_buf.data(), F3_buf.size());
+		align(buf, 4);
+	}
+	if (F4_buf.size() > 0)
+	{
+		append(buf, (int)0xf4);
+		append(buf, (int)F4_buf.size());
+		append(buf, F4_buf.data(), F4_buf.size());
+		align(buf, 4);
+	}
+	if (F2_all.size() > 0)
+	{
+		append(buf, F2_all.data(), F2_all.size());
+		align(buf, 4);
+	}
+	int rc = globalMod()->AddSymbols((unsigned char *)buf.data(), buf.size());
+	if (rc <= 0)
+		return setError("cannot add line number info to module");
+
 	return true;
 }
 
@@ -2848,11 +3016,11 @@ int CV2PDB::copySymbols(BYTE* srcSymbols, int srcSize, BYTE* destSymbols, int de
 		switch (sym->generic.id)
 		{
 		case S_UDT_V1:
-			dsym->udt_v1.type = translateType(sym->udt_v1.type);
-			for(int p = 0; p < dsym->udt_v1.p_name.namelen; p++)
-				if(dsym->udt_v1.p_name.name[p] == '.')
-					dsym->udt_v1.p_name.name[p] = '@';
-			//sym->udt_v1.type = 0x101e;
+			dsym->udt_v2.id = v3 ? S_UDT_V3 : S_UDT_V2;
+			dsym->udt_v2.type = translateType(sym->udt_v1.type);
+			destlength = pstrcpy_v (v3, (BYTE*) &dsym->udt_v2.p_name, (BYTE*) &sym->udt_v1.p_name);
+			destlength += (BYTE*) &dsym->udt_v2.p_name - (BYTE*) dsym;
+			dsym->udt_v2.len = destlength - 2;
 			break;
 
 		case S_LDATA_V1:
@@ -2892,6 +3060,25 @@ int CV2PDB::copySymbols(BYTE* srcSymbols, int srcSize, BYTE* destSymbols, int de
 			dsym->data_v2.len = destlength - 2;
 
 			lastGProcSym = dsym;
+			if(const codeview_type* cvtype = getTypeData(dsym->proc_v2.proctype))
+			{
+				// closure parameter "this" not part of type, remove it to make symbol and type consistent
+				int params = 0;
+				codeview_symbol* bpsym;
+				for(int j = i + length; i < srcSize; j += bpsym->generic.len + 2, params++)
+				{
+					bpsym = (codeview_symbol*)(srcSymbols + j);
+					if (bpsym->generic.id != S_BPREL_V1 && bpsym->generic.id != S_BPREL_V2 && bpsym->generic.id != S_BPREL_V3)
+						break;
+				}
+				int typeparams = cvtype->generic.id == LF_PROCEDURE_V1 ? cvtype->procedure_v1.params : cvtype->procedure_v2.params;
+				while (params > typeparams)
+				{
+					// skip the first parameters
+					length += ((codeview_symbol*)(srcSymbols + i + length))->generic.len + 2;
+					params--;
+				}
+			}
 			break;
 
 		case S_BPREL_V1:
@@ -2978,8 +3165,9 @@ int CV2PDB::copySymbols(BYTE* srcSymbols, int srcSize, BYTE* destSymbols, int de
 			}
 			//sym->stack_v1.symtype = 0x1012;
 			break;
-		case S_ENDARG_V1:
 		case S_RETURN_V1:
+			continue; // not understood by cvdump
+		case S_ENDARG_V1:
 		case S_SSEARCH_V1:
 			break;
 		case S_END_V1:
@@ -2992,6 +3180,7 @@ int CV2PDB::copySymbols(BYTE* srcSymbols, int srcSize, BYTE* destSymbols, int de
 		case S_PROCREF_V1:
 		case S_DATAREF_V1:
 		case S_LPROCREF_V1:
+#if 0
 			if(Dversion > 0)
 			{
 				// dmd does not add a string, but it's not obvious to detect whether it exists or not
@@ -3003,6 +3192,7 @@ int CV2PDB::copySymbols(BYTE* srcSymbols, int srcSize, BYTE* destSymbols, int de
 				destlength += 4;
 			}
 			else
+#endif
 				// throw entry away, it's use is unknown anyway, and it causes a lot of trouble
 				destlength = 0;
 			break;
@@ -3018,9 +3208,28 @@ int CV2PDB::copySymbols(BYTE* srcSymbols, int srcSize, BYTE* destSymbols, int de
 			dsym->constant_v2.len = destlength - 2;
 			break;
 
+		case S_BLOCK_V1:
+			if(v3)
+			{
+				dsym->block_v3.id = S_BLOCK_V3;
+				dsym->block_v3.parent  = sym->block_v1.parent;
+				dsym->block_v3.end     = sym->block_v1.end;
+				dsym->block_v3.length  = sym->block_v1.length;
+				dsym->block_v3.offset  = sym->block_v1.offset;
+				dsym->block_v3.segment = sym->block_v1.segment;
+				destlength = pstrcpy_v (v3, (BYTE*) &dsym->block_v3.name, (BYTE*) &sym->block_v1.p_name);
+				destlength += sizeof(dsym->block_v3) - sizeof(dsym->block_v3.name);
+				dsym->block_v3.len = destlength - 2;
+			}
+			break;
+
 		case S_ALIGN_V1:
 			continue; // throw away
 			break;
+
+		case S_UDT_V2:
+		case S_UDT_V3:
+			break; // already converted or added explicitly
 
 		default:
 			sym = sym;
@@ -3032,31 +3241,43 @@ int CV2PDB::copySymbols(BYTE* srcSymbols, int srcSize, BYTE* destSymbols, int de
 	return destSize;
 }
 
+bool isUDTid(int id)
+{
+	return id == S_UDT_V1 || id == S_UDT_V2 || id == S_UDT_V3;
+}
+
 codeview_symbol* CV2PDB::findUdtSymbol(int type)
 {
 	type = translateType(type);
 	for(int p = 0; p < cbGlobalSymbols; )
 	{
 		codeview_symbol* sym = (codeview_symbol*) (globalSymbols + p);
-		if(sym->generic.id == S_UDT_V1 && sym->udt_v1.type == type)
+		if(isUDTid(sym->generic.id) && sym->udt_v1.type == type)
 			return sym;
 		p += sym->generic.len + 2;
 	}
 	for(int p = 0; p < cbStaticSymbols; )
 	{
 		codeview_symbol* sym = (codeview_symbol*) (staticSymbols + p);
-		if(sym->generic.id == S_UDT_V1 && sym->udt_v1.type == type)
+		if(isUDTid(sym->generic.id) && sym->udt_v1.type == type)
 			return sym;
 		p += sym->generic.len + 2;
 	}
 	for(int p = 0; p < cbUdtSymbols; )
 	{
 		codeview_symbol* sym = (codeview_symbol*) (udtSymbols + p);
-		if(sym->generic.id == S_UDT_V1 && sym->udt_v1.type == type)
+		if(isUDTid(sym->generic.id) && sym->udt_v1.type == type)
 			return sym;
 		p += sym->generic.len + 2;
 	}
 	return 0;
+}
+
+bool isUDT(codeview_symbol* sym, const char* name)
+{
+	return (sym->generic.id == S_UDT_V1 && p2ccmp(sym->udt_v1.p_name, name) ||
+			sym->generic.id == S_UDT_V2 && p2ccmp(sym->udt_v2.p_name, name) ||
+			sym->generic.id == S_UDT_V3 && strcmp(sym->udt_v3.name, name) == 0);
 }
 
 codeview_symbol* CV2PDB::findUdtSymbol(const char* name)
@@ -3064,21 +3285,21 @@ codeview_symbol* CV2PDB::findUdtSymbol(const char* name)
 	for(int p = 0; p < cbGlobalSymbols; )
 	{
 		codeview_symbol* sym = (codeview_symbol*) (globalSymbols + p);
-		if(sym->generic.id == S_UDT_V1 && p2ccmp(sym->udt_v1.p_name, name))
+		if(isUDT(sym, name))
 			return sym;
 		p += sym->generic.len + 2;
 	}
 	for(int p = 0; p < cbStaticSymbols; )
 	{
 		codeview_symbol* sym = (codeview_symbol*) (staticSymbols + p);
-		if(sym->generic.id == S_UDT_V1 && p2ccmp(sym->udt_v1.p_name, name))
+		if(isUDT(sym, name))
 			return sym;
 		p += sym->generic.len + 2;
 	}
 	for(int p = 0; p < cbUdtSymbols; )
 	{
 		codeview_symbol* sym = (codeview_symbol*) (udtSymbols + p);
-		if(sym->generic.id == S_UDT_V1 && p2ccmp(sym->udt_v1.p_name, name))
+		if(isUDT(sym, name))
 			return sym;
 		p += sym->generic.len + 2;
 	}
@@ -3100,19 +3321,18 @@ bool CV2PDB::addUdtSymbol(int type, const char* name)
 
 	// no need to convert to udt_v2/udt_v3, the debugger is fine with it.
 	codeview_symbol* sym = (codeview_symbol*) (udtSymbols + cbUdtSymbols);
-	sym->udt_v1.id = S_UDT_V1;
-	sym->udt_v1.type = translateType(type);
-	cstrcpy_v (true, (BYTE*)sym->udt_v1.p_name.name, name ? name : ""); // allow anonymous typedefs
-	sym->udt_v1.p_name.namelen = strlen(sym->udt_v1.p_name.name);
-	sym->udt_v1.len = sizeof(sym->udt_v1) + sym->udt_v1.p_name.namelen - 1 - 2;
-	cbUdtSymbols += sym->udt_v1.len + 2;
+	sym->udt_v2.id = v3 ? S_UDT_V3 : S_UDT_V2;
+	sym->udt_v2.type = translateType(type);
+	int len = cstrcpy_v (v3, (BYTE*)&sym->udt_v2.p_name, name ? name : ""); // allow anonymous typedefs
+	sym->udt_v2.len = sizeof(sym->udt_v2) - sizeof(sym->udt_v2.p_name) + len - 2;
+	cbUdtSymbols += sym->udt_v2.len + 2;
 
 	return true;
 }
 
 bool CV2PDB::addSymbols(mspdb::Mod* mod, BYTE* symbols, int cb, bool addGlobals)
 {
-	int prefix = 4; // mod == globmod ? 3 : 4;
+	int prefix = mspdb::vsVersion >= 14 ? 3 : 4; // mod == globmod ? 3 : 4;
 	int words = (cb + cbGlobalSymbols + cbStaticSymbols + cbUdtSymbols + 3) / 4 + prefix;
 	DWORD* data = new DWORD[2 * words + 1000];
 
@@ -3165,7 +3385,7 @@ bool CV2PDB::addSymbols(int iMod, BYTE* symbols, int cb, bool addGlobals)
 
 bool CV2PDB::addSymbols()
 {
-	int prefix = 4;
+	int prefix = mspdb::vsVersion >= 14 ? 3 : 4;
 	DWORD* data = 0;
 	int databytes = 0;
 	if (useGlobalMod)
@@ -3195,7 +3415,7 @@ bool CV2PDB::addSymbols()
 	}
 	bool rc = true;
 	if (useGlobalMod)
-		rc = writeSymbols (globalMod(), data, databytes, prefix, true);
+		rc = writeSymbols(globalMod(), data, databytes, prefix, true);
 
 	delete [] data;
 	return rc;
