@@ -843,16 +843,20 @@ int CV2PDB::addFieldNestedType(codeview_fieldtype* dfieldtype, int type, const c
 
 int CV2PDB::addFieldEnumerate(codeview_fieldtype* dfieldtype, const char* name, int val)
 {
+	int len = 0;
+	BYTE *buffer = (BYTE*)dfieldtype;
+
 	dfieldtype->enumerate_v1.id = v3 ? LF_ENUMERATE_V3 : LF_ENUMERATE_V1;
 	dfieldtype->enumerate_v1.attribute = 0;
-	//assert(val < LF_NUMERIC);
-	dfieldtype->enumerate_v1.value = val;
-	int len = cstrcpy_v(v3, (BYTE*)(&dfieldtype->enumerate_v1 + 1), name);
-	len += sizeof (dfieldtype->enumerate_v1);
+	len += 4;
 
-	unsigned char* p = (unsigned char*) dfieldtype;
+    // Append the enumerator value, and then its name
+	len += write_numeric_leaf(val, buffer + len);
+	len += cstrcpy_v(v3, buffer + len, name);
+
+	// Add padding so that the next record is properly aligned
 	for (; len & 3; len++)
-		p[len] = 0xf4 - (len & 3);
+		buffer[len] = 0xf4 - (len & 3);
 	return len;
 }
 
