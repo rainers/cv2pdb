@@ -859,8 +859,10 @@ void CV2PDB::checkUserTypeAlloc(int size, int add)
 {
 	if (cbUserTypes + size >= allocUserTypes)
 	{
-		allocUserTypes += size + add;
+		allocUserTypes = allocUserTypes * 4 / 3 + size + add;
 		userTypes = (BYTE*) realloc(userTypes, allocUserTypes);
+		if(!userTypes)
+			setError("out of memory");
 	}
 }
 
@@ -878,8 +880,10 @@ void CV2PDB::checkGlobalTypeAlloc(int size, int add)
 {
 	if (cbGlobalTypes + size > allocGlobalTypes)
 	{
-		allocGlobalTypes += size + add;
+		allocGlobalTypes = allocGlobalTypes * 4 / 3 + size + add;
 		globalTypes = (unsigned char*) realloc(globalTypes, allocGlobalTypes);
+		if(!globalTypes)
+			setError("out of memory");
 	}
 }
 
@@ -3310,8 +3314,10 @@ void CV2PDB::checkUdtSymbolAlloc(int size, int add)
 {
 	if (cbUdtSymbols + size > allocUdtSymbols)
 	{
-		allocUdtSymbols += size + add;
+		allocUdtSymbols = allocUdtSymbols * 4 / 3 + size + add;
 		udtSymbols = (BYTE*) realloc(udtSymbols, allocUdtSymbols);
+		if (!udtSymbols)
+			setError("out of memory");
 	}
 }
 

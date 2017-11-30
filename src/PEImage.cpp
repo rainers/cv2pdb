@@ -706,6 +706,7 @@ int PEImage::findSymbol(const char* name, unsigned long& off) const
 			off = sym->Value;
 			return bigobj ? ((IMAGE_SYMBOL_EX*)sym)->SectionNumber : sym->SectionNumber;
 		}
+		i += sym->NumberOfAuxSymbols;
 	}
 	return -1;
 }
