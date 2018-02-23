@@ -342,7 +342,7 @@ void DIECursor::gotoSibling()
 		DWARF_InfoData dummy;
 		// read untill we pop back to the level we were at
 		while (level > currLevel)
-			readNext(dummy);
+			readNext(dummy, true);
 	}
 }
 

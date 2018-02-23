@@ -748,6 +748,7 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, DWARF_CompilationUnit* cu, DIE
 						appendLexicalBlock(id, pclo + codeSegOff);
 						DIECursor next = cursor;
 						next.gotoSibling();
+						assert(lexicalBlocks.empty() || next.ptr <= lexicalBlocks.back().ptr);
 						lexicalBlocks.push_back(next);
 						cursor = cursor.getSubtreeCursor();
 						continue;
@@ -765,6 +766,7 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, DWARF_CompilationUnit* cu, DIE
 				cursor.gotoSibling();
 			}
 			appendEnd();
+			assert(lexicalBlocks.empty() || cursor.ptr <= lexicalBlocks.back().ptr);
 		}
 	}
 	else
