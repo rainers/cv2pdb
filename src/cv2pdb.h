@@ -7,6 +7,8 @@
 #ifndef __CV2PDB_H__
 #define __CV2PDB_H__
 
+#include <stdint.h>
+
 #include "LastError.h"
 #include "mspdb.h"
 #include "readDwarf.h"
