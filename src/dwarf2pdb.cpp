@@ -1259,10 +1259,11 @@ int CV2PDB::addDWARFEnum(DWARF_InfoData& enumid, DWARF_CompilationUnit* cu, DIEC
 				   ? getTypeByDWARFPtr(cu, enumid.type)
 				   : getDWARFBasicType(enumid.encoding, enumid.byte_size);
 	dtype = (codeview_type*)(userTypes + cbUserTypes);
-	cbUserTypes += addEnum(dtype, count, firstFieldlistType, 0, basetype, enumid.name);
+	const char* name = (enumid.name ? enumid.name : "__noname");
+	cbUserTypes += addEnum(dtype, count, firstFieldlistType, 0, basetype, name);
 	int enumType = nextUserType++;
 
-	addUdtSymbol(enumType, enumid.name);
+	addUdtSymbol(enumType, name);
 	return enumType;
 }
 
