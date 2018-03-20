@@ -1150,41 +1150,116 @@ int CV2PDB::addDWARFBasicType(const char*name, int encoding, int byte_size)
 
 int CV2PDB::addDWARFEnum(DWARF_InfoData& enumid, DWARF_CompilationUnit* cu, DIECursor cursor)
 {
+	/* Enumerated types are described in CodeView with two components:
+
+	   1. A LF_ENUM leaf, representing the type itself. We put this one in the
+	      userTypes buffer.
+
+	   2. One or several LF_FIELDLIST records, to contain the list of
+	      enumerators (name and value) associated to the enum type
+		  (LF_ENUMERATE leaves). As type records cannot be larger 2**16 bytes,
+		  we need to create multiple records when there are too many
+		  enumerators. The first record contains the first LF_ENUMERATE leaves,
+		  and then a LF_INDEX leaf that references a second LF_FIELDLIST
+		  record, which contains the following LF_ENUMERATE leaves, and so
+		  on. */
+
 	codeview_reftype* rdtype;
 	codeview_type* dtype;
 
-	checkUserTypeAlloc();
-	checkDWARFTypeAlloc(100);
-
+	/* Type index and offset/length in dwarfTypes for the last LF_FIELDLIST record
+	   we produced. */
 	int fieldlistType = nextDwarfType++;
+	int fieldlistOffset = cbDwarfTypes;
+	int fieldlistLength = 0;
+
+	/* Type index for the first LF_FIELDLIST record we produce. This is the one
+	   that LF_ENUM will refer to */
+	const int firstFieldlistType = fieldlistType;
+
+	/* Total number of DW_TAG_enumerator DIEs we translate into
+	   LF_ENUMERATE. */
 	int count = 0;
 
-	rdtype = (codeview_reftype*)(dwarfTypes + cbDwarfTypes);
-	int rdbegin = cbDwarfTypes;
-	rdtype->fieldlist.id = LF_FIELDLIST_V2;
+	/* Create the LF_FIELDLIST record to contain enumerators. We will fill in
+	   its length once done. */
+	checkDWARFTypeAlloc(100);
+	rdtype = (codeview_reftype*)(dwarfTypes + fieldlistOffset);
 	rdtype->fieldlist.len = 0;
-	cbDwarfTypes += 4;
+	rdtype->fieldlist.id = LF_FIELDLIST_V2;
+	fieldlistLength += 4;
 
+	/* Now fill this field list with the enumerators we find in DWARF. */
 	DWARF_InfoData id;
 	while (cursor.readNext(id, true))
 	{
 		if (id.tag == DW_TAG_enumerator && id.has_const_value)
 		{
+			cbDwarfTypes = fieldlistOffset + fieldlistLength;
 			checkDWARFTypeAlloc(kMaxNameLen + 100);
 			codeview_fieldtype* dfieldtype
-				= (codeview_fieldtype*)(dwarfTypes + cbDwarfTypes);
-			cbDwarfTypes += addFieldEnumerate(dfieldtype, id.name, id.const_value);
+				= (codeview_fieldtype*)(dwarfTypes + fieldlistOffset + fieldlistLength);
+			int len = addFieldEnumerate(dfieldtype, id.name, id.const_value);
+
+			/* If adding this enumerate leaves no room for a LF_INDEX leaf,
+		       create a new LF_FIELDLIST record now. */
+			if (fieldlistLength + len + sizeof(dfieldtype->index_v2) > 0xffff)
+			{
+				/* Append the LF_INDEX leaf. */
+				codeview_fieldtype* indexLeaf
+					= (codeview_fieldtype*)(dwarfTypes + fieldlistOffset + fieldlistLength);
+				indexLeaf->index_v2.id = LF_INDEX_V2;
+				indexLeaf->index_v2.unk = 0;
+				fieldlistLength += sizeof(indexLeaf->index_v2);
+
+				/* Set the length of the previous LF_FIELDLIST record. */
+				rdtype = (codeview_reftype*)(dwarfTypes + fieldlistOffset);
+				rdtype->fieldlist.len += fieldlistLength - 2;
+
+				/* Create the new LF_FIELDLIST record. */
+				cbDwarfTypes = fieldlistOffset + fieldlistLength;
+				int newFieldlistType = nextDwarfType++;
+				int newFieldlistOffset = cbDwarfTypes;
+				int newFieldlistLength = 0;
+
+				rdtype = (codeview_reftype*)(dwarfTypes + newFieldlistOffset);
+				rdtype->fieldlist.len = 0;
+				rdtype->fieldlist.id = LF_FIELDLIST_V2;
+				newFieldlistLength += 4;
+
+				/* Reference this new record from the LF_INDEX leaf. */
+				indexLeaf->index_v2.ref = newFieldlistType;
+
+				/* Make next runs target the new LF_FIELDLIST record. */
+				fieldlistType = newFieldlistType;
+				fieldlistOffset = newFieldlistOffset;
+				fieldlistLength = newFieldlistLength;
+
+				/* Append the current enumerator to the new record. */
+				cbDwarfTypes = fieldlistOffset + fieldlistLength;
+				checkDWARFTypeAlloc(kMaxNameLen + 100);
+				dfieldtype = (codeview_fieldtype*)(dwarfTypes + fieldlistOffset + fieldlistLength);
+				len = addFieldEnumerate(dfieldtype, id.name, id.const_value);
+			}
+			fieldlistLength += len;
 			count++;
 		}
 	}
-	rdtype = (codeview_reftype*)(dwarfTypes + rdbegin);
-	rdtype->fieldlist.len += cbDwarfTypes - rdbegin - 2;
+	cbDwarfTypes = fieldlistOffset + fieldlistLength;
 
+	/* The field list is ready, so we can know fill in its length: it is the
+	   number of bytes we stored in dwarfTypes since we created it, minus the
+	   usual 2 bytes for type record size. */
+	rdtype = (codeview_reftype*)(dwarfTypes + fieldlistOffset);
+	rdtype->fieldlist.len += fieldlistLength - 2;
+
+	/* Now the LF_FIELDLIST is ready, create the LF_ENUM type record itself. */
+	checkUserTypeAlloc();
 	int basetype = (enumid.type != 0)
 				   ? getTypeByDWARFPtr(cu, enumid.type)
 				   : getDWARFBasicType(enumid.encoding, enumid.byte_size);
 	dtype = (codeview_type*)(userTypes + cbUserTypes);
-	cbUserTypes += addEnum(dtype, count, fieldlistType, 0, basetype, enumid.name);
+	cbUserTypes += addEnum(dtype, count, firstFieldlistType, 0, basetype, enumid.name);
 	int enumType = nextUserType++;
 
 	addUdtSymbol(enumType, enumid.name);
