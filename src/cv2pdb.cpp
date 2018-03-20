@@ -1860,8 +1860,8 @@ int CV2PDB::appendModifierType(int type, int attr)
 	dtype->modifier_v2.type = translateType(type);
 	dtype->modifier_v2.attribute = attr;
 	int len = sizeof(dtype->modifier_v2);
-	//for (; len & 3; len++)
-	//	userTypes[cbUserTypes + len] = 0xf4 - (len & 3);
+	for (; len & 3; len++)
+		userTypes[cbUserTypes + len] = 0xf4 - (len & 3);
 	dtype->modifier_v2.len = len - 2;
 	cbUserTypes += len;
 
