@@ -90,7 +90,6 @@ public:
 	unsigned long long getImageBase() const { return IMGHDR(OptionalHeader.ImageBase); }
     int getRelocationInLineSegment(unsigned int offset) const;
     int getRelocationInSegment(int segment, unsigned int offset) const;
-	bool areDebugSymbolsStripped() const { return (IMGHDR(FileHeader.Characteristics) & IMAGE_FILE_DEBUG_STRIPPED) != 0; }
     int dumpDebugLineInfoCOFF();
     int dumpDebugLineInfoOMF();
 

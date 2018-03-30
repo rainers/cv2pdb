@@ -26,6 +26,7 @@ double
 #define T_unlink	_wremove
 #define T_main		wmain
 #define SARG		"%S"
+#define T_stat		_wstat
 #else
 #define T_toupper	toupper
 #define T_getdcwd	_getdcwd
@@ -38,6 +39,7 @@ double
 #define T_unlink	unlink
 #define T_main		main
 #define SARG		"%s"
+#define T_stat		stat
 #endif
 
 void fatal(const char *message, ...)
@@ -153,16 +155,18 @@ int T_main(int argc, TCHAR* argv[])
 	if (exe.countCVEntries() || exe.hasDWARF())
 		img = &exe;
 	else
-		if (exe.areDebugSymbolsStripped())
-		{
-			T_strcpy(dbgname, argv[1]);
-			TCHAR *pDot = T_strrchr(dbgname, '.');
-			if (!pDot || pDot <= T_strrchr(dbgname, '/') || pDot <= T_strrchr(dbgname, '\\'))
-				T_strcat(dbgname, TEXT(".dbg"));
-			else
-				T_strcpy(pDot, TEXT(".dbg"));
+	{
+		T_strcpy(dbgname, argv[1]);
+		TCHAR *pDot = T_strrchr(dbgname, '.');
+		if (!pDot || pDot <= T_strrchr(dbgname, '/') || pDot <= T_strrchr(dbgname, '\\'))
+			T_strcat(dbgname, TEXT(".dbg"));
+		else
+			T_strcpy(pDot, TEXT(".dbg"));
 
-			if (!dbg.loadExe(dbgname)) 
+		struct _stat buffer;
+		if (T_stat(dbgname, &buffer) == 0)
+		{
+			if (!dbg.loadExe(dbgname))
 				fatal(SARG ": %s", dbgname, dbg.getLastError());
 
 			if (dbg.countCVEntries())
@@ -172,6 +176,7 @@ int T_main(int argc, TCHAR* argv[])
 		}
 		else
 			fatal(SARG ": no codeview debug entries found", argv[1]);
+	}
 
 	CV2PDB cv2pdb(*img);
 	cv2pdb.Dversion = Dversion;
