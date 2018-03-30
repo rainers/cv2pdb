@@ -160,7 +160,7 @@ public:
 	bool createSrcLineBitmap();
 	int  getNextSrcLine(int seg, unsigned int off);
 
-	bool writeImage(const TCHAR* opath);
+	bool writeImage(const TCHAR* opath, PEImage& exeImage);
 
 	mspdb::Mod* globalMod();
 

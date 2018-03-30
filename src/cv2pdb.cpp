@@ -3432,14 +3432,14 @@ bool CV2PDB::addSymbols()
 	return rc;
 }
 
-bool CV2PDB::writeImage(const TCHAR* opath)
+bool CV2PDB::writeImage(const TCHAR* opath, PEImage& exeImage)
 {
 	int len = sizeof(*rsds) + strlen((char*)(rsds + 1)) + 1;
-	if (!img.replaceDebugSection(rsds, len, true))
-		return setError(img.getLastError());
+	if (!exeImage.replaceDebugSection(rsds, len, true))
+		return setError(exeImage.getLastError());
 
-	if (!img.save(opath))
-		return setError(img.getLastError());
+	if (!exeImage.save(opath))
+		return setError(exeImage.getLastError());
 
 	return true;
 }

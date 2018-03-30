@@ -145,13 +145,35 @@ int T_main(int argc, TCHAR* argv[])
 		return -1;
 	}
 
-	PEImage img;
-	if (!img.loadExe(argv[1]))
-		fatal(SARG ": %s", argv[1], img.getLastError());
-	if (img.countCVEntries() == 0 && !img.hasDWARF())
-		fatal(SARG ": no codeview debug entries found", argv[1]);
+	PEImage exe, dbg, *img = NULL;
+	TCHAR dbgname[MAX_PATH];
 
-	CV2PDB cv2pdb(img);
+	if (!exe.loadExe(argv[1]))
+		fatal(SARG ": %s", argv[1], exe.getLastError());
+	if (exe.countCVEntries() || exe.hasDWARF())
+		img = &exe;
+	else
+		if (exe.areDebugSymbolsStripped())
+		{
+			T_strcpy(dbgname, argv[1]);
+			TCHAR *pDot = T_strrchr(dbgname, '.');
+			if (!pDot || pDot <= T_strrchr(dbgname, '/') || pDot <= T_strrchr(dbgname, '\\'))
+				T_strcat(dbgname, TEXT(".dbg"));
+			else
+				T_strcpy(pDot, TEXT(".dbg"));
+
+			if (!dbg.loadExe(dbgname)) 
+				fatal(SARG ": %s", dbgname, dbg.getLastError());
+
+			if (dbg.countCVEntries())
+				img = &dbg;
+			else
+				fatal(SARG ": no codeview debug entries found", dbgname);
+		}
+		else
+			fatal(SARG ": no codeview debug entries found", argv[1]);
+
+	CV2PDB cv2pdb(*img);
 	cv2pdb.Dversion = Dversion;
 	cv2pdb.debug = debug;
 	cv2pdb.initLibraries();
@@ -179,9 +201,9 @@ int T_main(int argc, TCHAR* argv[])
 	if(!cv2pdb.openPDB(pdbname, pdbref))
 		fatal(SARG ": %s", pdbname, cv2pdb.getLastError());
 
-	if(img.hasDWARF())
+	if(exe.hasDWARF())
 	{
-		if(!img.relocateDebugLineInfo(0x400000))
+		if(!exe.relocateDebugLineInfo(0x400000))
 			fatal(SARG ": %s", argv[1], cv2pdb.getLastError());
 
 		if(!cv2pdb.createDWARFModules())
@@ -225,8 +247,8 @@ int T_main(int argc, TCHAR* argv[])
 		if (!cv2pdb.addPublics())
 			fatal(SARG ": %s", pdbname, cv2pdb.getLastError());
 
-		if (!img.isDBG())
-			if (!cv2pdb.writeImage(outname))
+		if (!exe.isDBG())
+ 			if (!cv2pdb.writeImage(outname, exe))
 				fatal(SARG ": %s", outname, cv2pdb.getLastError());
 	}
 
