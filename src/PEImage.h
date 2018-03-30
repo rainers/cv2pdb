@@ -63,6 +63,7 @@ public:
 
 	bool replaceDebugSection (const void* data, int datalen, bool initCV);
 	bool initCVPtr(bool initDbgDir);
+	bool initDbgPtr(bool initDbgDir);
 	bool initDWARFPtr(bool initDbgDir);
     bool initDWARFObject();
     void initDWARFSegments();
@@ -70,6 +71,7 @@ public:
 
 	bool hasDWARF() const { return debug_line != 0; }
 	bool isX64() const { return hdr64 != 0; }
+	bool isDBG() const { return dbgfile; }
 
 	int countCVEntries() const;
 	OMFDirEntry* getCVEntry(int i) const;
@@ -112,6 +114,7 @@ private:
     const char* symtable;
     const char* strtable;
     bool bigobj;
+    bool dbgfile; // is DBG file
 
 public:
 	//dwarf

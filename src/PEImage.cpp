@@ -53,6 +53,7 @@ PEImage::PEImage(const TCHAR* iname)
 , symtable(0)
 , strtable(0)
 , bigobj(false)
+, dbgfile(false)
 {
 	if(iname)
 		loadExe(iname);
@@ -98,7 +99,7 @@ bool PEImage::loadExe(const TCHAR* iname)
     if (!readAll(iname))
         return false;
 
-    return initCVPtr(true) || initDWARFPtr(true);
+    return initCVPtr(true) || initDbgPtr(true) || initDWARFPtr(true);
 }
 
 ///////////////////////////////////////////////////////////////////////
@@ -311,6 +312,65 @@ bool PEImage::initCVPtr(bool initDbgDir)
 		dirEntry = CVP<OMFDirEntry>(sig->filepos + dirHeader->cbDirHeader);
 		if (!dirEntry)
 			return setError("CodeView debug dir entries invalid");
+		return true;
+	}
+	return setError("no CodeView debug info data found");
+}
+
+///////////////////////////////////////////////////////////////////////
+bool PEImage::initDbgPtr(bool initDbgDir)
+{
+	auto dbg = DPV<IMAGE_SEPARATE_DEBUG_HEADER> (0);
+	if(!dbg)
+		return setError("file too small for DBG header");
+	if(dbg->Signature != IMAGE_SEPARATE_DEBUG_SIGNATURE)
+		return setError("this is not a DBG file");
+
+	sec = (PIMAGE_SECTION_HEADER)(dbg + 1);
+	nsec = dbg->NumberOfSections;
+
+	symtable = (char*)(sec + nsec);
+	nsym = dbg->ExportedNamesSize;
+	strtable = symtable + nsym * IMAGE_SIZEOF_SYMBOL;
+
+	if(dbg->DebugDirectorySize <= IMAGE_DIRECTORY_ENTRY_DEBUG)
+		return setError("too few entries in data directory");
+
+	dbgDir = 0;
+	dirHeader = 0;
+	dirEntry = 0;
+	if (!initDbgDir)
+		return true;
+
+	unsigned int dbgDirOff = strtable - (char*) dbg;
+	unsigned int i;
+	int found = false;
+	for(i = 0; i < dbg->DebugDirectorySize/sizeof(IMAGE_DEBUG_DIRECTORY); i++)
+	{
+		int off = dbgDirOff + i*sizeof(IMAGE_DEBUG_DIRECTORY);
+		dbgDir = DPV<IMAGE_DEBUG_DIRECTORY>(off, sizeof(IMAGE_DEBUG_DIRECTORY));
+		if (!dbgDir)
+			continue; //return setError("debug directory not placed in image");
+		if (dbgDir->Type != IMAGE_DEBUG_TYPE_CODEVIEW)
+			continue; //return setError("debug directory not of type CodeView");
+
+		cv_base = dbgDir->PointerToRawData;
+		OMFSignature* sig = DPV<OMFSignature>(cv_base, dbgDir->SizeOfData);
+		if (!sig)
+			return setError("invalid debug data base address and size");
+		if (memcmp(sig->Signature, "NB09", 4) != 0 && memcmp(sig->Signature, "NB11", 4) != 0)
+		{
+			// return setError("can only handle debug info of type NB09 and NB11");
+			return false;
+		}
+		dirHeader = CVP<OMFDirHeader>(sig->filepos);
+		if (!dirHeader)
+			return setError("invalid CodeView dir header data base address");
+		dirEntry = CVP<OMFDirEntry>(sig->filepos + dirHeader->cbDirHeader);
+		if (!dirEntry)
+			return setError("CodeView debug dir entries invalid");
+
+		dbgfile = true;
 		return true;
 	}
 	return setError("no CodeView debug info data found");

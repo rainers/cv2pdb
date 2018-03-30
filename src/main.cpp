@@ -225,8 +225,9 @@ int T_main(int argc, TCHAR* argv[])
 		if (!cv2pdb.addPublics())
 			fatal(SARG ": %s", pdbname, cv2pdb.getLastError());
 
-		if (!cv2pdb.writeImage(outname))
-			fatal(SARG ": %s", outname, cv2pdb.getLastError());
+		if (!img.isDBG())
+			if (!cv2pdb.writeImage(outname))
+				fatal(SARG ": %s", outname, cv2pdb.getLastError());
 	}
 
 	return 0;
