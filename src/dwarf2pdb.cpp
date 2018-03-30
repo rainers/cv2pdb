@@ -17,6 +17,7 @@
 
 #include "dwarf.h"
 
+#include <algorithm>
 #include <assert.h>
 #include <string>
 #include <vector>
@@ -154,6 +155,41 @@ CV_X86_REG dwarf_to_amd64_reg(unsigned dwarf_reg)
 			return CV_REG_NONE;
 	}
 }
+
+// Index for efficient lookups in Call Frame Information entries
+class CFIIndex
+{
+public:
+	// Build the index, which will be tied to IMG.
+	CFIIndex(const PEImage& img);
+
+	// Look for a FDE whose PC range covers the PCLO/PCHI range and return a
+	// pointer to the FDE in the .debug_frame section. Return NULL if no such
+	// FDE exists.
+	byte *lookup(unsigned int pclo, unsigned pchi) const;
+
+private:
+	struct index_entry
+	{
+		// PC range for the FDE
+		unsigned int pclo, pchi;
+		// Pointer to the FDE in the .debug_frame section
+		byte *ptr;
+
+		// Sort entries by PCLO first and then by PCHI.
+		bool operator<(const index_entry& other) const {
+			if (pclo < other.pclo)
+				return true;
+			else if (pclo == other.pclo)
+				return pchi < other.pchi;
+			else
+				return false;
+		}
+
+	};
+
+	std::vector<index_entry> index;
+};
 
 // Call Frame Information entry (CIE or FDE)
 class CFIEntry
@@ -447,28 +483,27 @@ public:
 	Location cfa;
 };
 
-Location findBestCFA(const PEImage& img, unsigned int pclo, unsigned int pchi)
+Location findBestCFA(const PEImage& img, const CFIIndex* index, unsigned int pclo, unsigned int pchi)
 {
 	bool x64 = img.isX64();
 	Location ebp = { Location::RegRel, x64 ? 6 : 5, x64 ? 16 : 8 };
 	if (!img.debug_frame)
 		return ebp;
 
+	byte *fde_ptr = index->lookup(pclo, pchi);
+	if (fde_ptr == NULL)
+		return ebp;
+
 	CFIEntry entry;
 	CFICursor cursor(img);
-	while(cursor.readNext(entry))
-	{
-		if (entry.type == CFIEntry::FDE &&
-			entry.initial_location <= pclo && entry.initial_location + entry.address_range >= pchi)
-		{
-			CFACursor cfa(entry, pclo);
-			while(cfa.processNext()) {}
-			cfa.setInstructions(entry.instructions, entry.instructions_length);
-			while(!cfa.beforeRestore() && cfa.processNext()) {}
-			return cfa.cfa;
-		}
-	}
-	return ebp;
+	cursor.ptr = fde_ptr;
+
+	assert(cursor.readNext(entry));
+	CFACursor cfa(entry, pclo);
+	while(cfa.processNext()) {}
+	cfa.setInstructions(entry.instructions, entry.instructions_length);
+	while(!cfa.beforeRestore() && cfa.processNext()) {}
+	return cfa.cfa;
 }
 
 // Location list entry
@@ -707,7 +742,7 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, DWARF_CompilationUnit* cu, DIE
 	if (frameBase.is_abs()) // pointer into location list in .debug_loc? assume CFA
 		frameBase = findBestFBLoc(img, cu, frameBase.off);
 
-    Location cfa = findBestCFA(img, procid.pclo, procid.pchi);
+    Location cfa = findBestCFA(img, cfi_index, procid.pclo, procid.pchi);
 
 	if (cu)
 	{
@@ -716,7 +751,7 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, DWARF_CompilationUnit* cu, DIE
 		int off = 8;
 
 		DIECursor prev = cursor;
-		while (cursor.readNext(id, true) && id.tag == DW_TAG_formal_parameter)
+		while (cursor.readNext(id, true))
 		{
 			if (id.tag == DW_TAG_formal_parameter)
 			{
@@ -727,7 +762,6 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, DWARF_CompilationUnit* cu, DIE
 						appendStackVar(id.name, getTypeByDWARFPtr(cu, id.type), loc, cfa);
 				}
 			}
-			prev = cursor;
 		}
 		appendEndArg();
 
@@ -743,7 +777,43 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, DWARF_CompilationUnit* cu, DIE
 			{
 				if (id.tag == DW_TAG_lexical_block)
 				{
-					if (id.hasChild && id.pchi != id.pclo)
+					// It seems it is not possible to describe blocks with
+					// non-contiguous address ranges in CodeView. Instead,
+					// just create a range that is large enough to cover
+					// all continuous ranges.
+					if (id.hasChild && id.ranges != -1u)
+					{
+						id.pclo = -1u;
+						id.pchi = 0;
+
+						// TODO: handle base address selection
+						byte *r = (byte *)img.debug_ranges + id.ranges;
+						byte *rend = (byte *)img.debug_ranges + img.debug_ranges_length;
+						bool is_= img.isX64() ? 8 : 4;
+						while (r < rend)
+						{
+							uint64_t pclo, pchi;
+
+							if (img.isX64())
+							{
+								pclo = RD8(r);
+								pchi = RD8(r);
+							}
+							else
+							{
+								pclo = RD4(r);
+								pchi = RD4(r);
+							}
+							if (pclo == 0 && pchi == 0)
+								break;
+							if (pclo >= pchi)
+								continue;
+							id.pclo = min(id.pclo, pclo + currentBaseAddress);
+							id.pchi = max(id.pchi, pchi + currentBaseAddress);
+						}
+					}
+
+					if (id.hasChild && id.pchi > id.pclo)
 					{
 						appendLexicalBlock(id, pclo + codeSegOff);
 						DIECursor next = cursor;
@@ -878,39 +948,121 @@ int CV2PDB::addDWARFStructure(DWARF_InfoData& structid, DWARF_CompilationUnit* c
 	return cvtype;
 }
 
-int CV2PDB::getDWARFArrayBounds(DWARF_InfoData& arrayid, DWARF_CompilationUnit* cu,
-								DIECursor cursor, int& upperBound)
+void CV2PDB::getDWARFArrayBounds(DWARF_InfoData& arrayid, DWARF_CompilationUnit* cu,
+								DIECursor cursor, int& basetype, int& lowerBound, int& upperBound)
 {
-	int lowerBound = 0;
+	DWARF_InfoData id;
 
+	// TODO: handle multi-dimensional arrays
 	if (cu)
 	{
-		DWARF_InfoData id;
 		while (cursor.readNext(id, true))
 		{
-			int cvid = -1;
 			if (id.tag == DW_TAG_subrange_type)
 			{
-				lowerBound = id.lower_bound;
-				upperBound = id.upper_bound;
+				getDWARFSubrangeInfo(id, cu, basetype, lowerBound, upperBound);
+				return;
 			}
 			cursor.gotoSibling();
 		}
 	}
-	return lowerBound;
+
+	// In case of error, return plausible defaults
+	getDWARFSubrangeInfo(id, NULL, basetype, lowerBound, upperBound);
+}
+
+void CV2PDB::getDWARFSubrangeInfo(DWARF_InfoData& subrangeid, DWARF_CompilationUnit* cu,
+	int& basetype, int& lowerBound, int& upperBound)
+{
+	// In case of error, return plausible defaults. Assume the array
+	// contains one item: this is probably helpful to users.
+	basetype = T_INT4;
+	lowerBound = currentDefaultLowerBound;
+	upperBound = lowerBound;
+
+	if (!cu || subrangeid.tag != DW_TAG_subrange_type)
+		return;
+
+	basetype = getTypeByDWARFPtr(cu, subrangeid.type);
+	if (subrangeid.has_lower_bound)
+		lowerBound = subrangeid.lower_bound;
+	upperBound = subrangeid.upper_bound;
+}
+
+int CV2PDB::getDWARFBasicType(int encoding, int byte_size)
+{
+	int type = 0, mode = 0, size = 0;
+	switch (encoding)
+	{
+	case DW_ATE_boolean:        type = 3; break;
+	case DW_ATE_complex_float:  type = 5; byte_size /= 2; break;
+	case DW_ATE_float:          type = 4; break;
+	case DW_ATE_signed:         type = 1; break;
+	case DW_ATE_signed_char:    type = 7; break;
+	case DW_ATE_unsigned:       type = 2; break;
+	case DW_ATE_unsigned_char:  type = 7; break;
+	case DW_ATE_imaginary_float:type = 4; break;
+	case DW_ATE_UTF:            type = 7; break;
+	default:
+		setError("unknown basic type encoding");
+	}
+	switch (type)
+	{
+	case 1: // signed
+	case 2: // unsigned
+	case 3: // boolean
+		switch (byte_size)
+		{
+		case 1: size = 0; break;
+		case 2: size = 1; break;
+		case 4: size = 2; break;
+		case 8: size = 3; break;
+		case 16: size = 4; break; // __int128? experimental, type exists with GCC for Win64
+		default:
+			setError("unsupported integer type size");
+		}
+		break;
+	case 4:
+	case 5:
+		switch (byte_size)
+		{
+		case 4:  size = 0; break;
+		case 8:  size = 1; break;
+		case 10: size = 2; break;
+		case 12: size = 2; break; // with padding bytes
+		case 16: size = 3; break;
+		case 6:  size = 4; break;
+		default:
+			setError("unsupported real type size");
+		}
+		break;
+	case 7:
+		switch (byte_size)
+		{
+		case 1:  size = 0; break;
+		case 2:  size = encoding == DW_ATE_signed_char ? 2 : 3; break;
+		case 4:  size = encoding == DW_ATE_signed_char ? 4 : 5; break;
+		case 8:  size = encoding == DW_ATE_signed_char ? 6 : 7; break;
+		default:
+			setError("unsupported real int type size");
+		}
+	}
+	int t = size | (type << 4);
+	return translateType(t);
 }
 
 int CV2PDB::addDWARFArray(DWARF_InfoData& arrayid, DWARF_CompilationUnit* cu,
 						  DIECursor cursor)
 {
-	int upperBound, lowerBound = getDWARFArrayBounds(arrayid, cu, cursor, upperBound);
+	int basetype, upperBound, lowerBound;
+	getDWARFArrayBounds(arrayid, cu, cursor, basetype, lowerBound, upperBound);
 
 	checkUserTypeAlloc(kMaxNameLen + 100);
 	codeview_type* cvt = (codeview_type*) (userTypes + cbUserTypes);
 
 	cvt->array_v2.id = v3 ? LF_ARRAY_V3 : LF_ARRAY_V2;
 	cvt->array_v2.elemtype = getTypeByDWARFPtr(cu, arrayid.type);
-	cvt->array_v2.idxtype = 0x74;
+	cvt->array_v2.idxtype = basetype;
 	int len = (BYTE*)&cvt->array_v2.arrlen - (BYTE*)cvt;
 	int size = (upperBound - lowerBound + 1) * getDWARFTypeSize(cu, arrayid.type);
 	len += write_numeric_leaf(size, &cvt->array_v2.arrlen);
@@ -989,68 +1141,130 @@ bool CV2PDB::addDWARFSectionContrib(mspdb::Mod* mod, unsigned long pclo, unsigne
 
 int CV2PDB::addDWARFBasicType(const char*name, int encoding, int byte_size)
 {
-	int type = 0, mode = 0, size = 0;
-	switch(encoding)
-	{
-	case DW_ATE_boolean:        type = 3; break;
-	case DW_ATE_complex_float:  type = 5; byte_size /= 2; break;
-	case DW_ATE_float:          type = 4; break;
-	case DW_ATE_signed:         type = 1; break;
-	case DW_ATE_signed_char:    type = 7; break;
-	case DW_ATE_unsigned:       type = 2; break;
-	case DW_ATE_unsigned_char:  type = 7; break;
-	case DW_ATE_imaginary_float:type = 4; break;
-	case DW_ATE_UTF:            type = 7; break;
-	default:
-		setError("unknown basic type encoding");
-	}
-	switch(type)
-	{
-	case 1: // signed
-	case 2: // unsigned
-	case 3: // boolean
-		switch(byte_size)
-		{
-		case 1: size = 0; break;
-		case 2: size = 1; break;
-		case 4: size = 2; break;
-		case 8: size = 3; break;
-		case 16: size = 4; break; // __int128? experimental, type exists with GCC for Win64
-		default:
-			setError("unsupported integer type size");
-		}
-		break;
-	case 4:
-	case 5:
-		switch(byte_size)
-		{
-		case 4:  size = 0; break;
-		case 8:  size = 1; break;
-		case 10: size = 2; break;
-		case 12: size = 2; break; // with padding bytes
-		case 16: size = 3; break;
-		case 6:  size = 4; break;
-		default:
-			setError("unsupported real type size");
-		}
-		break;
-	case 7:
-		switch(byte_size)
-		{
-		case 1:  size = 0; break;
-		case 2:  size = encoding == DW_ATE_signed_char ? 2 : 3; break;
-		case 4:  size = encoding == DW_ATE_signed_char ? 4 : 5; break;
-		case 8:  size = encoding == DW_ATE_signed_char ? 6 : 7; break;
-		default:
-			setError("unsupported real int type size");
-		}
-	}
-	int t = size | (type << 4);
-	t = translateType(t);
+	int t = getDWARFBasicType(encoding, byte_size);
 	int cvtype = appendTypedef(t, name, false);
 	if(useTypedefEnum)
 		addUdtSymbol(cvtype, name);
 	return cvtype;
+}
+
+int CV2PDB::addDWARFEnum(DWARF_InfoData& enumid, DWARF_CompilationUnit* cu, DIECursor cursor)
+{
+	/* Enumerated types are described in CodeView with two components:
+
+	   1. A LF_ENUM leaf, representing the type itself. We put this one in the
+	      userTypes buffer.
+
+	   2. One or several LF_FIELDLIST records, to contain the list of
+	      enumerators (name and value) associated to the enum type
+		  (LF_ENUMERATE leaves). As type records cannot be larger 2**16 bytes,
+		  we need to create multiple records when there are too many
+		  enumerators. The first record contains the first LF_ENUMERATE leaves,
+		  and then a LF_INDEX leaf that references a second LF_FIELDLIST
+		  record, which contains the following LF_ENUMERATE leaves, and so
+		  on. */
+
+	codeview_reftype* rdtype;
+	codeview_type* dtype;
+
+	/* Type index and offset/length in dwarfTypes for the last LF_FIELDLIST record
+	   we produced. */
+	int fieldlistType = nextDwarfType++;
+	int fieldlistOffset = cbDwarfTypes;
+	int fieldlistLength = 0;
+
+	/* Type index for the first LF_FIELDLIST record we produce. This is the one
+	   that LF_ENUM will refer to */
+	const int firstFieldlistType = fieldlistType;
+
+	/* Total number of DW_TAG_enumerator DIEs we translate into
+	   LF_ENUMERATE. */
+	int count = 0;
+
+	/* Create the LF_FIELDLIST record to contain enumerators. We will fill in
+	   its length once done. */
+	checkDWARFTypeAlloc(100);
+	rdtype = (codeview_reftype*)(dwarfTypes + fieldlistOffset);
+	rdtype->fieldlist.len = 0;
+	rdtype->fieldlist.id = LF_FIELDLIST_V2;
+	fieldlistLength += 4;
+
+	/* Now fill this field list with the enumerators we find in DWARF. */
+	DWARF_InfoData id;
+	while (cursor.readNext(id, true))
+	{
+		if (id.tag == DW_TAG_enumerator && id.has_const_value)
+		{
+			cbDwarfTypes = fieldlistOffset + fieldlistLength;
+			checkDWARFTypeAlloc(kMaxNameLen + 100);
+			codeview_fieldtype* dfieldtype
+				= (codeview_fieldtype*)(dwarfTypes + fieldlistOffset + fieldlistLength);
+			int len = addFieldEnumerate(dfieldtype, id.name, id.const_value);
+
+			/* If adding this enumerate leaves no room for a LF_INDEX leaf,
+		       create a new LF_FIELDLIST record now. */
+			if (fieldlistLength + len + sizeof(dfieldtype->index_v2) > 0xffff)
+			{
+				/* Append the LF_INDEX leaf. */
+				codeview_fieldtype* indexLeaf
+					= (codeview_fieldtype*)(dwarfTypes + fieldlistOffset + fieldlistLength);
+				indexLeaf->index_v2.id = LF_INDEX_V2;
+				indexLeaf->index_v2.unk = 0;
+				fieldlistLength += sizeof(indexLeaf->index_v2);
+
+				/* Set the length of the previous LF_FIELDLIST record. */
+				rdtype = (codeview_reftype*)(dwarfTypes + fieldlistOffset);
+				rdtype->fieldlist.len += fieldlistLength - 2;
+
+				/* Create the new LF_FIELDLIST record. */
+				cbDwarfTypes = fieldlistOffset + fieldlistLength;
+				int newFieldlistType = nextDwarfType++;
+				int newFieldlistOffset = cbDwarfTypes;
+				int newFieldlistLength = 0;
+
+				rdtype = (codeview_reftype*)(dwarfTypes + newFieldlistOffset);
+				rdtype->fieldlist.len = 0;
+				rdtype->fieldlist.id = LF_FIELDLIST_V2;
+				newFieldlistLength += 4;
+
+				/* Reference this new record from the LF_INDEX leaf. */
+				indexLeaf->index_v2.ref = newFieldlistType;
+
+				/* Make next runs target the new LF_FIELDLIST record. */
+				fieldlistType = newFieldlistType;
+				fieldlistOffset = newFieldlistOffset;
+				fieldlistLength = newFieldlistLength;
+
+				/* Append the current enumerator to the new record. */
+				cbDwarfTypes = fieldlistOffset + fieldlistLength;
+				checkDWARFTypeAlloc(kMaxNameLen + 100);
+				dfieldtype = (codeview_fieldtype*)(dwarfTypes + fieldlistOffset + fieldlistLength);
+				len = addFieldEnumerate(dfieldtype, id.name, id.const_value);
+			}
+			fieldlistLength += len;
+			count++;
+		}
+	}
+	cbDwarfTypes = fieldlistOffset + fieldlistLength;
+
+	/* The field list is ready, so we can know fill in its length: it is the
+	   number of bytes we stored in dwarfTypes since we created it, minus the
+	   usual 2 bytes for type record size. */
+	rdtype = (codeview_reftype*)(dwarfTypes + fieldlistOffset);
+	rdtype->fieldlist.len += fieldlistLength - 2;
+
+	/* Now the LF_FIELDLIST is ready, create the LF_ENUM type record itself. */
+	checkUserTypeAlloc();
+	int basetype = (enumid.type != 0)
+				   ? getTypeByDWARFPtr(cu, enumid.type)
+				   : getDWARFBasicType(enumid.encoding, enumid.byte_size);
+	dtype = (codeview_type*)(userTypes + cbUserTypes);
+	const char* name = (enumid.name ? enumid.name : "__noname");
+	cbUserTypes += addEnum(dtype, count, firstFieldlistType, 0, basetype, name);
+	int enumType = nextUserType++;
+
+	addUdtSymbol(enumType, name);
+	return enumType;
 }
 
 int CV2PDB::getTypeByDWARFPtr(DWARF_CompilationUnit* cu, byte* ptr)
@@ -1080,8 +1294,9 @@ int CV2PDB::getDWARFTypeSize(DWARF_CompilationUnit* cu, byte* typePtr)
 			return cu->address_size;
 		case DW_TAG_array_type:
 		{
-			int upperBound, lowerBound = getDWARFArrayBounds(id, cu, cursor, upperBound);
-			return (upperBound + lowerBound + 1) * getDWARFTypeSize(cu, id.type);
+			int basetype, upperBound, lowerBound;
+			getDWARFArrayBounds(id, cu, cursor, basetype, lowerBound, upperBound);
+			return (upperBound - lowerBound + 1) * getDWARFTypeSize(cu, id.type);
 		}
 		default:
 			if(id.type)
@@ -1193,6 +1408,12 @@ bool CV2PDB::createTypes()
 				cvtype = appendPointerType(getTypeByDWARFPtr(cu, id.type), pointerAttr | 0x20);
 				break;
 
+			case DW_TAG_subrange_type:
+				// It seems we cannot materialize bounds for scalar types in
+				// CodeView, so just redirect to a mere base type.
+				cvtype = appendModifierType(getTypeByDWARFPtr(cu, id.type), 0);
+				break;
+
 			case DW_TAG_class_type:
 			case DW_TAG_structure_type:
 			case DW_TAG_union_type:
@@ -1201,10 +1422,12 @@ bool CV2PDB::createTypes()
 			case DW_TAG_array_type:
 				cvtype = addDWARFArray(id, cu, cursor.getSubtreeCursor());
 				break;
-			case DW_TAG_subroutine_type:
-			case DW_TAG_subrange_type:
 
 			case DW_TAG_enumeration_type:
+				cvtype = addDWARFEnum(id, cu, cursor.getSubtreeCursor());
+				break;
+
+			case DW_TAG_subroutine_type:
 			case DW_TAG_string_type:
 			case DW_TAG_ptr_to_member_type:
 			case DW_TAG_set_type:
@@ -1230,6 +1453,25 @@ bool CV2PDB::createTypes()
 				break;
 
 			case DW_TAG_compile_unit:
+				currentBaseAddress = id.pclo;
+				switch (id.language)
+				{
+				case DW_LANG_Ada83:
+				case DW_LANG_Cobol74:
+				case DW_LANG_Cobol85:
+				case DW_LANG_Fortran77:
+				case DW_LANG_Fortran90:
+				case DW_LANG_Pascal83:
+				case DW_LANG_Modula2:
+				case DW_LANG_Ada95:
+				case DW_LANG_Fortran95:
+				case DW_LANG_PLI:
+					currentDefaultLowerBound = 1;
+					break;
+
+				default:
+					currentDefaultLowerBound = 0;
+				}
 #if !FULL_CONTRIB
 				if (id.dir && id.name)
 				{
@@ -1422,4 +1664,51 @@ bool CV2PDB::writeDWARFImage(const TCHAR* opath)
 		return setError(img.getLastError());
 
 	return true;
+}
+
+void CV2PDB::build_cfi_index()
+{
+	if (img.debug_frame == NULL)
+		return;
+	cfi_index = new CFIIndex(img);
+}
+
+CFIIndex::CFIIndex(const PEImage& img)
+{
+	CFIEntry entry;
+	CFICursor cursor(img);
+
+	// First register all FDE as index entries
+	while (cursor.readNext(entry))
+	{
+		if (entry.type != CFIEntry::FDE)
+			continue;
+
+		index_entry e = {
+			entry.initial_location,
+			entry.initial_location + entry.address_range,
+			entry.ptr
+		};
+		index.push_back(e);
+	}
+
+	// Then make them sorted so we can perform binary searches later on
+	std::sort(index.begin(), index.end());
+}
+
+byte *CFIIndex::lookup(unsigned int pclo, unsigned int pchi) const
+{
+	// TODO: here, we are just looking for the first entry whose range contains PCLO,
+	// assuming the found entry will have the same PCLO and PCHI as arguments. Maybe
+	// this is not always true.
+	index_entry e = { pclo, pclo, NULL };
+	std::vector<index_entry>::const_iterator it
+		= std::lower_bound(index.begin(), index.end(), e);
+	if (it == index.end())
+		return NULL;
+	e = *it;
+	if (e.pclo <= pclo && pchi <= e.pchi)
+		return e.ptr;
+	else
+		return NULL;
 }

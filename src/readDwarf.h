@@ -152,7 +152,7 @@ struct DWARF_InfoData
 	unsigned long encoding;
 	unsigned long pclo;
 	unsigned long pchi;
-	unsigned long ranges;
+	unsigned long ranges; // -1u when attribute is not present
 	byte* type;
 	byte* containing_type;
 	byte* specification;
@@ -163,6 +163,10 @@ struct DWARF_InfoData
 	DWARF_Attribute frame_base;
 	long upper_bound;
 	long lower_bound;
+	bool has_lower_bound;
+	unsigned language;
+	unsigned long const_value;
+	bool has_const_value;
 
 	void clear()
 	{
@@ -180,7 +184,7 @@ struct DWARF_InfoData
 		encoding = 0;
 		pclo = 0;
 		pchi = 0;
-		ranges = 0;
+		ranges = -1u;
 		type = 0;
 		containing_type = 0;
 		specification = 0;
@@ -191,6 +195,10 @@ struct DWARF_InfoData
 		frame_base.type = Invalid;
 		upper_bound = 0;
 		lower_bound = 0;
+		has_lower_bound = false;
+		language = 0;
+		const_value = 0;
+		has_const_value = false;
 	}
 
 	void merge(const DWARF_InfoData& id)
@@ -203,6 +211,7 @@ struct DWARF_InfoData
 		if (id.encoding) encoding = id.encoding;
 		if (id.pclo) pclo = id.pclo;
 		if (id.pchi) pchi = id.pchi;
+		if (id.ranges != -1u) ranges = id.ranges;
 		if (id.type) type = id.type;
 		if (id.containing_type) containing_type = id.containing_type;
 		if (id.specification) specification = id.specification;
@@ -292,14 +301,23 @@ struct DWARF_LineState
 
 	void addLineInfo()
 	{
+		unsigned long addr = address;
+
+		// The DWARF standard says about end_sequence: "indicating that the current
+		// address is that of the first byte after the end of a sequence of target
+		// machine instructions". So if this is a end_sequence row, make it apply
+		// to the last byte of the current sequence.
+		if (end_sequence)
+			addr = last_addr - 1;
+
 #if 0
 		const char* fname = (file == 0 ? file_ptr->file_name : files[file - 1].file_name);
 		printf("Adr:%08x Line: %5d File: %s\n", address, line, fname);
 #endif
-		if (address < seg_offset)
+		if (addr < seg_offset)
 			return;
 		mspdb::LineInfoEntry entry;
-		entry.offset = address - seg_offset;
+		entry.offset = addr - seg_offset;
 		entry.line = line;
 		lineInfo.push_back(entry);
 	}

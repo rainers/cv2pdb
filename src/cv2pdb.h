@@ -7,6 +7,8 @@
 #ifndef __CV2PDB_H__
 #define __CV2PDB_H__
 
+#include <stdint.h>
+
 #include "LastError.h"
 #include "mspdb.h"
 #include "readDwarf.h"
@@ -23,6 +25,7 @@ extern "C" {
 class PEImage;
 struct DWARF_InfoData;
 struct DWARF_CompilationUnit;
+class CFIIndex;
 
 class CV2PDB : public LastError
 {
@@ -173,10 +176,16 @@ public:
 	int  addDWARFStructure(DWARF_InfoData& id, DWARF_CompilationUnit* cu, DIECursor cursor);
 	int  addDWARFArray(DWARF_InfoData& arrayid, DWARF_CompilationUnit* cu, DIECursor cursor);
 	int  addDWARFBasicType(const char*name, int encoding, int byte_size);
+	int  addDWARFEnum(DWARF_InfoData& enumid, DWARF_CompilationUnit* cu, DIECursor cursor);
 	int  getTypeByDWARFPtr(DWARF_CompilationUnit* cu, byte* ptr);
 	int  getDWARFTypeSize(DWARF_CompilationUnit* cu, byte* ptr);
-	int  getDWARFArrayBounds(DWARF_InfoData& arrayid, DWARF_CompilationUnit* cu, DIECursor cursor, int& upperBound);
+	void getDWARFArrayBounds(DWARF_InfoData& arrayid, DWARF_CompilationUnit* cu, DIECursor cursor,
+		int& basetype, int& lowerBound, int& upperBound);
+	void getDWARFSubrangeInfo(DWARF_InfoData& subrangeid, DWARF_CompilationUnit* cu,
+		int& basetype, int& lowerBound, int& upperBound);
+	int getDWARFBasicType(int encoding, int byte_size);
 
+	void build_cfi_index();
 	bool mapTypes();
 	bool createTypes();
 
@@ -184,6 +193,7 @@ public:
 	BYTE* libraries;
 
 	PEImage& img;
+	CFIIndex* cfi_index;
 
 	mspdb::PDB* pdb;
 	mspdb::DBI *dbi;
@@ -264,6 +274,15 @@ public:
 	// DWARF
 	int codeSegOff;
 	std::unordered_map<byte*, int> mapOffsetToType;
+
+	// Default lower bound for the current compilation unit. This depends on
+	// the language of the current unit.
+	unsigned currentDefaultLowerBound;
+
+	// Value of the DW_AT_low_pc attribute for the current compilation unit.
+	// Specify the default base address for use in location lists and range
+	// lists.
+	uint32_t currentBaseAddress;
 };
 
 #endif //__CV2PDB_H__

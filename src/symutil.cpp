@@ -268,6 +268,10 @@ int pstrcpy_v(bool v3, BYTE* d, const BYTE* s)
 
 int cstrcpy_v(bool v3, BYTE* d, const char* s)
 {
+	// Process absent names as empty ones
+	if (s == NULL)
+		s = "";
+
 	int len = strlen(s);
 	if(!v3)
 	{

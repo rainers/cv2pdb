@@ -492,14 +492,37 @@ bool DIECursor::readNext(DWARF_InfoData& id, bool stopAtNull)
 				break;
 			case DW_AT_lower_bound:
 				assert(a.type == Const || a.type == Ref || a.type == ExprLoc);
-				if (a.type == Const) // TODO: other types not supported yet
+				if (a.type == Const)
+				{
+					// TODO: other types not supported yet
 					id.lower_bound = a.cons;
+					id.has_lower_bound = true;
+				}
 				break;
 			case DW_AT_containing_type: assert(a.type == Ref); id.containing_type = a.ref; break;
 			case DW_AT_specification: assert(a.type == Ref); id.specification = a.ref; break;
 			case DW_AT_data_member_location: id.member_location = a; break;
 			case DW_AT_location: id.location = a; break;
 			case DW_AT_frame_base: id.frame_base = a; break;
+			case DW_AT_language: assert(a.type == Const); id.language = a.cons; break;
+			case DW_AT_const_value:
+				switch (a.type)
+				{
+				case Const:
+					id.const_value = a.cons;
+					id.has_const_value = true;
+					break;
+
+				// TODO: handle these
+				case String:
+				case Block:
+					break;
+
+				default:
+					assert(false);
+					break;
+				}
+				break;
 		}
 	}
 
