@@ -184,7 +184,7 @@ struct DWARF_InfoData
 		encoding = 0;
 		pclo = 0;
 		pchi = 0;
-		ranges = -1u;
+		ranges = ~0;
 		type = 0;
 		containing_type = 0;
 		specification = 0;
@@ -211,7 +211,7 @@ struct DWARF_InfoData
 		if (id.encoding) encoding = id.encoding;
 		if (id.pclo) pclo = id.pclo;
 		if (id.pchi) pchi = id.pchi;
-		if (id.ranges != -1u) ranges = id.ranges;
+		if (id.ranges != ~0) ranges = id.ranges;
 		if (id.type) type = id.type;
 		if (id.containing_type) containing_type = id.containing_type;
 		if (id.specification) specification = id.specification;
@@ -238,7 +238,7 @@ struct DWARF_LineNumberProgramHeader
 	signed char line_base;
 	byte line_range;
 	byte opcode_base;
-	//LEB128 standard_opcode_lengths[opcode_base]; 
+	//LEB128 standard_opcode_lengths[opcode_base];
 	// string include_directories[] // zero byte terminated
 	// DWARF_FileNames file_names[] // zero byte terminated
 };

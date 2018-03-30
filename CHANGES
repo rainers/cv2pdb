@@ -269,3 +269,7 @@ unreleased Version 0.22
 
   * DWARF: fix crash with AUX data in symbol table
   * improve reallocation strategy
+
+2018-03-30 Version 0.44
+
+  * DWARF: improvements for ADA: better enumerator types, improved lexical scope (thanks to @pmderodat)
