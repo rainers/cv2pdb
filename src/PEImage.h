@@ -95,6 +95,8 @@ public:
     int dumpDebugLineInfoOMF();
 
 private:
+	bool _initFromCVDebugDir(IMAGE_DEBUG_DIRECTORY* ddir);
+
     template<typename SYM> const char* t_findSectionSymbolName(int s) const;
 
 	int fd;

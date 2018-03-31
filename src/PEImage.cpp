@@ -291,28 +291,14 @@ bool PEImage::initCVPtr(bool initDbgDir)
 	for(i = 0; i < IMGHDR(OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_DEBUG].Size)/sizeof(IMAGE_DEBUG_DIRECTORY); i++)
 	{
 		int off = IMGHDR(OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_DEBUG].VirtualAddress) + i*sizeof(IMAGE_DEBUG_DIRECTORY);
-		dbgDir = RVA<IMAGE_DEBUG_DIRECTORY>(off, sizeof(IMAGE_DEBUG_DIRECTORY));
-		if (!dbgDir)
+		auto ddir = RVA<IMAGE_DEBUG_DIRECTORY>(off, sizeof(IMAGE_DEBUG_DIRECTORY));
+
+		if (!ddir)
 			continue; //return setError("debug directory not placed in image");
-		if (dbgDir->Type != IMAGE_DEBUG_TYPE_CODEVIEW)
+		if (ddir->Type != IMAGE_DEBUG_TYPE_CODEVIEW)
 			continue; //return setError("debug directory not of type CodeView");
 
-		cv_base = dbgDir->PointerToRawData;
-		OMFSignature* sig = DPV<OMFSignature>(cv_base, dbgDir->SizeOfData);
-		if (!sig)
-			return setError("invalid debug data base address and size");
-		if (memcmp(sig->Signature, "NB09", 4) != 0 && memcmp(sig->Signature, "NB11", 4) != 0)
-		{
-			// return setError("can only handle debug info of type NB09 and NB11");
-			return false;
-		}
-		dirHeader = CVP<OMFDirHeader>(sig->filepos);
-		if (!dirHeader)
-			return setError("invalid CodeView dir header data base address");
-		dirEntry = CVP<OMFDirEntry>(sig->filepos + dirHeader->cbDirHeader);
-		if (!dirEntry)
-			return setError("CodeView debug dir entries invalid");
-		return true;
+		return _initFromCVDebugDir(ddir);
 	}
 	return setError("no CodeView debug info data found");
 }
@@ -330,49 +316,57 @@ bool PEImage::initDbgPtr(bool initDbgDir)
 	nsec = dbg->NumberOfSections;
 
 	symtable = (char*)(sec + nsec);
-	strtable = symtable + dbg->ExportedNamesSize;
+	nsym = 0;
+	strtable = symtable + nsym;
 
 	if(dbg->DebugDirectorySize <= IMAGE_DIRECTORY_ENTRY_DEBUG)
 		return setError("too few entries in data directory");
 
+	dbgfile = true;
 	dbgDir = 0;
 	dirHeader = 0;
 	dirEntry = 0;
 	if (!initDbgDir)
 		return true;
 
-	unsigned int dbgDirOff = strtable - (char*) dbg;
+	unsigned int dbgDirOff = strtable + dbg->ExportedNamesSize - (char*) dbg;
 	unsigned int i;
 	int found = false;
 	for(i = 0; i < dbg->DebugDirectorySize/sizeof(IMAGE_DEBUG_DIRECTORY); i++)
 	{
 		int off = dbgDirOff + i*sizeof(IMAGE_DEBUG_DIRECTORY);
-		dbgDir = DPV<IMAGE_DEBUG_DIRECTORY>(off, sizeof(IMAGE_DEBUG_DIRECTORY));
-		if (!dbgDir)
+		auto ddir = DPV<IMAGE_DEBUG_DIRECTORY>(off, sizeof(IMAGE_DEBUG_DIRECTORY));
+		if (!ddir)
 			continue; //return setError("debug directory not placed in image");
-		if (dbgDir->Type != IMAGE_DEBUG_TYPE_CODEVIEW)
+		if (ddir->Type != IMAGE_DEBUG_TYPE_CODEVIEW)
 			continue; //return setError("debug directory not of type CodeView");
 
-		cv_base = dbgDir->PointerToRawData;
-		OMFSignature* sig = DPV<OMFSignature>(cv_base, dbgDir->SizeOfData);
-		if (!sig)
-			return setError("invalid debug data base address and size");
-		if (memcmp(sig->Signature, "NB09", 4) != 0 && memcmp(sig->Signature, "NB11", 4) != 0)
-		{
-			// return setError("can only handle debug info of type NB09 and NB11");
-			return false;
-		}
-		dirHeader = CVP<OMFDirHeader>(sig->filepos);
-		if (!dirHeader)
-			return setError("invalid CodeView dir header data base address");
-		dirEntry = CVP<OMFDirEntry>(sig->filepos + dirHeader->cbDirHeader);
-		if (!dirEntry)
-			return setError("CodeView debug dir entries invalid");
-
-		dbgfile = true;
-		return true;
+		return _initFromCVDebugDir(ddir);
 	}
 	return setError("no CodeView debug info data found");
+}
+
+///////////////////////////////////////////////////////////////////////
+bool PEImage::_initFromCVDebugDir(IMAGE_DEBUG_DIRECTORY* ddir)
+{
+	cv_base = ddir->PointerToRawData;
+	OMFSignature* sig = DPV<OMFSignature>(cv_base, ddir->SizeOfData);
+	if (!sig)
+		return setError("invalid debug data base address and size");
+	if (memcmp(sig->Signature, "NB09", 4) != 0 && memcmp(sig->Signature, "NB11", 4) != 0)
+	{
+		// return setError("can only handle debug info of type NB09 and NB11");
+		return false;
+	}
+	dirHeader = CVP<OMFDirHeader>(sig->filepos);
+	if (!dirHeader)
+		return setError("invalid CodeView dir header data base address");
+	dirEntry = CVP<OMFDirEntry>(sig->filepos + dirHeader->cbDirHeader);
+	if (!dirEntry)
+		return setError("CodeView debug dir entries invalid");
+
+	dbgDir = ddir;
+	return true;
 }
 
 ///////////////////////////////////////////////////////////////////////
