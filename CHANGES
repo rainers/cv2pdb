@@ -273,3 +273,5 @@ unreleased Version 0.22
 2018-03-30 Version 0.44
 
   * DWARF: improvements for ADA: better enumerator types, improved lexical scope (thanks to @pmderodat)
+  * if no debug information found in executable, now looks for epononymous DBG file 
+    to load CV from (thanks to @AlexWhiter)

@@ -105,6 +105,17 @@ void makefullpath(TCHAR* pdbname)
 	}
 }
 
+TCHAR* changeExtension(TCHAR* dbgname, const TCHAR* exename, const TCHAR* ext)
+{
+	T_strcpy(dbgname, exename);
+	TCHAR *pDot = T_strrchr(dbgname, '.');
+	if (!pDot || pDot <= T_strrchr(dbgname, '/') || pDot <= T_strrchr(dbgname, '\\'))
+		T_strcat(dbgname, ext);
+	else
+		T_strcpy(pDot, ext);
+	return dbgname;
+}
+
 int T_main(int argc, TCHAR* argv[])
 {
 	double Dversion = 2.072;
@@ -156,26 +167,17 @@ int T_main(int argc, TCHAR* argv[])
 		img = &exe;
 	else
 	{
-		T_strcpy(dbgname, argv[1]);
-		TCHAR *pDot = T_strrchr(dbgname, '.');
-		if (!pDot || pDot <= T_strrchr(dbgname, '/') || pDot <= T_strrchr(dbgname, '\\'))
-			T_strcat(dbgname, TEXT(".dbg"));
-		else
-			T_strcpy(pDot, TEXT(".dbg"));
-
+		// try DBG file alongside executable
+		changeExtension(dbgname, argv[1], TEXT(".dbg"));
 		struct _stat buffer;
-		if (T_stat(dbgname, &buffer) == 0)
-		{
-			if (!dbg.loadExe(dbgname))
-				fatal(SARG ": %s", dbgname, dbg.getLastError());
-
-			if (dbg.countCVEntries())
-				img = &dbg;
-			else
-				fatal(SARG ": no codeview debug entries found", dbgname);
-		}
-		else
+		if (T_stat(dbgname, &buffer) != 0)
 			fatal(SARG ": no codeview debug entries found", argv[1]);
+		if (!dbg.loadExe(dbgname))
+			fatal(SARG ": %s", dbgname, dbg.getLastError());
+		if (dbg.countCVEntries() == 0)
+			fatal(SARG ": no codeview debug entries found", dbgname);
+
+		img = &dbg;
 	}
 
 	CV2PDB cv2pdb(*img);
