@@ -330,8 +330,7 @@ bool PEImage::initDbgPtr(bool initDbgDir)
 	nsec = dbg->NumberOfSections;
 
 	symtable = (char*)(sec + nsec);
-	nsym = dbg->ExportedNamesSize;
-	strtable = symtable + nsym * IMAGE_SIZEOF_SYMBOL;
+	strtable = symtable + dbg->ExportedNamesSize;
 
 	if(dbg->DebugDirectorySize <= IMAGE_DIRECTORY_ENTRY_DEBUG)
 		return setError("too few entries in data directory");
