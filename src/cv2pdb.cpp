@@ -18,7 +18,7 @@
 static const int typePrefix = 4;
 
 CV2PDB::CV2PDB(PEImage& image)
-: img(image), pdb(0), dbi(0), tpi(0), ipi(0), libraries(0), rsds(0), modules(0), globmod(0)
+: img(image), pdb(0), dbi(0), tpi(0), ipi(0), libraries(0), rsds(0), rsdsLen(0), modules(0), globmod(0)
 , segMap(0), segMapDesc(0), segFrame2Index(0), globalTypeHeader(0)
 , globalTypes(0), cbGlobalTypes(0), allocGlobalTypes(0)
 , userTypes(0), cbUserTypes(0), allocUserTypes(0)
@@ -166,7 +166,11 @@ bool CV2PDB::openPDB(const TCHAR* pdbname, const TCHAR* pdbref)
 	printf("PDB::QueryPdbImplementationVersion() = %d\n", pdb->QueryPdbImplementationVersion());
 #endif
 
-	rsds = (OMFSignatureRSDS *) new char[24 + strlen(pdbnameA) + 1]; // sizeof(OMFSignatureRSDS) without name
+	rsdsLen = 24 + strlen(pdbnameA) + 1; // sizeof(OMFSignatureRSDS) without name
+	// Growing the RSDS block to the closest 16-byte boundary.
+	if (rsdsLen & 0xF)
+		rsdsLen = (rsdsLen | 0xF) + 1;
+	rsds = (OMFSignatureRSDS *) new char[rsdsLen];
 	memcpy (rsds->Signature, "RSDS", 4);
 	pdb->QuerySignature2(&rsds->guid);
 	rsds->age = pdb->QueryAge();
@@ -3434,8 +3438,7 @@ bool CV2PDB::addSymbols()
 
 bool CV2PDB::writeImage(const TCHAR* opath, PEImage& exeImage)
 {
-	int len = sizeof(*rsds) + strlen((char*)(rsds + 1)) + 1;
-	if (!exeImage.replaceDebugSection(rsds, len, true))
+	if (!exeImage.replaceDebugSection(rsds, rsdsLen, true))
 		return setError(exeImage.getLastError());
 
 	if (!exeImage.save(opath))

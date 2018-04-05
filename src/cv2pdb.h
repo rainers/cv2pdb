@@ -205,6 +205,7 @@ public:
 	int countEntries;
 
 	OMFSignatureRSDS* rsds;
+	int rsdsLen;
 
 	OMFSegMap* segMap;
 	OMFSegMapDesc* segMapDesc;
