@@ -170,7 +170,7 @@ bool CV2PDB::openPDB(const TCHAR* pdbname, const TCHAR* pdbref)
 	// Growing the RSDS block to the closest 16-byte boundary to align the debug directory.
 	rsdsLen = (rsdsLen + 0xf) & ~0xf;
 	rsds = (OMFSignatureRSDS *) new char[rsdsLen];
-	memset(rsds, 0, rsdslen);
+	memset(rsds, 0, rsdsLen);
 	memcpy (rsds->Signature, "RSDS", 4);
 	pdb->QuerySignature2(&rsds->guid);
 	rsds->age = pdb->QueryAge();
