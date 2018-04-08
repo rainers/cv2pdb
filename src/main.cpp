@@ -63,7 +63,7 @@ void makefullpath(TCHAR* pdbname)
 	{
 		if (pdbname[2] == '\\' || pdbname[2] == '/')
 			return;
-		drive = T_toupper (pdbname[0]);
+		drive = T_toupper (pdbname[0]) - 'A' + 1;
 		pdbname += 2;
 	}
 	else

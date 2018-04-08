@@ -140,7 +140,13 @@ bool PEImage::replaceDebugSection (const void* data, int datalen, bool initCV)
 	if(dbgDir)
 		debugdir = *dbgDir;
 	else
+	{
 		memset(&debugdir, 0, sizeof(debugdir));
+		debugdir.Type = IMAGE_DEBUG_TYPE_CODEVIEW;
+	}
+	int datalenRaw = datalen;
+	// Growing the data block to the closest 16-byte boundary to make sure the debug directory is aligned.
+	datalen = (datalen + 0xf) & ~0xf;
 	int xdatalen = datalen + sizeof(debugdir);
 
 	// assume there is place for another section because of section alignment
@@ -221,12 +227,8 @@ bool PEImage::replaceDebugSection (const void* data, int datalen, bool initCV)
 	// append debug data chunk to existing file image
 	memcpy(newdata, dump_base, dump_total_len);
 	memset(newdata + dump_total_len, 0, fill);
-	memcpy(newdata + dump_total_len + fill, data, datalen);
+	memcpy(newdata + dump_total_len + fill, data, datalenRaw);
 
-	if(!dbgDir)
-	{
-		debugdir.Type = 2;
-	}
 	dbgDir = (IMAGE_DEBUG_DIRECTORY*) (newdata + dump_total_len + fill + datalen);
 	memcpy(dbgDir, &debugdir, sizeof(debugdir));
 
