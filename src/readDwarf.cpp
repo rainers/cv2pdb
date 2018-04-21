@@ -38,7 +38,7 @@ static Location mkRegRel(int reg, int off)
 	return l;
 }
 
-Location decodeLocation(const DWARF_Attribute& attr, const Location* frameBase, int at)
+Location decodeLocation(const PEImage& img, const DWARF_Attribute& attr, const Location* frameBase, int at)
 {
 	static Location invalid = { Location::Invalid };
 
@@ -47,8 +47,10 @@ Location decodeLocation(const DWARF_Attribute& attr, const Location* frameBase, 
 
 	if (attr.type != ExprLoc && attr.type != Block) // same memory layout
 		return invalid;
+	
+	byte*p = attr.expr.ptr;
+	byte*end = attr.expr.ptr + attr.expr.len;
 
-	byte* p = attr.expr.ptr;
 	Location stack[256];
 	int stackDepth = 0;
     if (at == DW_AT_data_member_location)
@@ -56,7 +58,7 @@ Location decodeLocation(const DWARF_Attribute& attr, const Location* frameBase, 
 
 	for (;;)
 	{
-		if (p >= attr.expr.ptr + attr.expr.len)
+		if (p >= end)
 			break;
 
 		int op = *p++;
@@ -79,10 +81,10 @@ Location decodeLocation(const DWARF_Attribute& attr, const Location* frameBase, 
 				stack[stackDepth++] = mkInReg(LEB128(p));
 				break;
 
-			case DW_OP_const1u: stack[stackDepth++] = mkAbs(*p); break;
+			case DW_OP_const1u: stack[stackDepth++] = mkAbs(*p++); break;
 			case DW_OP_const2u: stack[stackDepth++] = mkAbs(RD2(p)); break;
 			case DW_OP_const4u: stack[stackDepth++] = mkAbs(RD4(p)); break;
-			case DW_OP_const1s: stack[stackDepth++] = mkAbs((char)*p); break;
+			case DW_OP_const1s: stack[stackDepth++] = mkAbs((char)*p++); break;
 			case DW_OP_const2s: stack[stackDepth++] = mkAbs((short)RD2(p)); break;
 			case DW_OP_const4s: stack[stackDepth++] = mkAbs((int)RD4(p)); break;
 			case DW_OP_constu:  stack[stackDepth++] = mkAbs(LEB128(p)); break;

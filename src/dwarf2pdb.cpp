@@ -334,8 +334,9 @@ public:
 class CFACursor
 {
 public:
-	CFACursor(const CFIEntry& cfientry, unsigned long location)
-	: entry (cfientry)
+	CFACursor(const PEImage& image, const CFIEntry& cfientry, unsigned long location)
+	: img (image)
+	, entry (cfientry)
 	{
 		loc = location;
 		cfa = { Location::RegRel, DW_REG_CFA, 0 };
@@ -418,7 +419,7 @@ public:
 				attr.type = ExprLoc;
 				attr.expr.len = LEB128(ptr);
 				attr.expr.ptr = ptr;
-				cfa = decodeLocation(attr);
+				cfa = decodeLocation(img, attr);
 				ptr += attr.expr.len;
 				break;
 			}
@@ -457,7 +458,7 @@ public:
 				attr.type = Block;
 				attr.block.len = LEB128(ptr);
 				attr.block.ptr = ptr;
-				cfa = decodeLocation(attr); // TODO: push cfa on stack
+				cfa = decodeLocation(img, attr); // TODO: push cfa on stack
 				ptr += attr.expr.len;
 				break;
 			}
@@ -474,6 +475,7 @@ public:
 		return true;
 	}
 
+	const PEImage& img;
 	const CFIEntry& entry;
 	byte* beg;
 	byte* end;
@@ -498,12 +500,15 @@ Location findBestCFA(const PEImage& img, const CFIIndex* index, unsigned int pcl
 	CFICursor cursor(img);
 	cursor.ptr = fde_ptr;
 
-	assert(cursor.readNext(entry));
-	CFACursor cfa(entry, pclo);
-	while(cfa.processNext()) {}
-	cfa.setInstructions(entry.instructions, entry.instructions_length);
-	while(!cfa.beforeRestore() && cfa.processNext()) {}
-	return cfa.cfa;
+	if (cursor.readNext(entry))
+	{
+		CFACursor cfa(img, entry, pclo);
+		while (cfa.processNext()) {}
+		cfa.setInstructions(entry.instructions, entry.instructions_length);
+		while (!cfa.beforeRestore() && cfa.processNext()) {}
+		return cfa.cfa;
+	}
+	return ebp;
 }
 
 // Location list entry
@@ -522,15 +527,15 @@ public:
 class LOCCursor
 {
 public:
-	LOCCursor(const PEImage& img, DWARF_CompilationUnit* cu, unsigned long off)
-	: beg((byte*)img.debug_loc)
+	LOCCursor(const PEImage& image, unsigned long off)
+	: img (image)
 	, end((byte*)img.debug_loc + img.debug_loc_length)
-	, ptr(beg + off)
+	, ptr((byte*)img.debug_loc + off)
 	{
 		default_address_size = img.isX64() ? 8 : 4;
 	}
 
-	byte* beg;
+	const PEImage& img;
 	byte* end;
 	byte* ptr;
 	byte default_address_size;
@@ -548,16 +553,16 @@ public:
 		attr.type = Block;
 		attr.block.len = RD2(ptr);
 		attr.block.ptr = ptr;
-		entry.loc = decodeLocation(attr);
+		entry.loc = decodeLocation(img, attr);
 		ptr += attr.expr.len;
 		return true;
 	}
 };
 
-Location findBestFBLoc(const PEImage& img, DWARF_CompilationUnit* cu, unsigned long fblocoff)
+Location findBestFBLoc(const PEImage& img, unsigned long fblocoff)
 {
 	int regebp = img.isX64() ? 6 : 5;
-	LOCCursor cursor(img, cu, fblocoff);
+	LOCCursor cursor(img, fblocoff);
 	LOCEntry entry;
 	Location longest = { Location::RegRel, DW_REG_CFA, 0 };
 	unsigned long longest_range = 0;
@@ -738,9 +743,9 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, DWARF_CompilationUnit* cu, DIE
 	addStackVar("local_var", 0x1001, 8);
 #endif
 
-	Location frameBase = decodeLocation(procid.frame_base, 0, DW_AT_frame_base);
+	Location frameBase = decodeLocation(img, procid.frame_base, 0, DW_AT_frame_base);
 	if (frameBase.is_abs()) // pointer into location list in .debug_loc? assume CFA
-		frameBase = findBestFBLoc(img, cu, frameBase.off);
+		frameBase = findBestFBLoc(img, frameBase.off);
 
     Location cfa = findBestCFA(img, cfi_index, procid.pclo, procid.pchi);
 
@@ -753,11 +758,12 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, DWARF_CompilationUnit* cu, DIE
 		DIECursor prev = cursor;
 		while (cursor.readNext(id, true))
 		{
-			if (id.tag == DW_TAG_formal_parameter)
+			if (id.tag == DW_TAG_formal_parameter && id.name)
 			{
-				if (id.name && (id.location.type == ExprLoc || id.location.type == Block))
+				if (id.location.type == ExprLoc || id.location.type == Block || id.location.type == SecOffset)
 				{
-					Location loc = decodeLocation(id.location, &frameBase);
+					Location loc = id.location.type == SecOffset ? findBestFBLoc(img, id.location.sec_offset)
+					                                             : decodeLocation(img, id.location, &frameBase);
 					if (loc.is_regrel())
 						appendStackVar(id.name, getTypeByDWARFPtr(cu, id.type), loc, cfa);
 				}
@@ -827,7 +833,8 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, DWARF_CompilationUnit* cu, DIE
 				{
 					if (id.name && (id.location.type == ExprLoc || id.location.type == Block))
 					{
-						Location loc = decodeLocation(id.location, &frameBase);
+						Location loc = id.location.type == SecOffset ? findBestFBLoc(img, id.location.sec_offset)
+						                                             : decodeLocation(img, id.location, &frameBase);
 						if (loc.is_regrel())
 							appendStackVar(id.name, getTypeByDWARFPtr(cu, id.type), loc, cfa);
 					}
@@ -888,7 +895,7 @@ int CV2PDB::addDWARFStructure(DWARF_InfoData& structid, DWARF_CompilationUnit* c
 				int off = 0;
 				if (!isunion)
 				{
-					Location loc = decodeLocation(id.member_location, 0, DW_AT_data_member_location);
+					Location loc = decodeLocation(img, id.member_location, 0, DW_AT_data_member_location);
 					if (loc.is_abs())
 					{
 						off = loc.off;
@@ -907,7 +914,7 @@ int CV2PDB::addDWARFStructure(DWARF_InfoData& structid, DWARF_CompilationUnit* c
 			else if(id.tag == DW_TAG_inheritance)
 			{
 				int off;
-				Location loc = decodeLocation(id.member_location, 0, DW_AT_data_member_location);
+				Location loc = decodeLocation(img, id.member_location, 0, DW_AT_data_member_location);
 				if (loc.is_abs())
 				{
 					cvid = S_CONSTANT_V2;
@@ -1510,7 +1517,7 @@ bool CV2PDB::createTypes()
 					}
 					else
 					{
-						Location loc = decodeLocation(id.location);
+						Location loc = decodeLocation(img, id.location);
 						if (loc.is_abs())
 						{
 							segOff = loc.off;

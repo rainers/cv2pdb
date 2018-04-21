@@ -349,12 +349,12 @@ struct Location
 	bool is_regrel() const { return type == RegRel; }
 };
 
-// Attemots to partially evaluate DWARF location expressions.
+class PEImage;
+
+// Attempts to partially evaluate DWARF location expressions.
 // The only supported expressions are those, whose result may be represented
 // as either an absolute value, a register, or a register-relative address.
-Location decodeLocation(const DWARF_Attribute& attr, const Location* frameBase = 0, int at = 0);
-
-class PEImage;
+Location decodeLocation(const PEImage& img, const DWARF_Attribute& attr, const Location* frameBase = 0, int at = 0);
 
 // Debug Information Entry Cursor
 class DIECursor
