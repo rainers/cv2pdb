@@ -562,14 +562,18 @@ int PEImage::getRelocationInSegment(int segment, unsigned int offset) const
 }
 
 ///////////////////////////////////////////////////////////////////////
+struct LineInfoDataHeader
+{
+    int srcfileoff;
+    short segment;
+    short flags;
+    int size;
+};
 struct LineInfoData
 {
-    int funcoff;
-    int funcidx;
-    int funcsiz;
-    int srcfileoff;
-    int npairs;
-    int size;
+    int nameIndex;
+    int numLines;
+    int lineInfoSize;
 };
 
 struct LineInfoPair
@@ -590,6 +594,8 @@ int PEImage::dumpDebugLineInfoCOFF()
             if (!base || *base != 4)
                 continue;
             DWORD* end = base + sec[s].SizeOfRawData / 4;
+            int lineInfoTotalSize = 0;
+            int lineInfoAccumulatedSize = 0;
             for (DWORD* p = base + 1; p < end; p += (p[1] + 3) / 4 + 2)
             {
                 if (!f4section && p[0] == 0xf4)
@@ -599,20 +605,30 @@ int PEImage::dumpDebugLineInfoCOFF()
                 if (p[0] != 0xf2)
                     continue;
 
-                LineInfoData* info = (LineInfoData*) (p + 2);
-                if (p[1] != info->size + 12)
-                    continue;
+                lineInfoTotalSize = p[1];
+                lineInfoAccumulatedSize = sizeof(LineInfoDataHeader);
 
-                int* f3off = f4section ? (int*)(f4section + info->srcfileoff) : 0;
+                LineInfoDataHeader* pLineInfoDataHeader = (LineInfoDataHeader*) (p + 2);
+                int* f3off = f4section ? (int*)(f4section + pLineInfoDataHeader->srcfileoff) : 0;
                 const char* fname = f3off ? f3section + *f3off : "unknown";
-                int section = getRelocationInSegment(s, (char*)info - (char*)base);
+                int section = getRelocationInSegment(s, (char*)pLineInfoDataHeader - (char*)base);
                 const char* secname = findSectionSymbolName(section);
                 printf("Sym: %s\n", secname ? secname : "<none>");
                 printf("File: %s\n", fname);
-                LineInfoPair* pairs = (LineInfoPair*)(info + 1);
-                for (int i = 0; i < info->npairs; i++)
-                    printf("\tOff 0x%x: Line %d\n", pairs[i].offset, pairs[i].line & 0x7fffffff);
-             }
+
+                DWORD* pLID = p + 2 + (sizeof(LineInfoDataHeader) / 4);
+                while (lineInfoAccumulatedSize < lineInfoTotalSize && pLID < end)
+                {
+                    LineInfoData* pLineInfoData = (LineInfoData*) (pLID);
+
+                    LineInfoPair* lineInfoPairs = (LineInfoPair*) (pLineInfoData + 1);
+                    for (int i = 0; i < pLineInfoData->numLines; ++i)
+                        printf("\tOff 0x%x: Line %d\n", lineInfoPairs[i].offset, lineInfoPairs[i].line & 0x7fffffff);
+
+                    pLID += (pLineInfoData->lineInfoSize / 4);
+                    lineInfoAccumulatedSize += pLineInfoData->lineInfoSize;
+                }
+            }
         }
     }
     return 0;
