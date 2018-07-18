@@ -47,7 +47,7 @@ Location decodeLocation(const PEImage& img, const DWARF_Attribute& attr, const L
 
 	if (attr.type != ExprLoc && attr.type != Block) // same memory layout
 		return invalid;
-	
+
 	byte*p = attr.expr.ptr;
 	byte*end = attr.expr.ptr + attr.expr.len;
 
@@ -488,7 +488,7 @@ bool DIECursor::readNext(DWARF_InfoData& id, bool stopAtNull)
 			case DW_AT_inline:    assert(a.type == Const); id.inlined = a.cons; break;
 			case DW_AT_external:  assert(a.type == Flag); id.external = a.flag; break;
 			case DW_AT_upper_bound:
-				assert(a.type == Const || a.type == Ref || a.type == ExprLoc);
+				assert(a.type == Const || a.type == Ref || a.type == ExprLoc || a.type == Block);
 				if (a.type == Const) // TODO: other types not supported yet
 					id.upper_bound = a.cons;
 				break;

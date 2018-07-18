@@ -31,7 +31,7 @@ static int cmpAdr(const void* s1, const void* s2)
 }
 
 
-bool printLines(char const *fname, unsigned short sec, char const *secname, 
+bool printLines(char const *fname, unsigned short sec, char const *secname,
                 mspdb::LineInfoEntry* pLineInfo, long numLineInfo)
 {
     printf("Sym: %s\n", secname ? secname : "<none>");
@@ -71,8 +71,8 @@ bool _flushDWARFLines(const PEImage& img, mspdb::Mod* mod, DWARF_LineState& stat
 	else
 		return false;
 	std::string fname = dfn->file_name;
-	
-	if(isRelativePath(fname) && 
+
+	if(isRelativePath(fname) &&
 	   dfn->dir_index > 0 && dfn->dir_index <= state.include_dirs.size())
 	{
 		std::string dir = state.include_dirs[dfn->dir_index - 1];
@@ -115,7 +115,7 @@ bool _flushDWARFLines(const PEImage& img, mspdb::Mod* mod, DWARF_LineState& stat
 				if(dump)
 					printf("AddLines(%08x+%04x, Line=%4d+%3d, %s)\n", firstAddr, length, firstLine, entry - firstEntry, fname.c_str());
 				rc = mod->AddLines(fname.c_str(), segIndex + 1, firstAddr, length, firstAddr, firstLine,
-									(unsigned char*) &state.lineInfo[firstEntry], 
+									(unsigned char*) &state.lineInfo[firstEntry],
 									(ln - firstEntry) * sizeof(state.lineInfo[0]));
 				firstLine = state.lineInfo[ln].line;
 				firstAddr = state.lineInfo[ln].offset;
@@ -132,7 +132,7 @@ bool _flushDWARFLines(const PEImage& img, mspdb::Mod* mod, DWARF_LineState& stat
 	if(dump)
 		printf("AddLines(%08x+%04x, Line=%4d+%3d, %s)\n", firstAddr, length, firstLine, entry - firstEntry, fname.c_str());
 	rc = mod->AddLines(fname.c_str(), segIndex + 1, firstAddr, length, firstAddr, firstLine,
-					    (unsigned char*) &state.lineInfo[firstEntry], 
+					    (unsigned char*) &state.lineInfo[firstEntry],
 					    (entry - firstEntry) * sizeof(state.lineInfo[0]));
 
 #else
@@ -148,6 +148,9 @@ bool _flushDWARFLines(const PEImage& img, mspdb::Mod* mod, DWARF_LineState& stat
 
 bool interpretDWARFLines(const PEImage& img, mspdb::Mod* mod)
 {
+	DWARF_CompilationUnit* cu = (DWARF_CompilationUnit*)img.debug_info;
+	int ptrsize = cu ? cu->address_size : 4;
+
 	for(unsigned long off = 0; off < img.debug_line_length; )
 	{
 		DWARF_LineNumberProgramHeader* hdr = (DWARF_LineNumberProgramHeader*) (img.debug_line + off);
@@ -232,16 +235,19 @@ bool interpretDWARFLines(const PEImage& img, mspdb::Mod* mod)
 						state.init(hdr);
 						break;
 					case DW_LNE_set_address:
-                        if (!mod && state.section == -1)
-                            state.section = img.getRelocationInLineSegment((char*)p - img.debug_line);
-						if(unsigned long adr = RD4(p))
+					{
+						if (!mod && state.section == -1)
+							state.section = img.getRelocationInLineSegment((char*)p - img.debug_line);
+						unsigned long adr = ptrsize == 8 ? RD8(p) : RD4(p);
+						if(adr)
 							state.address = adr;
 						else if (!mod)
 							state.address = adr;
-                        else
+						else
 							state.address = state.last_addr; // strange adr 0 for templates?
 						state.op_index = 0;
 						break;
+					}
 					case DW_LNE_define_file:
 						fname.read(p);
 						state.file_ptr = &fname;
