@@ -6,7 +6,14 @@
 
 #include "mspdb.h"
 
+#include <atlstr.h>
+#include <comdef.h>
 #include <windows.h>
+#include <Setup.Configuration.h>
+
+_COM_SMARTPTR_TYPEDEF(ISetupConfiguration, __uuidof(ISetupConfiguration));
+_COM_SMARTPTR_TYPEDEF(ISetupInstance, __uuidof(ISetupInstance));
+_COM_SMARTPTR_TYPEDEF(IEnumSetupInstances, __uuidof(IEnumSetupInstances));
 
 #pragma comment(lib, "rpcrt4.lib")
 
@@ -79,6 +86,35 @@ bool tryLoadMsPdb(const char* version, const char* mspdb, const char* path = 0)
 
 	tryLoadLibrary(installDir);
 	return modMsPdb != 0;
+}
+
+bool tryLoadMsPdbCom(const char* mspdb, const char* path = 0)
+{
+	ISetupConfigurationPtr query;
+	ISetupInstancePtr instance;
+	IEnumSetupInstancesPtr instances;
+	BSTR installDir;
+	unsigned long fetched;
+
+	auto result = query.CreateInstance(__uuidof(SetupConfiguration));
+	if ((FAILED(result) && result != REGDB_E_CLASSNOTREG) || FAILED(query->EnumInstances(&instances)))
+		return false;
+
+	while (!modMsPdb)
+	{
+		if (FAILED(instances->Next(1, &instance, &fetched)) || !fetched)
+			return false;
+
+		if (FAILED(instance->GetInstallationPath(&installDir)))
+			continue;
+
+		CStringA modpath = installDir;
+		modpath += "\\Common7\\IDE\\";
+		modpath += mspdb;
+		tryLoadLibrary(modpath);
+	}
+
+	return true;
 }
 
 bool tryLoadMsPdbVS2017(const char* mspdb, const char* path = 0)
@@ -177,6 +213,8 @@ void tryLoadMsPdb140(bool throughPath)
 	{
 		if(throughPath)
 			modMsPdb = LoadLibraryA(mspdb140_dll);
+		if(!modMsPdb && !throughPath)
+			tryLoadMsPdbCom(mspdb140_dll);
 		if(!modMsPdb && !throughPath)
 			tryLoadMsPdbVS2017(mspdb140_dll);
 		if (!modMsPdb && !throughPath)
