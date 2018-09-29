@@ -6,10 +6,9 @@
 
 #include "mspdb.h"
 
-#include <atlstr.h>
 #include <comdef.h>
 #include <windows.h>
-#include <Setup.Configuration.h>
+#include "packages/Microsoft.VisualStudio.Setup.Configuration.Native.1.16.30/lib/native/include/Setup.Configuration.h"
 
 _COM_SMARTPTR_TYPEDEF(ISetupConfiguration, __uuidof(ISetupConfiguration));
 _COM_SMARTPTR_TYPEDEF(ISetupInstance, __uuidof(ISetupInstance));
@@ -108,9 +107,12 @@ bool tryLoadMsPdbCom(const char* mspdb, const char* path = 0)
 		if (FAILED(instance->GetInstallationPath(&installDir)))
 			continue;
 
-		CStringA modpath = installDir;
-		modpath += "\\Common7\\IDE\\";
-		modpath += mspdb;
+		char modpath[260];
+		WideCharToMultiByte(CP_ACP, 0, installDir, -1, modpath, 260, NULL, NULL);
+		SysFreeString(installDir);
+
+		strncat(modpath, "\\Common7\\IDE\\", 260); // wrong path for x64 build of cv2pdb
+		strncat(modpath, mspdb, 260);
 		tryLoadLibrary(modpath);
 	}
 
@@ -132,7 +134,7 @@ bool tryLoadMsPdbVS2017(const char* mspdb, const char* path = 0)
 	if(!rc)
 		return false;
 
-	strncat(installDir, "Common7\\IDE\\", 260);
+	strncat(installDir, "Common7\\IDE\\", 260);  // wrong path for x64 build of cv2pdb
 	strncat(installDir, mspdb, 260);
 
 	tryLoadLibrary(installDir);

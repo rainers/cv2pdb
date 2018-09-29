@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright (C) Microsoft Corporation. All rights reserved. -->
+<Project ToolVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories);$(MSBuildThisFileDirectory)..\..\lib\native\include\</AdditionalIncludeDirectories>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Platform)'=='Win32' And Exists('$(MSBuildThisFileDirectory)..\..\lib\native\$(PlatformToolset)\x86')">
+    <Link>
+      <AdditionalDependencies>%(AdditionalDependencies);Microsoft.VisualStudio.Setup.Configuration.Native.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories);$(MSBuildThisFileDirectory)..\..\lib\native\$(PlatformToolset)\x86</AdditionalLibraryDirectories>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Platform)'=='x64' And Exists('$(MSBuildThisFileDirectory)..\..\lib\native\$(PlatformToolset)\x64')">
+    <Link>
+      <AdditionalDependencies>%(AdditionalDependencies);Microsoft.VisualStudio.Setup.Configuration.Native.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories);$(MSBuildThisFileDirectory)..\..\lib\native\$(PlatformToolset)\x64</AdditionalLibraryDirectories>
+    </Link>
+  </ItemDefinitionGroup>
+</Project>
