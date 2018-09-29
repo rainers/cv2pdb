@@ -5,3 +5,4 @@
 *.user
 /src/.vs
 /src/*.opensdf
+/src/packages

@@ -122,6 +122,8 @@ int T_main(int argc, TCHAR* argv[])
 	const TCHAR* pdbref = 0;
 	bool debug = false;
 
+	CoInitialize(nullptr);
+
 	while (argc > 1 && argv[1][0] == '-')
 	{
 		argv++;
