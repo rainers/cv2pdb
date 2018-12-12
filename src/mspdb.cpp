@@ -96,7 +96,9 @@ bool tryLoadMsPdbCom(const char* mspdb, const char* path = 0)
 	unsigned long fetched;
 
 	auto result = query.CreateInstance(__uuidof(SetupConfiguration));
-	if ((FAILED(result) && result != REGDB_E_CLASSNOTREG) || FAILED(query->EnumInstances(&instances)))
+	if (FAILED(result) || !query)
+		return false;
+	if (FAILED(query->EnumInstances(&instances)))
 		return false;
 
 	while (!modMsPdb)
