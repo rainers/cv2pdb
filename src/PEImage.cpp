@@ -54,6 +54,7 @@ PEImage::PEImage(const TCHAR* iname)
 , strtable(0)
 , bigobj(false)
 , dbgfile(false)
+, x64(false)
 {
 	if(iname)
 		loadExe(iname);
@@ -266,6 +267,7 @@ bool PEImage::initCVPtr(bool initDbgDir)
 		hdr32 = 0;
 	else
 		hdr64 = 0;
+	x64 = hdr64 != nullptr;
 
 	if(IMGHDR(Signature) != IMAGE_NT_SIGNATURE)
 		return setError("optional header does not have PE signature");
@@ -324,6 +326,7 @@ bool PEImage::initDbgPtr(bool initDbgDir)
 	if(dbg->DebugDirectorySize <= IMAGE_DIRECTORY_ENTRY_DEBUG)
 		return setError("too few entries in data directory");
 
+	x64 = dbg->Machine == IMAGE_FILE_MACHINE_AMD64 || dbg->Machine == IMAGE_FILE_MACHINE_IA64;
 	dbgfile = true;
 	dbgDir = 0;
 	dirHeader = 0;
@@ -389,6 +392,7 @@ bool PEImage::initDWARFPtr(bool initDbgDir)
 		hdr32 = 0;
 	else
 		hdr64 = 0;
+	x64 = hdr64 != nullptr;
 
 	if(IMGHDR(Signature) != IMAGE_NT_SIGNATURE)
 		return setError("optional header does not have PE signature");

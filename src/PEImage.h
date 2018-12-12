@@ -70,7 +70,7 @@ public:
 	bool relocateDebugLineInfo(unsigned int img_base);
 
 	bool hasDWARF() const { return debug_line != 0; }
-	bool isX64() const { return hdr64 != 0; }
+	bool isX64() const { return x64; }
 	bool isDBG() const { return dbgfile; }
 
 	int countCVEntries() const;
@@ -111,12 +111,13 @@ private:
 	IMAGE_DEBUG_DIRECTORY* dbgDir;
 	OMFDirHeader* dirHeader;
 	OMFDirEntry* dirEntry;
-    int nsec;
-    int nsym;
-    const char* symtable;
-    const char* strtable;
-    bool bigobj;
-    bool dbgfile; // is DBG file
+	int nsec;
+	int nsym;
+	const char* symtable;
+	const char* strtable;
+	bool x64;     // targets 64-bit machine
+	bool bigobj;
+	bool dbgfile; // is DBG file
 
 public:
 	//dwarf
