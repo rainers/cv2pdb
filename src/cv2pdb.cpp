@@ -1563,10 +1563,19 @@ int CV2PDB::appendAssocArray2068(codeview_type* dtype, int keyType, int elemType
 	cbUserTypes += rdtype->fieldlist.len + 2;
 	int aaFieldListType = nextUserType++;
 
-	char name[kMaxNameLen];
-	nameOfAssocArray(keyType, elemType, name, sizeof(name));
+	char uname[kMaxNameLen];
+	nameOfAssocArray(keyType, elemType, uname, sizeof(uname));
 
-	return addStruct(dtype, 3, aaFieldListType, 0, 0, 0, 4, "dAssocArray", name);
+	char name[kMaxNameLen + 3];
+	if (!nameOfType(elemType, name, kMaxNameLen))
+		return false;
+	strcat(name, "[");
+	int nlen = strlen(name);
+	if (!nameOfType(keyType, name + nlen, kMaxNameLen - nlen))
+		return false;
+	strcat(name, "]");
+
+	return addStruct(dtype, 3, aaFieldListType, 0, 0, 0, 4, name, uname);
 }
 
 int CV2PDB::appendAssocArray(codeview_type* odtype, int keyType, int elemType)
@@ -3094,7 +3103,7 @@ int CV2PDB::copySymbols(BYTE* srcSymbols, int srcSize, BYTE* destSymbols, int de
 		case S_BPREL_V1:
 			type = dsym->stack_v1.symtype;
 #if 1
-			if (type == 0 && p2ccmp(dsym->stack_v1.p_name, "@sblk"))
+			if(type == 0 && p2ccmp(dsym->stack_v1.p_name, "@sblk"))
 			{
 				unsigned offset = dsym->stack_v1.offset & 0xffff;
 				unsigned length = dsym->stack_v1.offset >> 16;
@@ -3107,20 +3116,21 @@ int CV2PDB::copySymbols(BYTE* srcSymbols, int srcSize, BYTE* destSymbols, int de
 				dsym->block_v3.name[0] = 0;
 				destlength = sizeof(dsym->block_v3);
 				dsym->data_v2.len = destlength - 2;
+				break;
 			}
-			else if (type == 0 && p2ccmp(dsym->stack_v1.p_name, "@send"))
+			if(type == 0 && p2ccmp(dsym->stack_v1.p_name, "@send"))
 			{
 				destlength = 4;
 				dsym->generic.id = S_END_V1;
 				dsym->generic.len = destlength - 2;
+				break;
 			}
-			else
 #endif
-			if (p2ccmp(dsym->stack_v1.p_name, "this"))
+			if(p2ccmp(dsym->stack_v1.p_name, "this"))
 			{
-				if (lastGProcSym)
+				if(lastGProcSym)
 					lastGProcSym->proc_v2.proctype = findMemberFunctionType(lastGProcSym, type);
-				if (thisIsNotRef && pointerTypes)
+				if(thisIsNotRef && pointerTypes)
 				{
 #if 0
 					// insert function info before this
@@ -3142,38 +3152,34 @@ int CV2PDB::copySymbols(BYTE* srcSymbols, int srcSize, BYTE* destSymbols, int de
 					if (type >= 0x1000 && pointerTypes[type - 0x1000])
 						type = pointerTypes[type - 0x1000];
 				}
-				dsym->stack_v1.symtype = translateType(type);
 			}
-			else if(Dversion == 0)
+			dsym->stack_v2.id = v3 ? S_BPREL_V3 : S_BPREL_V1;
+			dsym->stack_v2.offset = sym->stack_v1.offset;
+			dsym->stack_v2.symtype = translateType(type);
+			destlength = pstrcpy_v (v3, (BYTE*) &dsym->stack_v2.p_name,
+				                        (BYTE*) &sym->stack_v1.p_name);
+			if(Dversion == 0)
 			{
 				// remove function scope from variable name
-				int p = -1;
-				for(int i = 0; i < dsym->stack_v1.p_name.namelen; i++)
-					if(dsym->stack_v1.p_name.name[i] == ':')
-						p = i + 1;
-				if(p > 0)
-				{
-					for(int i = p; i < dsym->stack_v1.p_name.namelen; i++)
-						dsym->stack_v1.p_name.name[i - p] = dsym->stack_v1.p_name.name[i];
-					dsym->stack_v1.p_name.namelen -= p;
-					destlength = sizeof(dsym->stack_v1) + dsym->stack_v1.p_name.namelen - 1;
-					for (; destlength & 3; destlength++)
-						destSymbols[destSize + destlength] = 0;
-					dsym->stack_v1.len = destlength - 2;
-				}
-				dsym->stack_v1.symtype = translateType(type);
+				for (int i = 0; i < sym->stack_v1.p_name.namelen; i++)
+					if (sym->stack_v1.p_name.name[i] == ':')
+					{
+						destlength -= i + 1;
+						if (v3)
+						{
+							memcpy(dsym->stack_v3.name, sym->stack_v1.p_name.name + i + 1, destlength - 1);
+							dsym->stack_v3.name[destlength - 1] = 0;
+						}
+						else
+						{
+							memcpy(dsym->stack_v2.p_name.name, sym->stack_v1.p_name.name + i + 1, destlength - 1);
+							dsym->stack_v2.p_name.namelen = destlength - 1;
+						}
+						break;
+					}
 			}
-			else
-			{
-				dsym->stack_v2.id = v3 ? S_BPREL_V3 : S_BPREL_V1;
-				dsym->stack_v2.offset = sym->stack_v1.offset;
-				dsym->stack_v2.symtype = translateType(type);
-				destlength = pstrcpy_v (v3, (BYTE*) &dsym->stack_v2.p_name,
-				                            (BYTE*) &sym->stack_v1.p_name);
-				destlength += sizeof(dsym->stack_v2) - sizeof(dsym->stack_v2.p_name);
-				dsym->stack_v2.len = destlength - 2;
-			}
-			//sym->stack_v1.symtype = 0x1012;
+			destlength += sizeof(dsym->stack_v2) - sizeof(dsym->stack_v2.p_name);
+			dsym->stack_v2.len = destlength - 2;
 			break;
 		case S_RETURN_V1:
 			continue; // not understood by cvdump
