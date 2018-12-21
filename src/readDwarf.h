@@ -271,7 +271,10 @@ struct DWARF_LineState
 
 	DWARF_LineState()
 	{
+		file_ptr = nullptr;
 		seg_offset = 0x400000;
+		last_addr = 0;
+
 		init(0);
 	}
 
