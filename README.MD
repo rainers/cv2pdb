@@ -60,20 +60,23 @@ Quick start:
 
 Simply run
 
-   cv2pdb debuggee.exe
+    cv2pdb debuggee.exe
 
 on your executable to debug and start the debugger, e.g.
 
-   devenv debuggee.exe
+    devenv debuggee.exe
+
 or
-   vcexpress debuggee.exe
+
+    vcexpress debuggee.exe
 
 Description:
+------------
 
 cv2pdb.exe is a command line tool which outputs its usage information
 if run without arguments:
 
-   usage: cv2pdb [-D<version>|-C|-n|-e|-s<C>|-p<embedded-pdb>] <exe-file> [new-exe-file] [pdb-file]
+    usage: cv2pdb [-D<version>|-C|-n|-e|-s<C>|-p<embedded-pdb>] <exe-file> [new-exe-file] [pdb-file]
 
 With the `-D` option, you can specify the version of the DMD compiler
 you are using. Unfortunately, this information is not embedded into
@@ -83,7 +86,7 @@ translated to "string".
 
 Starting with DMD 2.043, assoiciative arrays have a slightly different
 implementation, so debug information needs to be adjusted aswell. This changed
-again with DMD 2.068. Version 2.072 startet embedding source language 'D' into object files.
+again with DMD 2.068. Version 2.072 started embedding source language 'D' into object files.
 Use -D 2.043 or higher to produce the matching debug info.
 
 Option `-C` tells the program, that you want to debug a program compiled
@@ -93,7 +96,7 @@ D specific functions and will enable adjustment of stack variable names.
 With option `-n` demangling of symbols is disabled.
 
 Older versions of the Visual Studio Debugger (up to VS 2012) don't work well if type
-and symbol names contain '.'. That's why cv2pdb replaces these characters with '@' by default.
+and symbol names contain `.`. That's why cv2pdb replaces these characters with '@' by default.
 This character can be configured to another character with the `-s`, so `-s.` will
 keep symbol names as emitted by the compiler.
 
@@ -107,6 +110,7 @@ executable will be modified to redirect debuggers to this pdb-file instead
 of the original debug information.
 
 Example:
+
     cv2pdb debuggee.exe
 
 In an environment using make-like tools, it is often useful to create
@@ -118,12 +122,14 @@ to this file and leaves the input executable unmodified.. The naming
 of the pdb-file will use the base name of the output file.
 
 Example:
+
     cv2pdb debuggee.exe debuggee_pdb.exe
 
 Last but not least, the resulting pdb-file can be renamed by specifying
 a third file name.
 
 Example:
+
     cv2pdb debuggee.exe debuggee_pdb.exe debug.pdb
 
 If you plan to move the excutable and PDB file to another computer, it might be helpful
