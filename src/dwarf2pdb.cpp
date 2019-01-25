@@ -853,11 +853,94 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, DWARF_CompilationUnit* cu, DIE
 	return true;
 }
 
+int CV2PDB::addDWARFFields(DWARF_InfoData& structid, DWARF_CompilationUnit* cu, DIECursor cursor, int baseoff)
+{
+	bool isunion = structid.tag == DW_TAG_union_type;
+	int nfields = 0;
+
+	// cursor points to the first member
+	DWARF_InfoData id;
+	int len = 0;
+	while (cursor.readNext(id, true))
+	{
+		int cvid = -1;
+		if (id.tag == DW_TAG_member)
+		{
+			//printf("    Adding field %s\n", id.name);
+			int off = 0;
+			if (!isunion)
+			{
+				Location loc = decodeLocation(img, id.member_location, 0, DW_AT_data_member_location);
+				if (loc.is_abs())
+				{
+					off = loc.off;
+					cvid = S_CONSTANT_V2;
+				}
+			}
+
+			if (isunion || cvid == S_CONSTANT_V2)
+			{
+				if (id.name)
+				{
+					checkDWARFTypeAlloc(kMaxNameLen + 100);
+					codeview_fieldtype* dfieldtype = (codeview_fieldtype*)(dwarfTypes + cbDwarfTypes);
+					cbDwarfTypes += addFieldMember(dfieldtype, 0, baseoff + off, getTypeByDWARFPtr(cu, id.type), id.name);
+					nfields++;
+				}
+				else if (id.type)
+				{
+					// if it doesn't have a name, and it's a struct or union, embed it directly
+					DIECursor membercursor(cu, id.type);
+					DWARF_InfoData memberid;
+					if (membercursor.readNext(memberid))
+					{
+						if (memberid.specification)
+							mergeSpecification(memberid, cu);
+
+						int cvtype = -1;
+						switch (memberid.tag)
+						{
+						case DW_TAG_class_type:
+						case DW_TAG_structure_type:
+						case DW_TAG_union_type:
+							nfields += addDWARFFields(memberid, cu, membercursor, baseoff + off);
+							break;
+						}
+					}
+				}
+			}
+		}
+		else if (id.tag == DW_TAG_inheritance)
+		{
+			int off = 0;
+			Location loc = decodeLocation(img, id.member_location, 0, DW_AT_data_member_location);
+			if (loc.is_abs())
+			{
+				cvid = S_CONSTANT_V2;
+				off = loc.off;
+			}
+			if (cvid == S_CONSTANT_V2)
+			{
+				checkDWARFTypeAlloc(sizeof(codeview_fieldtype) + 4);
+				codeview_fieldtype* bc = (codeview_fieldtype*)(dwarfTypes + cbDwarfTypes);
+				bc->bclass_v2.id = LF_BCLASS_V2;
+				bc->bclass_v2.offset = baseoff + off;
+				bc->bclass_v2.type = getTypeByDWARFPtr(cu, id.type);
+				bc->bclass_v2.attribute = 3; // public
+				cbDwarfTypes += sizeof(bc->bclass_v2);
+				for (; cbDwarfTypes & 3; cbDwarfTypes++)
+					dwarfTypes[cbDwarfTypes] = 0xf4 - (cbDwarfTypes & 3);
+				nfields++;
+			}
+		}
+		cursor.gotoSibling();
+	}
+	return nfields;
+}
+
 int CV2PDB::addDWARFStructure(DWARF_InfoData& structid, DWARF_CompilationUnit* cu, DIECursor cursor)
 {
 	//printf("Adding struct %s, entryoff %d, abbrev %d\n", structid.name, structid.entryOff, structid.abbrev);
-
-	bool isunion = structid.tag == DW_TAG_union_type;
 
 	int fieldlistType = 0;
 	int nfields = 0;
@@ -883,58 +966,7 @@ int CV2PDB::addDWARFStructure(DWARF_InfoData& structid, DWARF_CompilationUnit* c
 			nfields++;
 		}
 #endif
-        // cursor points to the first member
-		DWARF_InfoData id;
-		int len = 0;
-		while (cursor.readNext(id, true))
-		{
-			int cvid = -1;
-			if (id.tag == DW_TAG_member && id.name)
-			{
-				//printf("    Adding field %s\n", id.name);
-				int off = 0;
-				if (!isunion)
-				{
-					Location loc = decodeLocation(img, id.member_location, 0, DW_AT_data_member_location);
-					if (loc.is_abs())
-					{
-						off = loc.off;
-						cvid = S_CONSTANT_V2;
-					}
-				}
-
-				if(isunion || cvid == S_CONSTANT_V2)
-				{
-					checkDWARFTypeAlloc(kMaxNameLen + 100);
-					codeview_fieldtype* dfieldtype = (codeview_fieldtype*) (dwarfTypes + cbDwarfTypes);
-					cbDwarfTypes += addFieldMember(dfieldtype, 0, off, getTypeByDWARFPtr(cu, id.type), id.name);
-					nfields++;
-				}
-			}
-			else if(id.tag == DW_TAG_inheritance)
-			{
-				int off;
-				Location loc = decodeLocation(img, id.member_location, 0, DW_AT_data_member_location);
-				if (loc.is_abs())
-				{
-					cvid = S_CONSTANT_V2;
-					off = loc.off;
-				}
-				if(cvid == S_CONSTANT_V2)
-				{
-					codeview_fieldtype* bc = (codeview_fieldtype*) (dwarfTypes + cbDwarfTypes);
-					bc->bclass_v2.id = LF_BCLASS_V2;
-					bc->bclass_v2.offset = off;
-					bc->bclass_v2.type = getTypeByDWARFPtr(cu, id.type);
-					bc->bclass_v2.attribute = 3; // public
-					cbDwarfTypes += sizeof(bc->bclass_v2);
-					for (; cbDwarfTypes & 3; cbDwarfTypes++)
-						dwarfTypes[cbDwarfTypes] = 0xf4 - (cbDwarfTypes & 3);
-					nfields++;
-				}
-			}
-			cursor.gotoSibling();
-		}
+		nfields += addDWARFFields(structid, cu, cursor, 0);
 		fl = (codeview_reftype*) (dwarfTypes + flbegin);
 		fl->fieldlist.len = cbDwarfTypes - flbegin - 2;
 		fieldlistType = nextDwarfType++;
@@ -1385,14 +1417,7 @@ bool CV2PDB::createTypes()
 			//    (unsigned char*)cu + id.entryOff - (unsigned char*)img.debug_info, cursor.level, id.code, id.tag);
 
 			if (id.specification)
-			{
-				DIECursor specCursor(cu, id.specification);
-				DWARF_InfoData idspec;
-				specCursor.readNext(idspec);
-                //assert seems invalid, combination DW_TAG_member and DW_TAG_variable found in the wild
-				//assert(id.tag == idspec.tag);
-				id.merge(idspec);
-			}
+				mergeSpecification(id, cu);
 
 			int cvtype = -1;
 			switch (id.tag)

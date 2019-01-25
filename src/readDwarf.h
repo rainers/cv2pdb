@@ -359,6 +359,8 @@ class PEImage;
 // as either an absolute value, a register, or a register-relative address.
 Location decodeLocation(const PEImage& img, const DWARF_Attribute& attr, const Location* frameBase = 0, int at = 0);
 
+void mergeSpecification(DWARF_InfoData& id, DWARF_CompilationUnit* cu);
+
 // Debug Information Entry Cursor
 class DIECursor
 {

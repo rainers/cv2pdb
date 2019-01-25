@@ -292,6 +292,16 @@ Location decodeLocation(const PEImage& img, const DWARF_Attribute& attr, const L
 	return stack[0];
 }
 
+void mergeSpecification(DWARF_InfoData& id, DWARF_CompilationUnit* cu)
+{
+	DIECursor specCursor(cu, id.specification);
+	DWARF_InfoData idspec;
+	specCursor.readNext(idspec);
+	//assert seems invalid, combination DW_TAG_member and DW_TAG_variable found in the wild
+	//assert(id.tag == idspec.tag);
+	id.merge(idspec);
+}
+
 // declare hasher for pair<T1,T2>
 namespace std
 {

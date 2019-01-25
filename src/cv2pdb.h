@@ -174,6 +174,7 @@ public:
 	bool addDWARFSectionContrib(mspdb::Mod* mod, unsigned long pclo, unsigned long pchi);
 	bool addDWARFProc(DWARF_InfoData& id, DWARF_CompilationUnit* cu, DIECursor cursor);
 	int  addDWARFStructure(DWARF_InfoData& id, DWARF_CompilationUnit* cu, DIECursor cursor);
+	int  addDWARFFields(DWARF_InfoData& structid, DWARF_CompilationUnit* cu, DIECursor cursor, int off);
 	int  addDWARFArray(DWARF_InfoData& arrayid, DWARF_CompilationUnit* cu, DIECursor cursor);
 	int  addDWARFBasicType(const char*name, int encoding, int byte_size);
 	int  addDWARFEnum(DWARF_InfoData& enumid, DWARF_CompilationUnit* cu, DIECursor cursor);

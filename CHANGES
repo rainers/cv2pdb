@@ -275,3 +275,15 @@ unreleased Version 0.22
   * DWARF: improvements for ADA: better enumerator types, improved lexical scope (thanks to @pmderodat)
   * if no debug information found in executable, now looks for epononymous DBG file 
     to load CV from (thanks to @AlexWhiter)
+
+2019-01-25 Version 0.45
+
+  * support converting DBG file to PDB
+  * fiexd alignment of debug section.
+  * DWARF: add support for local variables with location list via DW_FORM_sec_offset
+  * fixed some minor DWARF issues/crashes
+  * detect Visual Studio through COM API
+  * set architecture of .pdb for a 64 bit .dbg
+  * always convert S_BPREL_V1 to S_BPREL_V3 (no longer supported by mspdb 14.16.27012/VS 15.9)
+  * emit "elemtype[keytype]" instead of "dAssocArray"
+  * DWARF: fixed converting unnamed structs/unions as part of other structs
