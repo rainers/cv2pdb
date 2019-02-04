@@ -157,6 +157,7 @@ struct DWARF_InfoData
 	byte* type;
 	byte* containing_type;
 	byte* specification;
+	byte* abstract_origin;
 	unsigned long inlined;
 	bool external;
 	DWARF_Attribute location;
@@ -168,6 +169,7 @@ struct DWARF_InfoData
 	unsigned language;
 	unsigned long const_value;
 	bool has_const_value;
+	bool is_artificial;
 
 	void clear()
 	{
@@ -190,6 +192,7 @@ struct DWARF_InfoData
 		type = 0;
 		containing_type = 0;
 		specification = 0;
+		abstract_origin = 0;
 		inlined = 0;
 		external = 0;
 		member_location.type = Invalid;
@@ -201,31 +204,33 @@ struct DWARF_InfoData
 		language = 0;
 		const_value = 0;
 		has_const_value = false;
+		is_artificial = false;
 	}
 
 	void merge(const DWARF_InfoData& id)
 	{
-		if (id.name) name = id.name;
-		if (id.linkage_name) linkage_name = id.linkage_name;
-		if (id.dir) dir = id.dir;
-		if (id.byte_size) byte_size = id.byte_size;
-		if (id.sibling) sibling = id.sibling;
-		if (id.encoding) encoding = id.encoding;
-		if (id.pclo) pclo = id.pclo;
-		if (id.pchi) pchi = id.pchi;
-		if (id.ranges != ~0) ranges = id.ranges;
-		if (id.pcentry)
-			pcentry = id.pcentry;
-		if (id.type) type = id.type;
-		if (id.containing_type) containing_type = id.containing_type;
-		if (id.specification) specification = id.specification;
-		if (id.inlined) inlined = id.inlined;
-		if (id.external) external = id.external;
-		if (id.member_location.type != Invalid) member_location = id.member_location;
-		if (id.location.type != Invalid) location = id.location;
-		if (id.frame_base.type != Invalid) frame_base = id.frame_base;
-		if (id.upper_bound) upper_bound = id.upper_bound;
-		if (id.lower_bound) lower_bound = id.lower_bound;
+		if (!name) name = id.name;
+		if (!linkage_name) linkage_name = id.linkage_name;
+		if (!dir) dir = id.dir;
+		if (!byte_size) byte_size = id.byte_size;
+		if (!sibling) sibling = id.sibling;
+		if (!encoding) encoding = id.encoding;
+		if (!pclo) pclo = id.pclo;
+		if (!pchi) pchi = id.pchi;
+		if (ranges == ~0) ranges = id.ranges;
+		if (!pcentry) pcentry = id.pcentry;
+		if (!type) type = id.type;
+		if (!containing_type) containing_type = id.containing_type;
+		if (!specification) specification = id.specification;
+		if (!abstract_origin) abstract_origin = id.abstract_origin;
+		if (!inlined) inlined = id.inlined;
+		if (!external) external = id.external;
+		if (member_location.type == Invalid) member_location = id.member_location;
+		if (location.type == Invalid) location = id.location;
+		if (frame_base.type == Invalid) frame_base = id.frame_base;
+		if (!upper_bound) upper_bound = id.upper_bound;
+		if (!lower_bound) lower_bound = id.lower_bound;
+		if (!is_artificial) is_artificial = id.is_artificial;
 	}
 };
 
@@ -363,6 +368,7 @@ class PEImage;
 // as either an absolute value, a register, or a register-relative address.
 Location decodeLocation(const PEImage& img, const DWARF_Attribute& attr, const Location* frameBase = 0, int at = 0);
 
+void mergeAbstractOrigin(DWARF_InfoData& id, DWARF_CompilationUnit* cu);
 void mergeSpecification(DWARF_InfoData& id, DWARF_CompilationUnit* cu);
 
 // Debug Information Entry Cursor

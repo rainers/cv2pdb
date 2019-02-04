@@ -292,6 +292,20 @@ Location decodeLocation(const PEImage& img, const DWARF_Attribute& attr, const L
 	return stack[0];
 }
 
+void mergeAbstractOrigin(DWARF_InfoData& id, DWARF_CompilationUnit* cu)
+{
+	DIECursor specCursor(cu, id.abstract_origin);
+	DWARF_InfoData idspec;
+	specCursor.readNext(idspec);
+	// assert seems invalid, combination DW_TAG_member and DW_TAG_variable found in the wild
+	// assert(id.tag == idspec.tag);
+	if (idspec.abstract_origin)
+		mergeAbstractOrigin(idspec, cu);
+	if (idspec.specification)
+		mergeSpecification(idspec, cu);
+	id.merge(idspec);
+}
+
 void mergeSpecification(DWARF_InfoData& id, DWARF_CompilationUnit* cu)
 {
 	DIECursor specCursor(cu, id.specification);
@@ -299,6 +313,10 @@ void mergeSpecification(DWARF_InfoData& id, DWARF_CompilationUnit* cu)
 	specCursor.readNext(idspec);
 	//assert seems invalid, combination DW_TAG_member and DW_TAG_variable found in the wild
 	//assert(id.tag == idspec.tag);
+	if (idspec.abstract_origin)
+		mergeAbstractOrigin(idspec, cu);
+	if (idspec.specification)
+		mergeSpecification(idspec, cu);
 	id.merge(idspec);
 }
 
@@ -521,6 +539,7 @@ bool DIECursor::readNext(DWARF_InfoData& id, bool stopAtNull)
 				break;
 			case DW_AT_containing_type: assert(a.type == Ref); id.containing_type = a.ref; break;
 			case DW_AT_specification: assert(a.type == Ref); id.specification = a.ref; break;
+			case DW_AT_abstract_origin: assert(a.type == Ref); id.abstract_origin = a.ref; break;
 			case DW_AT_data_member_location: id.member_location = a; break;
 			case DW_AT_location: id.location = a; break;
 			case DW_AT_frame_base: id.frame_base = a; break;
@@ -543,6 +562,7 @@ bool DIECursor::readNext(DWARF_InfoData& id, bool stopAtNull)
 					break;
 				}
 				break;
+		    case DW_AT_artificial: assert(a.type == Flag); id.is_artificial = true; break;
 		}
 	}
 

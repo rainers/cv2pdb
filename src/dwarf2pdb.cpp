@@ -894,6 +894,8 @@ int CV2PDB::addDWARFFields(DWARF_InfoData& structid, DWARF_CompilationUnit* cu, 
 					DWARF_InfoData memberid;
 					if (membercursor.readNext(memberid))
 					{
+						if (memberid.abstract_origin)
+							mergeAbstractOrigin(memberid, cu);
 						if (memberid.specification)
 							mergeSpecification(memberid, cu);
 
@@ -1416,6 +1418,8 @@ bool CV2PDB::createTypes()
 			//printf("0x%08x, level = %d, id.code = %d, id.tag = %d\n",
 			//    (unsigned char*)cu + id.entryOff - (unsigned char*)img.debug_info, cursor.level, id.code, id.tag);
 
+			if (id.abstract_origin)
+				mergeAbstractOrigin(id, cu);
 			if (id.specification)
 				mergeSpecification(id, cu);
 
@@ -1478,46 +1482,49 @@ bool CV2PDB::createTypes()
 			case DW_TAG_subprogram:
 				if (id.name)
 				{
-					unsigned long entry_point = 0;
-					if (id.pcentry)
+					if (!id.is_artificial)
 					{
-						entry_point = id.pcentry;
-					}
-					else if (id.pclo)
-					{
-						entry_point = id.pclo;
-					}
-					else if (id.ranges != ~0)
-					{
-						entry_point = ~0;
-						byte* r = (byte*)img.debug_ranges + id.ranges;
-						byte* rend = (byte*)img.debug_ranges + img.debug_ranges_length;
-						while (r < rend)
+						unsigned long entry_point = 0;
+						if (id.pcentry)
 						{
-							uint64_t pclo, pchi;
-
-							if (img.isX64())
-							{
-								pclo = RD8(r);
-								pchi = RD8(r);
-							}
-							else
-							{
-								pclo = RD4(r);
-								pchi = RD4(r);
-							}
-							if (pclo == 0 && pchi == 0)
-								break;
-							if (pclo >= pchi)
-								continue;
-							entry_point = min(entry_point, pclo + currentBaseAddress);
+							entry_point = id.pcentry;
 						}
-						if (entry_point == ~0)
-							entry_point = 0;
-					}
+						else if (id.pclo)
+						{
+							entry_point = id.pclo;
+						}
+						else if (id.ranges != ~0)
+						{
+							entry_point = ~0;
+							byte* r = (byte*)img.debug_ranges + id.ranges;
+							byte* rend = (byte*)img.debug_ranges + img.debug_ranges_length;
+							while (r < rend)
+							{
+								uint64_t pclo, pchi;
 
-					if (entry_point)
-						mod->AddPublic2(id.name, img.codeSegment + 1, entry_point - codeSegOff, 0);
+								if (img.isX64())
+								{
+									pclo = RD8(r);
+									pchi = RD8(r);
+								}
+								else
+								{
+									pclo = RD4(r);
+									pchi = RD4(r);
+								}
+								if (pclo == 0 && pchi == 0)
+									break;
+								if (pclo >= pchi)
+									continue;
+								entry_point = min(entry_point, pclo + currentBaseAddress);
+							}
+							if (entry_point == ~0)
+								entry_point = 0;
+						}
+
+						if (entry_point)
+							mod->AddPublic2(id.name, img.codeSegment + 1, entry_point - codeSegOff, 0);
+					}
 
 					if (id.pclo && id.pchi)
 						addDWARFProc(id, cu, cursor.getSubtreeCursor());
