@@ -153,6 +153,7 @@ struct DWARF_InfoData
 	unsigned long pclo;
 	unsigned long pchi;
 	unsigned long ranges; // -1u when attribute is not present
+	unsigned long pcentry;
 	byte* type;
 	byte* containing_type;
 	byte* specification;
@@ -185,6 +186,7 @@ struct DWARF_InfoData
 		pclo = 0;
 		pchi = 0;
 		ranges = ~0;
+		pcentry = 0;
 		type = 0;
 		containing_type = 0;
 		specification = 0;
@@ -212,6 +214,8 @@ struct DWARF_InfoData
 		if (id.pclo) pclo = id.pclo;
 		if (id.pchi) pchi = id.pchi;
 		if (id.ranges != ~0) ranges = id.ranges;
+		if (id.pcentry)
+			pcentry = id.pcentry;
 		if (id.type) type = id.type;
 		if (id.containing_type) containing_type = id.containing_type;
 		if (id.specification) specification = id.specification;

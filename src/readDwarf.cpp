@@ -486,6 +486,14 @@ bool DIECursor::readNext(DWARF_InfoData& id, bool stopAtNull)
 				else
 					assert(false);
 			    break;
+		    case DW_AT_entry_pc:
+			    if (a.type == Addr)
+				    id.pcentry = a.addr;
+			    else if (a.type == Const)
+				    id.pcentry = id.pclo + a.cons;
+			    else
+				    assert(false);
+			    break;
 			case DW_AT_ranges:
 				if (a.type == SecOffset)
 					id.ranges = a.sec_offset;
