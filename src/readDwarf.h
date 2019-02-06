@@ -170,6 +170,7 @@ struct DWARF_InfoData
 	unsigned long const_value;
 	bool has_const_value;
 	bool is_artificial;
+	bool has_artificial;
 
 	void clear()
 	{
@@ -205,6 +206,7 @@ struct DWARF_InfoData
 		const_value = 0;
 		has_const_value = false;
 		is_artificial = false;
+		has_artificial = false;
 	}
 
 	void merge(const DWARF_InfoData& id)
@@ -229,8 +231,9 @@ struct DWARF_InfoData
 		if (location.type == Invalid) location = id.location;
 		if (frame_base.type == Invalid) frame_base = id.frame_base;
 		if (!upper_bound) upper_bound = id.upper_bound;
-		if (!lower_bound) lower_bound = id.lower_bound;
-		if (!is_artificial) is_artificial = id.is_artificial;
+		if (!has_lower_bound) { lower_bound = id.lower_bound; has_lower_bound = id.has_lower_bound; }
+		if (!has_const_value) { const_value = id.const_value; has_const_value = id.has_const_value; }
+		if (!has_artificial) { is_artificial = id.is_artificial; has_artificial = id.has_artificial; }
 	}
 };
 

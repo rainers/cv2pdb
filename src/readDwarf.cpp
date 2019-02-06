@@ -562,7 +562,11 @@ bool DIECursor::readNext(DWARF_InfoData& id, bool stopAtNull)
 					break;
 				}
 				break;
-		    case DW_AT_artificial: assert(a.type == Flag); id.is_artificial = true; break;
+		    case DW_AT_artificial:
+				assert(a.type == Flag);
+				id.has_artificial = true;
+				id.is_artificial = true;
+				break;
 		}
 	}
 
