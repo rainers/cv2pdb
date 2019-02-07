@@ -245,12 +245,7 @@ bool interpretDWARFLines(const PEImage& img, mspdb::Mod* mod)
 						if (!mod && state.section == -1)
 							state.section = img.getRelocationInLineSegment((char*)p - img.debug_line);
 						unsigned long adr = ptrsize == 8 ? RD8(p) : RD4(p);
-						if(adr)
-							state.address = adr;
-						else if (!mod)
-							state.address = adr;
-						else
-							state.address = state.last_addr; // strange adr 0 for templates?
+						state.address = adr;
 						state.op_index = 0;
 						break;
 					}
