@@ -5,6 +5,8 @@
 // see file LICENSE for further details
 //
 
+#include <algorithm>
+
 #include "PEImage.h"
 #include "mspdb.h"
 #include "dwarf.h"
@@ -100,40 +102,44 @@ bool _flushDWARFLines(const PEImage& img, mspdb::Mod* mod, DWARF_LineState& stat
 		printf("  %08x: %4d\n", state.lineInfo[ln].offset + 0x401000, state.lineInfo[ln].line);
 #endif
 
+	std::sort(begin(state.lineInfo), end(state.lineInfo), [](const auto &s1, const auto &s2) {
+		return s1.offset < s2.offset || s1.offset == s2.offset && s1.line < s2.line;
+	});
+	
     int rc = 1;
-	unsigned int firstLine = state.lineInfo[0].line;
-	unsigned int firstAddr = state.lineInfo[0].offset;
-	unsigned int firstEntry = 0;
-	unsigned int entry = 0;
-	for(size_t ln = firstEntry; ln < state.lineInfo.size(); ln++)
-	{
-		if(state.lineInfo[ln].line < firstLine || state.lineInfo[ln].offset < firstAddr)
+	size_t low_id = 0;
+	unsigned int low_offset = state.lineInfo[0].offset;
+	unsigned short low_line = state.lineInfo[0].line;
+	auto add_line_data = [&](size_t high_id) {
+		unsigned int high_offset = state.address - state.seg_offset;
+		if (high_id != state.lineInfo.size())
+			high_offset = state.lineInfo[high_id].offset;
+		// PDB address ranges are inclusive, so point to before the next instruction
+		--high_offset;
+		unsigned int address_range_length = high_offset - low_offset;
+
+		if (dump)
+			printf("AddLines(%08x+%04x, Line=%4d+%3d, %s)\n", low_offset, address_range_length, low_line, high_id - low_id, fname.c_str());
+		rc = mod->AddLines(fname.c_str(), segIndex + 1, low_offset, address_range_length, low_offset, low_line,
+		                   (unsigned char*)&state.lineInfo[low_id], (high_id - low_id) * sizeof(state.lineInfo[0]));
+		low_id = high_id;
+		if (high_id != state.lineInfo.size())
 		{
-			if(ln > firstEntry)
-			{
-				unsigned int length = state.lineInfo[entry-1].offset + 1; // firstAddr has been subtracted before
-				if(dump)
-					printf("AddLines(%08x+%04x, Line=%4d+%3d, %s)\n", firstAddr, length, firstLine, entry - firstEntry, fname.c_str());
-				rc = mod->AddLines(fname.c_str(), segIndex + 1, firstAddr, length, firstAddr, firstLine,
-									(unsigned char*) &state.lineInfo[firstEntry],
-									(ln - firstEntry) * sizeof(state.lineInfo[0]));
-				firstLine = state.lineInfo[ln].line;
-				firstAddr = state.lineInfo[ln].offset;
-				firstEntry = entry;
-			}
+			low_offset = state.lineInfo[high_id].offset;
+			low_line = state.lineInfo[high_id].line;
 		}
-		else if(ln > firstEntry && state.lineInfo[ln].offset == state.lineInfo[ln-1].offset)
-			continue; // skip entries without offset change
-		state.lineInfo[entry].line = state.lineInfo[ln].line - firstLine;
-		state.lineInfo[entry].offset = state.lineInfo[ln].offset - firstAddr;
-		entry++;
+	};
+
+	for (size_t ln = 0; ln < state.lineInfo.size(); ++ln)
+	{
+		auto& line_entry = state.lineInfo[ln];
+		if (line_entry.line < low_line)
+			add_line_data(ln);
+
+		line_entry.line -= low_line;
+		line_entry.offset -= low_offset;
 	}
-	unsigned int length = eaddr - firstAddr;
-	if(dump)
-		printf("AddLines(%08x+%04x, Line=%4d+%3d, %s)\n", firstAddr, length, firstLine, entry - firstEntry, fname.c_str());
-	rc = mod->AddLines(fname.c_str(), segIndex + 1, firstAddr, length, firstAddr, firstLine,
-					    (unsigned char*) &state.lineInfo[firstEntry],
-					    (entry - firstEntry) * sizeof(state.lineInfo[0]));
+	add_line_data(state.lineInfo.size());
 
 #else
 	unsigned int firstLine = 0;
