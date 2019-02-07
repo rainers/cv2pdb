@@ -102,7 +102,7 @@ bool _flushDWARFLines(const PEImage& img, mspdb::Mod* mod, DWARF_LineState& stat
 		printf("  %08x: %4d\n", state.lineInfo[ln].offset + 0x401000, state.lineInfo[ln].line);
 #endif
 
-	std::sort(begin(state.lineInfo), end(state.lineInfo), [](const auto &s1, const auto &s2) {
+	std::sort(begin(state.lineInfo), end(state.lineInfo), [](const mspdb::LineInfoEntry& s1, const mspdb::LineInfoEntry& s2) {
 		return s1.offset < s2.offset || s1.offset == s2.offset && s1.line < s2.line;
 	});
 	
