@@ -5,8 +5,6 @@
 // see file LICENSE for further details
 //
 
-#include <algorithm>
-
 #include "PEImage.h"
 #include "mspdb.h"
 #include "dwarf.h"
