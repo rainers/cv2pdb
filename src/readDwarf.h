@@ -280,12 +280,14 @@ struct DWARF_LineState
 	unsigned long section;
 	unsigned long last_addr;
 	std::vector<mspdb::LineInfoEntry> lineInfo;
+	unsigned int lineInfo_file;
 
 	DWARF_LineState()
 	{
 		file_ptr = nullptr;
 		seg_offset = 0x400000;
 		last_addr = 0;
+		lineInfo_file = 0;
 
 		init(0);
 	}
@@ -312,29 +314,6 @@ struct DWARF_LineState
 		int address_advance = hdr->minimum_instruction_length * ((op_index + operation_advance) / maximum_operations_per_instruction);
 		address += address_advance;
 		op_index = (op_index + operation_advance) % maximum_operations_per_instruction;
-	}
-
-	void addLineInfo()
-	{
-		unsigned long addr = address;
-
-		// The DWARF standard says about end_sequence: "indicating that the current
-		// address is that of the first byte after the end of a sequence of target
-		// machine instructions". So if this is a end_sequence row, make it apply
-		// to the last byte of the current sequence.
-		if (end_sequence)
-			addr = last_addr - 1;
-
-#if 0
-		const char* fname = (file == 0 ? file_ptr->file_name : files[file - 1].file_name);
-		printf("Adr:%08x Line: %5d File: %s\n", address, line, fname);
-#endif
-		if (addr < seg_offset)
-			return;
-		mspdb::LineInfoEntry entry;
-		entry.offset = addr - seg_offset;
-		entry.line = line;
-		lineInfo.push_back(entry);
 	}
 };
 

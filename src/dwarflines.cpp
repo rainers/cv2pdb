@@ -64,10 +64,10 @@ bool _flushDWARFLines(const PEImage& img, mspdb::Mod* mod, DWARF_LineState& stat
 //        return true;
 
 	const DWARF_FileName* dfn;
-	if(state.file == 0)
+	if(state.lineInfo_file == 0)
 		dfn = state.file_ptr;
-	else if(state.file > 0 && state.file <= state.files.size())
-		dfn = &state.files[state.file - 1];
+	else if(state.lineInfo_file > 0 && state.lineInfo_file <= state.files.size())
+		dfn = &state.files[state.lineInfo_file - 1];
 	else
 		return false;
 	std::string fname = dfn->file_name;
@@ -99,41 +99,33 @@ bool _flushDWARFLines(const PEImage& img, mspdb::Mod* mod, DWARF_LineState& stat
 	for(size_t ln = 0; ln < state.lineInfo.size(); ln++)
 		printf("  %08x: %4d\n", state.lineInfo[ln].offset + 0x401000, state.lineInfo[ln].line);
 #endif
+	
+	int rc = 1;
+	unsigned int low_offset = state.lineInfo[0].offset;
+	unsigned short low_line = state.lineInfo[0].line;
 
-    int rc = 1;
-	unsigned int firstLine = state.lineInfo[0].line;
-	unsigned int firstAddr = state.lineInfo[0].offset;
-	unsigned int firstEntry = 0;
-	unsigned int entry = 0;
-	for(size_t ln = firstEntry; ln < state.lineInfo.size(); ln++)
+	for (size_t ln = 0; ln < state.lineInfo.size(); ++ln)
 	{
-		if(state.lineInfo[ln].line < firstLine || state.lineInfo[ln].offset < firstAddr)
-		{
-			if(ln > firstEntry)
-			{
-				unsigned int length = state.lineInfo[entry-1].offset + 1; // firstAddr has been subtracted before
-				if(dump)
-					printf("AddLines(%08x+%04x, Line=%4d+%3d, %s)\n", firstAddr, length, firstLine, entry - firstEntry, fname.c_str());
-				rc = mod->AddLines(fname.c_str(), segIndex + 1, firstAddr, length, firstAddr, firstLine,
-									(unsigned char*) &state.lineInfo[firstEntry],
-									(ln - firstEntry) * sizeof(state.lineInfo[0]));
-				firstLine = state.lineInfo[ln].line;
-				firstAddr = state.lineInfo[ln].offset;
-				firstEntry = entry;
-			}
-		}
-		else if(ln > firstEntry && state.lineInfo[ln].offset == state.lineInfo[ln-1].offset)
-			continue; // skip entries without offset change
-		state.lineInfo[entry].line = state.lineInfo[ln].line - firstLine;
-		state.lineInfo[entry].offset = state.lineInfo[ln].offset - firstAddr;
-		entry++;
+		auto& line_entry = state.lineInfo[ln];
+		line_entry.line -= low_line;
+		line_entry.offset -= low_offset;
 	}
-	unsigned int length = eaddr - firstAddr;
-	if(dump)
-		printf("AddLines(%08x+%04x, Line=%4d+%3d, %s)\n", firstAddr, length, firstLine, entry - firstEntry, fname.c_str());
-	rc = mod->AddLines(fname.c_str(), segIndex + 1, firstAddr, length, firstAddr, firstLine,
-					    (unsigned char*) &state.lineInfo[firstEntry],
-					    (entry - firstEntry) * sizeof(state.lineInfo[0]));
+
+	unsigned int high_offset = state.address - state.seg_offset;
+	if (high_offset < state.lineInfo.back().offset + low_offset)
+		// The current address is before the previous address; use that as the end instead to ensure we capture all of the preceeding line info
+		high_offset = state.lineInfo.back().offset + low_offset;
+	// PDB address ranges are fully closed, so point to before the next instruction
+	--high_offset;
+	// This subtraction can underflow to (unsigned)-1 if this info is only for a single instruction, but AddLines will immediately increment it to 0, so this is fine.  Not underflowing this can cause the debugger to ignore other line info for address ranges that include this address.
+	unsigned int address_range_length = high_offset - low_offset;
+
+	if (dump)
+		printf("AddLines(%08x+%04x, Line=%4d+%3d, %s)\n", low_offset, address_range_length, low_line,
+		       state.lineInfo.size(), fname.c_str());
+	rc = mod->AddLines(fname.c_str(), segIndex + 1, low_offset, address_range_length, low_offset, low_line,
+	                   (unsigned char*)&state.lineInfo[0],
+	                   state.lineInfo.size() * sizeof(state.lineInfo[0]));
 
 #else
 	unsigned int firstLine = 0;
@@ -144,6 +136,45 @@ bool _flushDWARFLines(const PEImage& img, mspdb::Mod* mod, DWARF_LineState& stat
 
 	state.lineInfo.resize(0);
 	return rc > 0;
+}
+
+bool addLineInfo(const PEImage& img, mspdb::Mod* mod, DWARF_LineState& state)
+{
+	// The DWARF standard says about end_sequence: "indicating that the current
+	// address is that of the first byte after the end of a sequence of target
+	// machine instructions". So if this is a end_sequence row, don't append any
+	// lines to the list, just flush it.
+	if (state.end_sequence)
+		return _flushDWARFLines(img, mod, state);
+
+#if 0
+	const char* fname = (state.file == 0 ? state.file_ptr->file_name : state.files[state.file - 1].file_name);
+	printf("Adr:%08x Line: %5d File: %s\n", state.address, state.line, fname);
+#endif
+	if (state.address < state.seg_offset)
+		return true;
+	mspdb::LineInfoEntry entry;
+	entry.offset = state.address - state.seg_offset;
+	entry.line = state.line;
+	if (!state.lineInfo.empty())
+	{
+		auto first_entry = state.lineInfo.front();
+		auto last_entry = state.lineInfo.back();
+		// We can handle out-of-order line numbers, but we can't handle out-of-order addresses
+		if (entry.line < first_entry.line || entry.offset < last_entry.offset || state.lineInfo_file != state.file)
+		{
+			if (!_flushDWARFLines(img, mod, state))
+				return false;
+		}
+		else if (entry.line == last_entry.line && entry.offset == last_entry.offset)
+		{
+			// There's no need to add duplicate entries
+			return true;
+		}
+	}
+	state.lineInfo.push_back(entry);
+	state.lineInfo_file = state.file;
+	return true;
 }
 
 bool interpretDWARFLines(const PEImage& img, mspdb::Mod* mod)
@@ -206,7 +237,8 @@ bool interpretDWARFLines(const PEImage& img, mspdb::Mod* mod)
 				int line_advance = hdr->line_base + (adjusted_opcode % hdr->line_range);
 				state.line += line_advance;
 
-				state.addLineInfo();
+				if (!addLineInfo(img, mod, state))
+					return false;
 
 				state.basic_block = false;
 				state.prologue_end = false;
@@ -229,8 +261,7 @@ bool interpretDWARFLines(const PEImage& img, mspdb::Mod* mod)
 							p = p;
 						state.end_sequence = true;
 						state.last_addr = state.address;
-						state.addLineInfo();
-						if(!_flushDWARFLines(img, mod, state))
+						if(!addLineInfo(img, mod, state))
 							return false;
 						state.init(hdr);
 						break;
@@ -239,12 +270,7 @@ bool interpretDWARFLines(const PEImage& img, mspdb::Mod* mod)
 						if (!mod && state.section == -1)
 							state.section = img.getRelocationInLineSegment((char*)p - img.debug_line);
 						unsigned long adr = ptrsize == 8 ? RD8(p) : RD4(p);
-						if(adr)
-							state.address = adr;
-						else if (!mod)
-							state.address = adr;
-						else
-							state.address = state.last_addr; // strange adr 0 for templates?
+						state.address = adr;
 						state.op_index = 0;
 						break;
 					}
@@ -261,7 +287,8 @@ bool interpretDWARFLines(const PEImage& img, mspdb::Mod* mod)
 					break;
 				}
 				case DW_LNS_copy:
-					state.addLineInfo();
+					if (!addLineInfo(img, mod, state))
+						return false;
 					state.basic_block = false;
 					state.prologue_end = false;
 					state.epilogue_end = false;
@@ -274,8 +301,6 @@ bool interpretDWARFLines(const PEImage& img, mspdb::Mod* mod)
 					state.line += SLEB128(p);
 					break;
 				case DW_LNS_set_file:
-					if(!_flushDWARFLines(img, mod, state))
-						return false;
 					state.file = LEB128(p);
 					break;
 				case DW_LNS_set_column:
