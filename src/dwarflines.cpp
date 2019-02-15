@@ -112,8 +112,12 @@ bool _flushDWARFLines(const PEImage& img, mspdb::Mod* mod, DWARF_LineState& stat
 	}
 
 	unsigned int high_offset = state.address - state.seg_offset;
+	if (high_offset < state.lineInfo.back().offset + low_offset)
+		// The current address is before the previous address; use that as the end instead to ensure we capture all of the preceeding line info
+		high_offset = state.lineInfo.back().offset + low_offset;
 	// PDB address ranges are fully closed, so point to before the next instruction
 	--high_offset;
+	// This subtraction can underflow to (unsigned)-1 if this info is only for a single instruction, but AddLines will immediately increment it to 0, so this is fine.  Not underflowing this can cause the debugger to ignore other line info for address ranges that include this address.
 	unsigned int address_range_length = high_offset - low_offset;
 
 	if (dump)
@@ -156,7 +160,8 @@ bool addLineInfo(const PEImage& img, mspdb::Mod* mod, DWARF_LineState& state)
 	{
 		auto first_entry = state.lineInfo.front();
 		auto last_entry = state.lineInfo.back();
-		if (entry.line < first_entry.line || entry.offset < first_entry.offset || state.lineInfo_file != state.file)
+		// We can handle out-of-order line numbers, but we can't handle out-of-order addresses
+		if (entry.line < first_entry.line || entry.offset < last_entry.offset || state.lineInfo_file != state.file)
 		{
 			if (!_flushDWARFLines(img, mod, state))
 				return false;
