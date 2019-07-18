@@ -743,8 +743,8 @@ int CV2PDB::addAggregate(codeview_type* dtype, bool clss, int n_element, int fie
 	dtype->struct_v2.property = property | (uniquename ? kPropUniquename : 0);
 	dtype->struct_v2.derived = derived;
 	dtype->struct_v2.vshape = vshape;
-	dtype->struct_v2.structlen = structlen;
-	int len = cstrcpy_v(v3, (BYTE*)(&dtype->struct_v2 + 1), name);
+	int len = write_numeric_leaf(structlen, &(dtype->struct_v2.structlen)) - 2;
+	len += cstrcpy_v(v3, (BYTE*)(&dtype->struct_v2 + 1) + len, name);
 	if(uniquename)
 		len += cstrcpy_v(v3, (BYTE*)(&dtype->struct_v2 + 1) + len, uniquename);
 	len += sizeof (dtype->struct_v2);
@@ -803,9 +803,9 @@ int CV2PDB::addFieldMember(codeview_fieldtype* dfieldtype, int attr, int offset,
 {
 	dfieldtype->member_v2.id = v3 ? LF_MEMBER_V3 : LF_MEMBER_V2;
 	dfieldtype->member_v2.attribute = attr;
-	dfieldtype->member_v2.offset = offset;
 	dfieldtype->member_v2.type = translateType(type);
-	int len = cstrcpy_v(v3, (BYTE*)(&dfieldtype->member_v2 + 1), name);
+	int len = write_numeric_leaf(offset, &(dfieldtype->member_v2.offset)) - 2;
+	len += cstrcpy_v(v3, (BYTE*)(&dfieldtype->member_v2 + 1) + len, name);
 	len += sizeof (dfieldtype->member_v2);
 
 	unsigned char* p = (unsigned char*) dfieldtype;
