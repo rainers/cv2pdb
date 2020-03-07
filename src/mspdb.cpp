@@ -113,9 +113,52 @@ bool tryLoadMsPdbCom(const char* mspdb, const char* path = 0)
 		WideCharToMultiByte(CP_ACP, 0, installDir, -1, modpath, 260, NULL, NULL);
 		SysFreeString(installDir);
 
+		size_t installDirLen = strlen(modpath);
 		strncat(modpath, "\\Common7\\IDE\\", 260); // wrong path for x64 build of cv2pdb
 		strncat(modpath, mspdb, 260);
 		tryLoadLibrary(modpath);
+		if (modMsPdb)
+			break;
+
+		// try again, with the MSVC path (Common7\IDE\mspdb*.dll might be i386, and we might be x86_64)
+		modpath[installDirLen] = '\0';
+		strncat(modpath, "\\VC\\Tools\\MSVC\\*", 260);
+		WIN32_FIND_DATAA findData;
+		HANDLE find = FindFirstFileA(modpath, &findData);
+		if (INVALID_HANDLE_VALUE == find)
+			continue;
+
+		// strip the trailing `*`
+		size_t len = strlen(modpath);
+		modpath[len - 1] = '\0';
+
+		// the path of the DLL relative to the MSVC subdirectory
+		char suffix[260];
+		strcpy(suffix, sizeof(void *) == 8 ? "\\bin\\Hostx64\\x64\\" : "\\bin\\Hostx86\\x86\\");
+		strncat(suffix, mspdb, 260);
+
+		FILETIME lastWriteTime = { 0 };
+		char dllPath[260] = "";
+		do
+		{
+			if (!(findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
+				continue;
+
+			WIN32_FILE_ATTRIBUTE_DATA fileData;
+			char candidate[260];
+			strcpy(candidate, modpath);
+			strncat(candidate, findData.cFileName, 260);
+			strncat(candidate, suffix, 260);
+			if (GetFileAttributesExA(candidate, GetFileExInfoStandard, &fileData) &&
+			    CompareFileTime(&lastWriteTime, &fileData.ftLastWriteTime) < 0)
+			{
+				lastWriteTime = fileData.ftLastWriteTime;
+				strcpy(dllPath, candidate);
+			}
+		} while (FindNextFileA(find, &findData));
+
+		if (dllPath[0] != '\0')
+			tryLoadLibrary(dllPath);
 	}
 
 	return true;
