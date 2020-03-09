@@ -1243,7 +1243,10 @@ bool CV2PDB::nameOfBasicType(int type, char* name, int maxlen)
 		case 5: strcpy(name, "uint"); break;
 		case 6: strcpy(name, "long"); break;
 		case 7: strcpy(name, "ulong"); break;
-		case 8: strcpy(name, "dchar"); break;
+		case 8: strcpy(name, "cent"); break;  // not used yet
+		case 9: strcpy(name, "ucent"); break; // not used yet
+		case 10:strcpy(name, "wchar"); break; // char16_t
+		case 11:strcpy(name, "dchar"); break; // char32_t
 		default:
 			return setError("nameOfBasicType: unsupported size real int type");
 		}
