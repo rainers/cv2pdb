@@ -113,9 +113,31 @@ bool tryLoadMsPdbCom(const char* mspdb, const char* path = 0)
 		WideCharToMultiByte(CP_ACP, 0, installDir, -1, modpath, 260, NULL, NULL);
 		SysFreeString(installDir);
 
+#ifdef _WIN64
+		strncat(modpath, "\\VC\\Tools\\MSVC\\*", 260);
+		WIN32_FIND_DATAA data;
+		HANDLE hFind = FindFirstFileA(modpath, &data);      // DIRECTORY
+
+		if (hFind != INVALID_HANDLE_VALUE)
+		{
+			int len = strlen(modpath) - 1;
+			do
+			{
+				modpath[len] = 0;
+				strncat(modpath, data.cFileName, 260);
+				strncat(modpath, "\\bin\\Hostx64\\x64\\", 260);
+				strncat(modpath, mspdb, 260);
+				tryLoadLibrary(modpath);
+			}
+			while (!modMsPdb && FindNextFileA(hFind, &data));
+			FindClose(hFind);
+		}
+
+#else
 		strncat(modpath, "\\Common7\\IDE\\", 260); // wrong path for x64 build of cv2pdb
 		strncat(modpath, mspdb, 260);
 		tryLoadLibrary(modpath);
+#endif
 	}
 
 	return true;
