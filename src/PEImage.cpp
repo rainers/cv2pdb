@@ -225,6 +225,19 @@ bool PEImage::replaceDebugSection (const void* data, int datalen, bool initCV)
 	IMGHDR(OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_DEBUG].VirtualAddress) = lastVirtualAddress + datalen;
 	IMGHDR(OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_DEBUG].Size) = sizeof(IMAGE_DEBUG_DIRECTORY);
 
+	// invalidate the symbol table pointer if it points outside of the data to be copied
+	IMAGE_DOS_HEADER *dos = DPV<IMAGE_DOS_HEADER>(0);
+	if(dos && dos->e_magic == IMAGE_DOS_SIGNATURE)
+	{
+		// The 32-bit and 64-bit headers are identical in the FileHeader part, so we just use the 32-bit one
+		IMAGE_NT_HEADERS32* hdr = DPV<IMAGE_NT_HEADERS32>(dos->e_lfanew);
+		if(hdr && hdr->FileHeader.PointerToSymbolTable >= dump_total_len)
+		{
+			hdr->FileHeader.PointerToSymbolTable = 0;
+			hdr->FileHeader.NumberOfSymbols = 0;
+		}
+	}
+
 	// append debug data chunk to existing file image
 	memcpy(newdata, dump_base, dump_total_len);
 	memset(newdata + dump_total_len, 0, fill);
