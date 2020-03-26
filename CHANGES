@@ -296,3 +296,7 @@ unreleased Version 0.22
 
   * add support for char16_t and char32_t (emitted by dmd 2.089+ for dchar)
   * fix loading 64-bit mspdb140.dll in VS2019
+
+2020-03-26 Version 0.48
+
+  * DWARF: add support for data symbols imported from DLL
