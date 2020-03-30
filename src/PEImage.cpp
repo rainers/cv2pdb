@@ -809,10 +809,11 @@ int PEImage::findSymbol(const char* name, unsigned long& off, bool& dllimport) c
 	{
 		IMAGE_SYMBOL* sym = (IMAGE_SYMBOL*) (symtable + i * sizeof_sym);
 		const char* symname = sym->N.Name.Short == 0 ? strtable + sym->N.Name.Long : (char*)sym->N.ShortName;
-		if(symbolMatches(name, symname, dllimport))
+		int seg = bigobj ? ((IMAGE_SYMBOL_EX*)sym)->SectionNumber : sym->SectionNumber;
+		if(seg && symbolMatches(name, symname, dllimport))
 		{
 			off = sym->Value;
-			return bigobj ? ((IMAGE_SYMBOL_EX*)sym)->SectionNumber : sym->SectionNumber;
+			return seg - 1;
 		}
 		i += sym->NumberOfAuxSymbols;
 	}

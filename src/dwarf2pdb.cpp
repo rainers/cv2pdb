@@ -1652,7 +1652,7 @@ bool CV2PDB::createDWARFModules()
 	for (int s = 0; s < img.countSections(); s++)
 	{
 		const IMAGE_SECTION_HEADER& sec = img.getSection(s);
-		int rc = dbi->AddSec(s + 1, 0x10d, 0, sec.SizeOfRawData);
+		int rc = dbi->AddSec(s + 1, 0x10d, 0, sec.Misc.VirtualSize);
 		if (rc <= 0)
 			return setError("cannot add section");
 	}
