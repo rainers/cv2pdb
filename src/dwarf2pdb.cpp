@@ -1402,6 +1402,7 @@ bool CV2PDB::mapTypes()
 
 bool CV2PDB::createTypes()
 {
+	img.createSymbolCache();
 	mspdb::Mod* mod = globalMod();
 	int typeID = nextUserType;
 	int pointerAttr = img.isX64() ? 0x1000C : 0x800A;

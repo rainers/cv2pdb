@@ -783,39 +783,40 @@ const char* PEImage::findSectionSymbolName(int s) const
         return t_findSectionSymbolName<IMAGE_SYMBOL> (s);
 }
 
-bool symbolMatches(const char* name, const char* symname, bool& dllimport)
+void PEImage::createSymbolCache()
 {
-	if (strcmp(symname, name) == 0)
-		return true;
-	if (symname[0] != '_')
-		return false;
-	if (strcmp(symname + 1, name) == 0)
-		return true;
-
-	if (strncmp(symname + 1, "_imp_", 5) == 0)
-		symname += 6;
-	else
-		return false;
-	if (strcmp(symname, name) != 0 && (symname[0] != '_' || strcmp(symname + 1, name) != 0))
-		return false;
-	dllimport = true;
-	return true;
+	int sizeof_sym = bigobj ? sizeof(IMAGE_SYMBOL_EX) : IMAGE_SIZEOF_SYMBOL;
+	for (int i = 0; i < nsym; ++i)
+	{
+		IMAGE_SYMBOL* sym = (IMAGE_SYMBOL*)(symtable + i * sizeof_sym);
+		const char* symname = sym->N.Name.Short == 0 ? strtable + sym->N.Name.Long : (char*)sym->N.ShortName;
+		int seg = bigobj ? ((IMAGE_SYMBOL_EX*)sym)->SectionNumber : sym->SectionNumber;
+		if (seg)
+		{
+			unsigned long off = sym->Value;
+			std::string key = symname;
+			bool dllimport = !key.compare(0, 6, "__imp_"); // symname starts with "__imp_"
+			symbolCache[key] = {seg, off, dllimport};
+		}
+		i += sym->NumberOfAuxSymbols;
+	}
 }
 
 int PEImage::findSymbol(const char* name, unsigned long& off, bool& dllimport) const
 {
-    int sizeof_sym = bigobj ? sizeof(IMAGE_SYMBOL_EX) : IMAGE_SIZEOF_SYMBOL;
-	for(int i = 0; i < nsym; i++)
+	std::string key = name;
+	auto it = symbolCache.find(key);
+	if (it == symbolCache.end())
+		it = symbolCache.find("_" + key);
+	if (it == symbolCache.end())
+		it = symbolCache.find("__imp_" + key);
+	if (it == symbolCache.end())
+		it = symbolCache.find("__imp__" + key);
+	if (it != symbolCache.end())
 	{
-		IMAGE_SYMBOL* sym = (IMAGE_SYMBOL*) (symtable + i * sizeof_sym);
-		const char* symname = sym->N.Name.Short == 0 ? strtable + sym->N.Name.Long : (char*)sym->N.ShortName;
-		int seg = bigobj ? ((IMAGE_SYMBOL_EX*)sym)->SectionNumber : sym->SectionNumber;
-		if(seg && symbolMatches(name, symname, dllimport))
-		{
-			off = sym->Value;
-			return seg - 1;
-		}
-		i += sym->NumberOfAuxSymbols;
+		off = it->second.off;
+		dllimport = it->second.dllimport;
+		return it->second.seg - 1;
 	}
 	return -1;
 }

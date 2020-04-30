@@ -10,9 +10,17 @@
 #include "LastError.h"
 
 #include <windows.h>
+#include <unordered_map>
 
 struct OMFDirHeader;
 struct OMFDirEntry;
+
+struct SymbolInfo
+{
+	int seg;
+	unsigned long off;
+	bool dllimport;
+};
 
 #define IMGHDR(x) (hdr32 ? hdr32->x : hdr64->x)
 
@@ -93,6 +101,7 @@ public:
 
     int dumpDebugLineInfoCOFF();
     int dumpDebugLineInfoOMF();
+	void createSymbolCache();
 
 private:
 	bool _initFromCVDebugDir(IMAGE_DEBUG_DIRECTORY* ddir);
@@ -118,6 +127,7 @@ private:
 	bool x64;     // targets 64-bit machine
 	bool bigobj;
 	bool dbgfile; // is DBG file
+	std::unordered_map<std::string, SymbolInfo> symbolCache;
 
 public:
 	//dwarf
