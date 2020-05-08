@@ -182,16 +182,35 @@ bool interpretDWARFLines(const PEImage& img, mspdb::Mod* mod)
 	DWARF_CompilationUnit* cu = (DWARF_CompilationUnit*)img.debug_info;
 	int ptrsize = cu ? cu->address_size : 4;
 
+	DWARF_LineNumberProgramHeader hdr3;
 	for(unsigned long off = 0; off < img.debug_line_length; )
 	{
-		DWARF_LineNumberProgramHeader* hdr = (DWARF_LineNumberProgramHeader*) (img.debug_line + off);
-		int length = hdr->unit_length;
+		DWARF_LineNumberProgramHeader* hdrver = (DWARF_LineNumberProgramHeader*) (img.debug_line + off);
+		int length = hdrver->unit_length;
 		if(length < 0)
 			break;
 		length += sizeof(length);
 
-		unsigned char* p = (unsigned char*) (hdr + 1);
-		unsigned char* end = (unsigned char*) hdr + length;
+		DWARF_LineNumberProgramHeader* hdr;
+		if (hdrver->version <= 3)
+		{
+			auto hdr2 = (DWARF2_LineNumberProgramHeader*)hdrver;
+			hdr3.default_is_stmt = hdr2->default_is_stmt;
+			hdr3.header_length = hdr2->header_length;
+			hdr3.line_base = hdr2->line_base;
+			hdr3.line_range = hdr2->line_range;
+			hdr3.minimum_instruction_length = hdr2->minimum_instruction_length;
+			hdr3.maximum_operations_per_instruction = 0xff;
+			hdr3.opcode_base = hdr2->opcode_base;
+			hdr3.unit_length = hdr2->unit_length;
+			hdr3.version = hdr2->version;
+			hdr = &hdr3;
+		}
+		else
+			hdr = hdrver;
+		int hdrlength = hdr->version <= 3 ? sizeof(DWARF2_LineNumberProgramHeader) : sizeof(DWARF_LineNumberProgramHeader);
+		unsigned char* p = (unsigned char*) hdrver + hdrlength;
+		unsigned char* end = (unsigned char*) hdrver + length;
 
 		std::vector<unsigned int> opcode_lengths;
 		opcode_lengths.resize(hdr->opcode_base);

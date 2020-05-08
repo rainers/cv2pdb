@@ -245,6 +245,22 @@ struct DWARF_LineNumberProgramHeader
 	unsigned short version;
 	unsigned int header_length; // 8 byte in DWARF-64
 	byte minimum_instruction_length;
+	byte maximum_operations_per_instruction; // not in DWARF 2/3
+	byte default_is_stmt;
+	signed char line_base;
+	byte line_range;
+	byte opcode_base;
+	//LEB128 standard_opcode_lengths[opcode_base];
+	// string include_directories[] // zero byte terminated
+	// DWARF_FileNames file_names[] // zero byte terminated
+};
+
+struct DWARF2_LineNumberProgramHeader
+{
+	unsigned int unit_length; // 12 byte in DWARF-64
+	unsigned short version;
+	unsigned int header_length; // 8 byte in DWARF-64
+	byte minimum_instruction_length;
 	//byte maximum_operations_per_instruction; (// not in DWARF 2
 	byte default_is_stmt;
 	signed char line_base;
