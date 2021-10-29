@@ -239,7 +239,30 @@ struct DWARF_InfoData
 
 static const int maximum_operations_per_instruction = 1;
 
+struct DWARF_TypeForm
+{
+	unsigned int type, form;
+};
+
 struct DWARF_LineNumberProgramHeader
+{
+	unsigned int unit_length; // 12 byte in DWARF-64
+	unsigned short version;
+	byte address_size; // new in DWARF5
+	byte segment_selector_size; // new in DWARF5
+	unsigned int header_length; // 8 byte in DWARF-64
+	byte minimum_instruction_length;
+	byte maximum_operations_per_instruction; // not in DWARF 2/3
+	byte default_is_stmt;
+	signed char line_base;
+	byte line_range;
+	byte opcode_base;
+	//LEB128 standard_opcode_lengths[opcode_base];
+	// string include_directories[] // zero byte terminated
+	// DWARF_FileNames file_names[] // zero byte terminated
+};
+
+struct DWARF4_LineNumberProgramHeader
 {
 	unsigned int unit_length; // 12 byte in DWARF-64
 	unsigned short version;
