@@ -182,7 +182,7 @@ bool interpretDWARFLines(const PEImage& img, mspdb::Mod* mod)
 	DWARF_CompilationUnit* cu = (DWARF_CompilationUnit*)img.debug_info;
 	int ptrsize = cu ? cu->address_size : 4;
 
-	DWARF_LineNumberProgramHeader hdr3;
+	DWARF_LineNumberProgramHeader hdr5;
 	for(unsigned long off = 0; off < img.debug_line_length; )
 	{
 		DWARF_LineNumberProgramHeader* hdrver = (DWARF_LineNumberProgramHeader*) (img.debug_line + off);
@@ -195,20 +195,34 @@ bool interpretDWARFLines(const PEImage& img, mspdb::Mod* mod)
 		if (hdrver->version <= 3)
 		{
 			auto hdr2 = (DWARF2_LineNumberProgramHeader*)hdrver;
-			hdr3.default_is_stmt = hdr2->default_is_stmt;
-			hdr3.header_length = hdr2->header_length;
-			hdr3.line_base = hdr2->line_base;
-			hdr3.line_range = hdr2->line_range;
-			hdr3.minimum_instruction_length = hdr2->minimum_instruction_length;
-			hdr3.maximum_operations_per_instruction = 0xff;
-			hdr3.opcode_base = hdr2->opcode_base;
-			hdr3.unit_length = hdr2->unit_length;
-			hdr3.version = hdr2->version;
-			hdr = &hdr3;
+			hdr5.default_is_stmt = hdr2->default_is_stmt;
+			hdr5.header_length = hdr2->header_length;
+			hdr5.line_base = hdr2->line_base;
+			hdr5.line_range = hdr2->line_range;
+			hdr5.minimum_instruction_length = hdr2->minimum_instruction_length;
+			hdr5.maximum_operations_per_instruction = 0xff;
+			hdr5.opcode_base = hdr2->opcode_base;
+			hdr5.unit_length = hdr2->unit_length;
+			hdr5.version = hdr2->version;
+			hdr = &hdr5;
+		}
+		else if (hdrver->version == 4)
+		{
+			auto hdr4 = (DWARF4_LineNumberProgramHeader*)hdrver;
+			hdr5.default_is_stmt = hdr4->default_is_stmt;
+			hdr5.header_length = hdr4->header_length;
+			hdr5.line_base = hdr4->line_base;
+			hdr5.line_range = hdr4->line_range;
+			hdr5.minimum_instruction_length = hdr4->minimum_instruction_length;
+			hdr5.maximum_operations_per_instruction = hdr4->maximum_operations_per_instruction;
+			hdr5.opcode_base = hdr4->opcode_base;
+			hdr5.unit_length = hdr4->unit_length;
+			hdr5.version = hdr4->version;
+			hdr = &hdr5;
 		}
 		else
 			hdr = hdrver;
-		int hdrlength = hdr->version <= 3 ? sizeof(DWARF2_LineNumberProgramHeader) : sizeof(DWARF_LineNumberProgramHeader);
+		int hdrlength = hdr->version <= 3 ? sizeof(DWARF2_LineNumberProgramHeader) : hdr->version == 4 ? sizeof(DWARF4_LineNumberProgramHeader) : sizeof(DWARF_LineNumberProgramHeader);
 		unsigned char* p = (unsigned char*) hdrver + hdrlength;
 		unsigned char* end = (unsigned char*) hdrver + length;
 
@@ -224,24 +238,121 @@ bool interpretDWARFLines(const PEImage& img, mspdb::Mod* mod)
 		DWARF_LineState state;
 		state.seg_offset = img.getImageBase() + img.getSection(img.codeSegment).VirtualAddress;
 
-		// dirs
-		while(p < end)
-		{
-			if(*p == 0)
-				break;
-			state.include_dirs.push_back((const char*) p);
-			p += strlen((const char*) p) + 1;
-		}
-		p++;
-
-		// files
 		DWARF_FileName fname;
-		while(p < end && *p)
+		if (hdr->version <= 4)
 		{
-			fname.read(p);
-			state.files.push_back(fname);
+			// dirs
+			while(p < end)
+			{
+				if(*p == 0)
+					break;
+				state.include_dirs.push_back((const char*) p);
+				p += strlen((const char*) p) + 1;
+			}
+			p++;
+
+			// files
+			while(p < end && *p)
+			{
+				fname.read(p);
+				state.files.push_back(fname);
+			}
+			p++;
 		}
-		p++;
+		else
+		{
+			DWARF_TypeForm type_and_form;
+
+			byte directory_entry_format_count = *(p++);
+			std::vector<DWARF_TypeForm> directory_entry_format;
+			for (int i = 0; i < directory_entry_format_count; i++)
+			{
+				type_and_form.type = LEB128(p);
+				type_and_form.form = LEB128(p);
+				directory_entry_format.push_back(type_and_form);
+			}
+
+			unsigned int directories_count = LEB128(p);
+			for (int o = 0; o < directories_count; o++)
+			{
+				for (int i = 0; i < directory_entry_format_count; i++)
+				{
+					switch (directory_entry_format[i].type)
+					{
+						case DW_LNCT_path:
+							switch (directory_entry_format[i].form)
+							{
+							case DW_FORM_line_strp:
+							{
+								size_t offset = cu->isDWARF64() ? RD8(p) : RD4(p);
+								state.include_dirs.push_back(img.debug_line_str + offset);
+								break;
+							}
+							case DW_FORM_string:
+								state.include_dirs.push_back((const char*)p);
+								p += strlen((const char*)p) + 1;
+								break;
+							default:
+								return false;
+							}
+							break;
+						case DW_LNCT_directory_index:
+						case DW_LNCT_timestamp:
+						case DW_LNCT_size:
+						default:
+							return false;
+					}
+				}
+			}
+
+			byte file_name_entry_format_count = *(p++);
+			std::vector<DWARF_TypeForm> file_name_entry_format;
+			for (int i = 0; i < file_name_entry_format_count; i++)
+			{
+				type_and_form.type = LEB128(p);
+				type_and_form.form = LEB128(p);
+				file_name_entry_format.push_back(type_and_form);
+			}
+
+			unsigned int file_names_count = LEB128(p);
+			for (int o = 0; o < file_names_count; o++)
+			{
+				for (int i = 0; i < file_name_entry_format_count; i++)
+				{
+					switch (file_name_entry_format[i].type)
+					{
+						case DW_LNCT_path:
+							switch (directory_entry_format[i].form)
+							{
+							case DW_FORM_line_strp:
+							{
+								size_t offset = cu->isDWARF64() ? RD8(p) : RD4(p);
+								fname.file_name = img.debug_line_str + offset;
+								break;
+							}
+							case DW_FORM_string:
+								fname.file_name = (const char*)p;
+								p += strlen((const char*)p) + 1;
+								break;
+							default:
+								return false;
+							}
+							break;
+						case DW_LNCT_directory_index:
+							if (file_name_entry_format[i].form == DW_FORM_udata)
+								fname.dir_index = LEB128(p);
+							else
+								return false;
+							break;
+						case DW_LNCT_timestamp:
+						case DW_LNCT_size:
+						default:
+							return false;
+					}
+				}
+				state.files.push_back(fname);
+			}
+		}
 
 		state.init(hdr);
 		while(p < end)

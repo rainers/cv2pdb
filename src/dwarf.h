@@ -196,6 +196,12 @@ extern "C" {
 #define DW_children_yes                 1
 
 
+#define DW_LNCT_path 1
+#define DW_LNCT_directory_index 2
+#define DW_LNCT_timestamp 3
+#define DW_LNCT_size 4
+#define DW_LNCT_MD5 5
+
 
 #define DW_FORM_addr                    0x01
 #define DW_FORM_block2                  0x03
@@ -221,7 +227,11 @@ extern "C" {
 #define DW_FORM_sec_offset              0x17 /* DWARF4 */
 #define DW_FORM_exprloc                 0x18 /* DWARF4 */
 #define DW_FORM_flag_present            0x19 /* DWARF4 */
-/* 0x1a thru 0x1f were left unused accidentally. Reserved for future use. */
+#define DW_FORM_strx                    0x1a /* DWARF5 */
+#define DW_FORM_addrx                   0x1b /* DWARF5 */
+#define DW_FORM_strp_sup                0x1d /* DWARF5 */
+#define DW_FORM_data16                  0x1e /* DWARF5 */
+#define DW_FORM_line_strp               0x1f /* DWARF5 */
 #define DW_FORM_ref_sig8                0x20 /* DWARF4 */
 
 #define DW_AT_sibling                           0x01

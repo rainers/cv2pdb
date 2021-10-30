@@ -137,6 +137,7 @@ public:
 	char* debug_info;     unsigned long debug_info_length;
 	char* debug_abbrev;   unsigned long debug_abbrev_length;
 	char* debug_line;     unsigned long debug_line_length;
+	char* debug_line_str; unsigned long debug_line_str_length;
 	char* debug_frame;    unsigned long debug_frame_length;
 	char* debug_str;
 	char* debug_loc;      unsigned long debug_loc_length;

@@ -492,6 +492,8 @@ void PEImage::initDWARFSegments()
 			debug_abbrev = DPV<char>(sec[s].PointerToRawData, debug_abbrev_length = sizeInImage(sec[s]));
 		if(strcmp(name, ".debug_line") == 0)
 			debug_line = DPV<char>(sec[linesSegment = s].PointerToRawData, debug_line_length = sizeInImage(sec[s]));
+		if (strcmp(name, ".debug_line_str") == 0)
+			debug_line_str = DPV<char>(sec[s].PointerToRawData, debug_line_str_length = sizeInImage(sec[s]));
 		if(strcmp(name, ".debug_frame") == 0)
 			debug_frame = DPV<char>(sec[s].PointerToRawData, debug_frame_length = sizeInImage(sec[s]));
 		if(strcmp(name, ".debug_str") == 0)
