@@ -9,6 +9,8 @@
 #include <comdef.h>
 #include <windows.h>
 #include "packages/Microsoft.VisualStudio.Setup.Configuration.Native.1.16.30/lib/native/include/Setup.Configuration.h"
+#include <fstream>
+#include <string>
 
 _COM_SMARTPTR_TYPEDEF(ISetupConfiguration, __uuidof(ISetupConfiguration));
 _COM_SMARTPTR_TYPEDEF(ISetupInstance, __uuidof(ISetupInstance));
@@ -165,6 +167,69 @@ bool tryLoadMsPdbVS2017(const char* mspdb, const char* path = 0)
 	return modMsPdb != 0;
 }
 
+inline std::string& rtrim(std::string& s, const char* t = "\t\n\r ")
+{
+	s.erase(s.find_last_not_of(t) + 1);
+	return s;
+}
+
+bool tryLoadMsPdbVSWhere(const char* mspdb)
+{
+	HANDLE read;
+	HANDLE write;
+
+	SECURITY_ATTRIBUTES securityAttributes = { 0 };
+	securityAttributes.nLength = sizeof(SECURITY_ATTRIBUTES);
+	securityAttributes.lpSecurityDescriptor = NULL;
+	securityAttributes.bInheritHandle = TRUE;
+	if(!CreatePipe(&read, &write, &securityAttributes, 0) ||
+	   !SetHandleInformation(read, HANDLE_FLAG_INHERIT, 0))
+		return false;
+
+	STARTUPINFOA startupInfo = { 0 };
+	startupInfo.cb = sizeof(startupInfo);
+	startupInfo.dwFlags = STARTF_USESTDHANDLES;
+	startupInfo.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+	startupInfo.hStdOutput = write;
+	startupInfo.hStdError = GetStdHandle(STD_ERROR_HANDLE);
+	PROCESS_INFORMATION processInformation = { 0 };
+	ZeroMemory(&processInformation, sizeof(PROCESS_INFORMATION));
+
+	std::string vsPath;
+	char buffer[1024] = "";
+	char commandLine[] = "vswhere.exe -latest -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath";
+	if(CreateProcessA("C:\\Program Files (x86)\\Microsoft Visual Studio\\Installer\\vswhere.exe", commandLine, NULL, NULL, TRUE, 0, NULL, NULL, &startupInfo, &processInformation))
+	{
+		CloseHandle(processInformation.hProcess);
+		CloseHandle(processInformation.hThread);
+
+		DWORD length;
+		if (ReadFile(read, buffer, sizeof(buffer) - 1, &length, NULL))
+		{
+			buffer[length] = '\0';
+			vsPath += buffer;
+		}
+	}
+	CloseHandle(read);
+	CloseHandle(write);
+	rtrim(vsPath);
+	if (vsPath.empty())
+		return false;
+
+	// Read the version
+	std::ifstream versionFile(vsPath + "\\VC\\Auxiliary\\Build\\Microsoft.VCToolsVersion.default.txt");
+	if (versionFile.fail())
+		return false;
+	std::string contents;
+	contents.assign(std::istreambuf_iterator<char>(versionFile), std::istreambuf_iterator<char>());
+	versionFile.close();
+	rtrim(contents);
+
+	std::string dllPath = vsPath + "\\VC\\Tools\\MSVC\\" + contents + "\\bin\\" + (sizeof(void*) == 8 ? "Hostx64\\x64\\" : "Hostx86\\x86\\") + mspdb;
+	tryLoadLibrary(dllPath.c_str());
+	return modMsPdb != 0;
+}
+
 #ifdef _M_X64
 #define BIN_DIR_GE_VS12 "..\\..\\VC\\bin\\amd64\\"
 #define BIN_DIR_LT_VS12 BIN_DIR_GE_VS12
@@ -247,6 +312,8 @@ void tryLoadMsPdb140(bool throughPath)
 			tryLoadMsPdb("VisualStudio\\14.0", mspdb140_dll, BIN_DIR_GE_VS12);
 		if (!modMsPdb && !throughPath)
 			tryLoadMsPdb("VSWinExpress\\14.0", mspdb140_dll, BIN_DIR_GE_VS12);
+		if (!modMsPdb && !throughPath)
+			tryLoadMsPdbVSWhere(mspdb140_dll);
 		if (modMsPdb)
 			mspdb::vsVersion = 14;
 	}
