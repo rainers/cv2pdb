@@ -1,4 +1,4 @@
-name: build cv2pdb
+name: build and test cv2pdb
 
 on: [push, pull_request]
 
@@ -26,3 +26,30 @@ jobs:
         with:
           name: bin
           path: bin
+  test-with-g4w-sdk:
+    runs-on: windows-latest
+    needs: build
+    steps:
+      - name: Download bin/
+        uses: actions/download-artifact@v2
+        with:
+          name: bin
+          path: bin
+      - uses: git-for-windows/setup-git-for-windows-sdk@v1
+      - name: verify using Git for Windows' GCC
+        shell: bash
+        run: |
+          set -x &&
+          cat >hello.c <<-\EOF &&
+          #include <stdio.h>
+
+          int main(int argc, char **argv)
+          {
+            printf("Hello, world\n");
+            return 0;
+          }
+          EOF
+
+          gcc -g -o hello.exe hello.c &&
+          bin/${{env.BUILD_CONFIGURATION}}*/cv2pdb.exe hello.exe world.exe &&
+          ls -l hello* world*
