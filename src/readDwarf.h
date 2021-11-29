@@ -1,12 +1,29 @@
 #ifndef __READDWARF_H__
 #define __READDWARF_H__
 
+#include <Windows.h>
 #include <cstring>
 #include <string>
 #include <vector>
+#include <unordered_map>
 #include "mspdb.h"
 
+class PEImage;
+
 typedef unsigned char byte;
+
+enum DebugLevel : unsigned {
+	DbgBasic = 0x1,
+	DbgPdbTypes = 0x2,
+	DbgPdbSyms = 0x4,
+	DbgPdbLines = 0x8,
+	DbgDwarfTagRead = 0x10,
+	DbgDwarfAttrRead = 0x20,
+	DbgDwarfLocLists = 0x40,
+	DbgDwarfLines = 0x80
+};
+
+DEFINE_ENUM_FLAG_OPERATORS(DebugLevel);
 
 inline unsigned int LEB128(byte* &p)
 {
@@ -138,7 +155,6 @@ struct DWARF_FileName
 struct DWARF_InfoData
 {
 	byte* entryPtr;
-	unsigned entryOff; // offset in the cu
 	int code;
 	byte* abbrev;
 	int tag;
@@ -382,7 +398,8 @@ struct Location
 	bool is_regrel() const { return type == RegRel; }
 };
 
-class PEImage;
+typedef std::unordered_map<std::pair<unsigned, unsigned>, byte*> abbrevMap_t;
+
 
 // Attempts to partially evaluate DWARF location expressions.
 // The only supported expressions are those, whose result may be represented
@@ -398,15 +415,20 @@ class DIECursor
 public:
 	DWARF_CompilationUnit* cu;
 	byte* ptr;
+	unsigned int entryOff;
 	int level;
 	bool hasChild; // indicates whether the last read DIE has children
 	byte* sibling;
+
+	static PEImage *img;
+	static abbrevMap_t abbrevMap;
+	static DebugLevel debug;
 
 	byte* getDWARFAbbrev(unsigned off, unsigned findcode);
 
 public:
 
-	static void setContext(PEImage* img_);
+	static void setContext(PEImage* img_, DebugLevel debug_);
 
 	// Create a new DIECursor
 	DIECursor(DWARF_CompilationUnit* cu_, byte* ptr);
@@ -429,6 +451,6 @@ public:
 
 // iterate over DWARF debug_line information
 // if mod is null, print them out, otherwise add to module
-bool interpretDWARFLines(const PEImage& img, mspdb::Mod* mod);
+bool interpretDWARFLines(const PEImage& img, mspdb::Mod* mod, DebugLevel debug = DebugLevel{});
 
 #endif

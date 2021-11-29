@@ -1,14 +1,37 @@
 #include "readDwarf.h"
 #include <assert.h>
-#include <unordered_map>
 #include <array>
-#include <windows.h>
 
 #include "PEImage.h"
 #include "dwarf.h"
 #include "mspdb.h"
 extern "C" {
 	#include "mscvpdb.h"
+}
+
+
+// declare hasher for pair<T1,T2>
+namespace std
+{
+template<typename T1, typename T2>
+struct hash<std::pair<T1, T2>>
+{
+	size_t operator()(const std::pair<T1, T2>& t) const
+	{
+		return std::hash<T1>()(t.first) ^ std::hash<T2>()(t.second);
+	}
+};
+}
+
+PEImage* DIECursor::img;
+abbrevMap_t DIECursor::abbrevMap;
+DebugLevel DIECursor::debug;
+
+void DIECursor::setContext(PEImage* img_, DebugLevel debug_)
+{
+	img = img_;
+	abbrevMap.clear();
+	debug = debug_;
 }
 
 static Location mkInReg(unsigned reg)
@@ -320,31 +343,6 @@ void mergeSpecification(DWARF_InfoData& id, DWARF_CompilationUnit* cu)
 	id.merge(idspec);
 }
 
-// declare hasher for pair<T1,T2>
-namespace std
-{
-	template<typename T1, typename T2>
-	struct hash<std::pair<T1, T2>>
-	{
-		size_t operator()(const std::pair<T1, T2>& t) const
-		{
-			return std::hash<T1>()(t.first) ^ std::hash<T2>()(t.second);
-		}
-	};
-}
-
-typedef std::unordered_map<std::pair<unsigned, unsigned>, byte*> abbrevMap_t;
-
-static PEImage* img;
-static abbrevMap_t abbrevMap;
-
-void DIECursor::setContext(PEImage* img_)
-{
-	img = img_;
-	abbrevMap.clear();
-}
-
-
 DIECursor::DIECursor(DWARF_CompilationUnit* cu_, byte* ptr_)
 {
 	cu = cu_;
@@ -415,7 +413,7 @@ bool DIECursor::readNext(DWARF_InfoData& id, bool stopAtNull)
 			return false; // root of the tree does not have a null terminator, but we know the length
 
 		id.entryPtr = ptr;
-		id.entryOff = ptr - (byte*)cu;
+		entryOff = img->debug_info.sectOff(ptr);
 		id.code = LEB128(ptr);
 		if (id.code == 0)
 		{
@@ -432,13 +430,20 @@ bool DIECursor::readNext(DWARF_InfoData& id, bool stopAtNull)
 	}
 
 	byte* abbrev = getDWARFAbbrev(cu->debug_abbrev_offset, id.code);
-	assert(abbrev);
-	if (!abbrev)
+	if (!abbrev) {
+		fprintf(stderr, "ERROR: %s:%d: unknown abbrev: num=%d off=%x\n", __FUNCTION__, __LINE__,
+				id.code, entryOff);
+		assert(abbrev);
 		return false;
+	}
 
 	id.abbrev = abbrev;
 	id.tag = LEB128(abbrev);
 	id.hasChild = *abbrev++;
+	
+	if (debug & DbgDwarfAttrRead)
+		fprintf(stderr, "%s:%d: offs=%d level=%d tag=%d abbrev=%d\n", __FUNCTION__, __LINE__,
+				entryOff, level, id.tag, id.code);
 
 	int attr, form;
 	for (;;)
@@ -449,8 +454,16 @@ bool DIECursor::readNext(DWARF_InfoData& id, bool stopAtNull)
 		if (attr == 0 && form == 0)
 			break;
 
-		while (form == DW_FORM_indirect)
+		if (debug & DbgDwarfAttrRead)
+			fprintf(stderr, "%s:%d: offs=%x, attr=%d, form=%d\n", __FUNCTION__, __LINE__,
+					img->debug_info.sectOff(ptr), attr, form);
+
+		while (form == DW_FORM_indirect) {
 			form = LEB128(ptr);
+			if (debug & DbgDwarfAttrRead)
+				fprintf(stderr, "%s:%d: attr=%d, form=%d\n", __FUNCTION__, __LINE__,
+						attr, form);
+		}
 
 		DWARF_Attribute a;
 		switch (form)
@@ -467,7 +480,7 @@ bool DIECursor::readNext(DWARF_InfoData& id, bool stopAtNull)
 			case DW_FORM_sdata:          a.type = Const; a.cons = SLEB128(ptr); break;
 			case DW_FORM_udata:          a.type = Const; a.cons = LEB128(ptr); break;
 			case DW_FORM_string:         a.type = String; a.string = (const char*)ptr; ptr += strlen(a.string) + 1; break;
-            case DW_FORM_strp:           a.type = String; a.string = (const char*)(img->debug_str + RDsize(ptr, cu->isDWARF64() ? 8 : 4)); break;
+            case DW_FORM_strp:           a.type = String; a.string = (const char*)img->debug_str.byteAt(RDsize(ptr, cu->isDWARF64() ? 8 : 4)); break;
 			case DW_FORM_flag:           a.type = Flag; a.flag = (*ptr++ != 0); break;
 			case DW_FORM_flag_present:   a.type = Flag; a.flag = true; break;
 			case DW_FORM_ref1:           a.type = Ref; a.ref = (byte*)cu + *ptr++; break;
@@ -475,7 +488,7 @@ bool DIECursor::readNext(DWARF_InfoData& id, bool stopAtNull)
 			case DW_FORM_ref4:           a.type = Ref; a.ref = (byte*)cu + RD4(ptr); break;
 			case DW_FORM_ref8:           a.type = Ref; a.ref = (byte*)cu + RD8(ptr); break;
 			case DW_FORM_ref_udata:      a.type = Ref; a.ref = (byte*)cu + LEB128(ptr); break;
-			case DW_FORM_ref_addr:       a.type = Ref; a.ref = (byte*)img->debug_info + (cu->isDWARF64() ? RD8(ptr) : RD4(ptr)); break;
+			case DW_FORM_ref_addr:       a.type = Ref; a.ref = img->debug_info.byteAt(cu->isDWARF64() ? RD8(ptr) : RD4(ptr)); break;
 			case DW_FORM_ref_sig8:       a.type = Invalid; ptr += 8;  break;
 			case DW_FORM_exprloc:        a.type = ExprLoc; a.expr.len = LEB128(ptr); a.expr.ptr = ptr; ptr += a.expr.len; break;
 			case DW_FORM_sec_offset:     a.type = SecOffset;  a.sec_offset = cu->isDWARF64() ? RD8(ptr) : RD4(ptr); break;
@@ -578,7 +591,7 @@ bool DIECursor::readNext(DWARF_InfoData& id, bool stopAtNull)
 
 byte* DIECursor::getDWARFAbbrev(unsigned off, unsigned findcode)
 {
-	if (!img->debug_abbrev)
+	if (!img->debug_abbrev.isPresent())
 		return 0;
 
 	std::pair<unsigned, unsigned> key = std::make_pair(off, findcode);
@@ -588,8 +601,8 @@ byte* DIECursor::getDWARFAbbrev(unsigned off, unsigned findcode)
 		return it->second;
 	}
 
-	byte* p = (byte*)img->debug_abbrev + off;
-	byte* end = (byte*)img->debug_abbrev + img->debug_abbrev_length;
+	byte* p = img->debug_abbrev.byteAt(off);
+	byte* end = img->debug_abbrev.endByte();
 	while (p < end)
 	{
 		int code = LEB128(p);

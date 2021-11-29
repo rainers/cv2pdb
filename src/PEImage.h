@@ -15,12 +15,80 @@
 struct OMFDirHeader;
 struct OMFDirEntry;
 
+typedef unsigned char byte;
+
 struct SymbolInfo
 {
 	int seg;
 	unsigned long off;
 	bool dllimport;
 };
+
+struct PESection
+{
+	byte* base;
+	unsigned long length;
+	unsigned int secNo;
+
+	PESection()
+		: base(0)
+		, length(0)
+		, secNo(0)
+	{
+	}
+
+	byte* byteAt(unsigned int off) const
+	{
+		return base + off;
+	}
+
+	byte* startByte() const
+	{
+		return byteAt(0);
+	}
+
+	byte* endByte() const
+	{
+		return byteAt(0) + length;
+	}
+
+	bool isPresent() const
+	{
+		return base && length;
+	}
+
+	bool isPtrInside(const void *p) const
+	{
+		auto pInt = (uintptr_t)p;
+		return (pInt >= (uintptr_t)base && pInt < (uintptr_t)base + length);
+	}
+
+	unsigned int sectOff(void *p) const
+	{
+		return (unsigned int)((uintptr_t)p - (uintptr_t)base);
+	}
+};
+
+// Define the list of interesting PE sections in one place so that we can
+// generate definitions needed to populate our pointers and reference each
+// section.
+
+#define SECTION_LIST() \
+	EXPANDSEC(debug_addr) \
+	EXPANDSEC(debug_info) \
+	EXPANDSEC(debug_abbrev) \
+	EXPANDSEC(debug_line) \
+	EXPANDSEC(debug_line_str) \
+	EXPANDSEC(debug_frame) \
+	EXPANDSEC(debug_str) \
+	EXPANDSEC(debug_str_offsets) \
+	EXPANDSEC(debug_loc) \
+	EXPANDSEC(debug_loclists) \
+	EXPANDSEC(debug_ranges) \
+	EXPANDSEC(debug_rnglists) \
+	EXPANDSEC(reloc) \
+	EXPANDSEC(text)
+
 
 #define IMGHDR(x) (hdr32 ? hdr32->x : hdr64->x)
 
@@ -70,6 +138,7 @@ public:
 	bool save(const TCHAR* oname);
 
 	bool replaceDebugSection (const void* data, int datalen, bool initCV);
+	void initSec(PESection& peSec, int secNo) const;
 	bool initCVPtr(bool initDbgDir);
 	bool initDbgPtr(bool initDbgDir);
 	bool initDWARFPtr(bool initDbgDir);
@@ -77,7 +146,7 @@ public:
     void initDWARFSegments();
 	bool relocateDebugLineInfo(unsigned int img_base);
 
-	bool hasDWARF() const { return debug_line != 0; }
+	bool hasDWARF() const { return debug_line.isPresent(); }
 	bool isX64() const { return x64; }
 	bool isDBG() const { return dbgfile; }
 
@@ -131,23 +200,30 @@ private:
 
 public:
 	//dwarf
-	char* debug_aranges;
-	char* debug_pubnames;
-	char* debug_pubtypes;
-	char* debug_info;     unsigned long debug_info_length;
-	char* debug_abbrev;   unsigned long debug_abbrev_length;
-	char* debug_line;     unsigned long debug_line_length;
-	char* debug_line_str; unsigned long debug_line_str_length;
-	char* debug_frame;    unsigned long debug_frame_length;
-	char* debug_str;
-	char* debug_loc;      unsigned long debug_loc_length;
-	char* debug_ranges;   unsigned long debug_ranges_length;
-	char* reloc;          unsigned long reloc_length;
+#define EXPANDSEC(name) PESection name;
+	SECTION_LIST()
+#undef EXPANDSEC
 
-	int linesSegment;
-	int codeSegment;
 	int cv_base;
 };
 
+struct SectionDescriptor {
+	const char *name;
+	PESection PEImage::* pSec;
+};
+
+#define EXPANDSEC(name) constexpr SectionDescriptor sec_desc_##name { "." #name, &PEImage::name };
+SECTION_LIST()
+#undef EXPANDSEC
+
+constexpr const SectionDescriptor *sec_descriptors[] =
+{
+#define EXPANDSEC(name) &sec_desc_##name,
+	SECTION_LIST()
+#undef EXPANDSEC
+};
+
+
+#undef SECTION_LIST
 
 #endif //__PEIMAGE_H__

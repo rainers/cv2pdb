@@ -10,6 +10,8 @@
 #include "dwarf.h"
 #include "readDwarf.h"
 
+static DebugLevel debug;
+
 bool isRelativePath(const std::string& s)
 {
 	if(s.length() < 1)
@@ -57,11 +59,7 @@ bool _flushDWARFLines(const PEImage& img, mspdb::Mod* mod, DWARF_LineState& stat
 		// throw away invalid lines (mostly due to "set address to 0")
 		state.lineInfo.resize(0);
 		return true;
-		//return false;
 	}
-
-//    if(saddr >= 0x4000)
-//        return true;
 
 	const DWARF_FileName* dfn;
 	if(state.lineInfo_file == 0)
@@ -92,14 +90,8 @@ bool _flushDWARFLines(const PEImage& img, mspdb::Mod* mod, DWARF_LineState& stat
 		return true;
     }
 #if 1
-	bool dump = false; // (fname == "cvtest.d");
 	//qsort(&state.lineInfo[0], state.lineInfo.size(), sizeof(state.lineInfo[0]), cmpAdr);
-#if 0
-	printf("%s:\n", fname.c_str());
-	for(size_t ln = 0; ln < state.lineInfo.size(); ln++)
-		printf("  %08x: %4d\n", state.lineInfo[ln].offset + 0x401000, state.lineInfo[ln].line);
-#endif
-	
+
 	int rc = 1;
 	unsigned int low_offset = state.lineInfo[0].offset;
 	unsigned short low_line = state.lineInfo[0].line;
@@ -120,9 +112,11 @@ bool _flushDWARFLines(const PEImage& img, mspdb::Mod* mod, DWARF_LineState& stat
 	// This subtraction can underflow to (unsigned)-1 if this info is only for a single instruction, but AddLines will immediately increment it to 0, so this is fine.  Not underflowing this can cause the debugger to ignore other line info for address ranges that include this address.
 	unsigned int address_range_length = high_offset - low_offset;
 
-	if (dump)
-		printf("AddLines(%08x+%04x, Line=%4d+%3d, %s)\n", low_offset, address_range_length, low_line,
-		       state.lineInfo.size(), fname.c_str());
+	if (debug & DbgPdbLines)
+		fprintf(stderr, "%s:%d: AddLines(%08x+%04x, Line=%4d+%3d, %s)\n", __FUNCTION__, __LINE__,
+				low_offset, address_range_length, low_line,
+				(unsigned int)state.lineInfo.size(), fname.c_str());
+
 	rc = mod->AddLines(fname.c_str(), segIndex + 1, low_offset, address_range_length, low_offset, low_line,
 	                   (unsigned char*)&state.lineInfo[0],
 	                   state.lineInfo.size() * sizeof(state.lineInfo[0]));
@@ -147,10 +141,6 @@ bool addLineInfo(const PEImage& img, mspdb::Mod* mod, DWARF_LineState& state)
 	if (state.end_sequence)
 		return _flushDWARFLines(img, mod, state);
 
-#if 0
-	const char* fname = (state.file == 0 ? state.file_ptr->file_name : state.files[state.file - 1].file_name);
-	printf("Adr:%08x Line: %5d File: %s\n", state.address, state.line, fname);
-#endif
 	if (state.address < state.seg_offset)
 		return true;
 	mspdb::LineInfoEntry entry;
@@ -177,15 +167,17 @@ bool addLineInfo(const PEImage& img, mspdb::Mod* mod, DWARF_LineState& state)
 	return true;
 }
 
-bool interpretDWARFLines(const PEImage& img, mspdb::Mod* mod)
+bool interpretDWARFLines(const PEImage& img, mspdb::Mod* mod, DebugLevel debug_)
 {
-	DWARF_CompilationUnit* cu = (DWARF_CompilationUnit*)img.debug_info;
+	DWARF_CompilationUnit* cu = (DWARF_CompilationUnit*)img.debug_info.startByte();
 	int ptrsize = cu ? cu->address_size : 4;
 
+	debug = debug_;
+
 	DWARF_LineNumberProgramHeader hdr5;
-	for(unsigned long off = 0; off < img.debug_line_length; )
+	for(unsigned long off = 0; off < img.debug_line.length; )
 	{
-		DWARF_LineNumberProgramHeader* hdrver = (DWARF_LineNumberProgramHeader*) (img.debug_line + off);
+		DWARF_LineNumberProgramHeader* hdrver = (DWARF_LineNumberProgramHeader*)img.debug_line.byteAt(off);
 		int length = hdrver->unit_length;
 		if(length < 0)
 			break;
@@ -226,6 +218,10 @@ bool interpretDWARFLines(const PEImage& img, mspdb::Mod* mod)
 		unsigned char* p = (unsigned char*) hdrver + hdrlength;
 		unsigned char* end = (unsigned char*) hdrver + length;
 
+		if (debug & DbgDwarfLines)
+			fprintf(stderr, "%s:%d: LineNumberProgramHeader offs=%x ver=%d\n", __FUNCTION__, __LINE__,
+					off, hdr->version);
+
 		std::vector<unsigned int> opcode_lengths;
 		opcode_lengths.resize(hdr->opcode_base);
 		if (hdr->opcode_base > 0)
@@ -236,7 +232,7 @@ bool interpretDWARFLines(const PEImage& img, mspdb::Mod* mod)
 		}
 
 		DWARF_LineState state;
-		state.seg_offset = img.getImageBase() + img.getSection(img.codeSegment).VirtualAddress;
+		state.seg_offset = img.getImageBase() + img.getSection(img.text.secNo).VirtualAddress;
 
 		DWARF_FileName fname;
 		if (hdr->version <= 4)
@@ -285,7 +281,7 @@ bool interpretDWARFLines(const PEImage& img, mspdb::Mod* mod)
 							case DW_FORM_line_strp:
 							{
 								size_t offset = cu->isDWARF64() ? RD8(p) : RD4(p);
-								state.include_dirs.push_back(img.debug_line_str + offset);
+								state.include_dirs.push_back((const char*)img.debug_line_str.byteAt(offset));
 								break;
 							}
 							case DW_FORM_string:
@@ -327,7 +323,7 @@ bool interpretDWARFLines(const PEImage& img, mspdb::Mod* mod)
 							case DW_FORM_line_strp:
 							{
 								size_t offset = cu->isDWARF64() ? RD8(p) : RD4(p);
-								fname.file_name = img.debug_line_str + offset;
+								fname.file_name = (const char*)img.debug_line_str.byteAt(offset);
 								break;
 							}
 							case DW_FORM_string:
@@ -387,8 +383,6 @@ bool interpretDWARFLines(const PEImage& img, mspdb::Mod* mod)
 					switch(excode)
 					{
 					case DW_LNE_end_sequence:
-						if((char*)p - img.debug_line >= 0xe4e0)
-							p = p;
 						state.end_sequence = true;
 						state.last_addr = state.address;
 						if(!addLineInfo(img, mod, state))
@@ -398,7 +392,7 @@ bool interpretDWARFLines(const PEImage& img, mspdb::Mod* mod)
 					case DW_LNE_set_address:
 					{
 						if (!mod && state.section == -1)
-							state.section = img.getRelocationInLineSegment((char*)p - img.debug_line);
+							state.section = img.getRelocationInLineSegment(img.debug_line.sectOff(p));
 						unsigned long adr = ptrsize == 8 ? RD8(p) : RD4(p);
 						state.address = adr;
 						state.op_index = 0;
