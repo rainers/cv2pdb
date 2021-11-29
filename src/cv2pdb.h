@@ -30,7 +30,7 @@ class CFIIndex;
 class CV2PDB : public LastError
 {
 public:
-	CV2PDB(PEImage& image);
+	CV2PDB(PEImage& image, DebugLevel debug);
 	~CV2PDB();
 
 	bool cleanup(bool commit);
@@ -265,7 +265,7 @@ public:
 	bool useGlobalMod;
 	bool thisIsNotRef;
 	bool v3;
-	bool debug;
+	DebugLevel debug;
 	const char* lastError;
 
 	int srcLineSections;

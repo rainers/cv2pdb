@@ -35,19 +35,8 @@ PEImage::PEImage(const TCHAR* iname)
 , hdr32(0)
 , hdr64(0)
 , fd(-1)
-, debug_aranges(0)
-, debug_pubnames(0)
-, debug_pubtypes(0)
-, debug_info(0), debug_info_length(0)
-, debug_abbrev(0), debug_abbrev_length(0)
-, debug_line(0), debug_line_length(0)
-, debug_frame(0), debug_frame_length(0)
-, debug_str(0)
-, debug_loc(0), debug_loc_length(0)
-, debug_ranges(0), debug_ranges_length(0)
 , codeSegment(0)
 , linesSegment(-1)
-, reloc(0), reloc_length(0)
 , nsec(0)
 , nsym(0)
 , symtable(0)
@@ -470,6 +459,11 @@ static DWORD sizeInImage(const IMAGE_SECTION_HEADER& sec)
     return sec.SizeOfRawData < sec.Misc.VirtualSize ? sec.SizeOfRawData : sec.Misc.VirtualSize;
 }
 
+void PEImage::initSec(PESection& sec, const IMAGE_SECTION_HEADER& imgSec) const
+{
+	sec.base = DPV<char>(imgSec.PointerToRawData, sec.length = sizeInImage(imgSec));
+}
+
 void PEImage::initDWARFSegments()
 {
 	for(int s = 0; s < nsec; s++)
@@ -480,30 +474,31 @@ void PEImage::initDWARFSegments()
 			int off = strtol(name + 1, 0, 10);
 			name = strtable + off;
 		}
-		if(strcmp(name, ".debug_aranges") == 0)
-			debug_aranges = DPV<char>(sec[s].PointerToRawData, sizeInImage(sec[s]));
-		if(strcmp(name, ".debug_pubnames") == 0)
-			debug_pubnames = DPV<char>(sec[s].PointerToRawData, sizeInImage(sec[s]));
-		if(strcmp(name, ".debug_pubtypes") == 0)
-			debug_pubtypes = DPV<char>(sec[s].PointerToRawData, sizeInImage(sec[s]));
-		if(strcmp(name, ".debug_info") == 0)
-			debug_info = DPV<char>(sec[s].PointerToRawData, debug_info_length = sizeInImage(sec[s]));
-		if(strcmp(name, ".debug_abbrev") == 0)
-			debug_abbrev = DPV<char>(sec[s].PointerToRawData, debug_abbrev_length = sizeInImage(sec[s]));
-		if(strcmp(name, ".debug_line") == 0)
-			debug_line = DPV<char>(sec[linesSegment = s].PointerToRawData, debug_line_length = sizeInImage(sec[s]));
+
+		if (strcmp(name, ".debug_info") == 0)
+			initSec(debug_info, sec[s]);
+		if (strcmp(name, ".debug_addr") == 0)
+			initSec(debug_addr, sec[s]);
+		if (strcmp(name, ".debug_abbrev") == 0)
+			initSec(debug_abbrev, sec[s]);
+		if (strcmp(name, ".debug_line") == 0)
+			initSec(debug_line, sec[linesSegment = s]);
 		if (strcmp(name, ".debug_line_str") == 0)
-			debug_line_str = DPV<char>(sec[s].PointerToRawData, debug_line_str_length = sizeInImage(sec[s]));
-		if(strcmp(name, ".debug_frame") == 0)
-			debug_frame = DPV<char>(sec[s].PointerToRawData, debug_frame_length = sizeInImage(sec[s]));
-		if(strcmp(name, ".debug_str") == 0)
-			debug_str = DPV<char>(sec[s].PointerToRawData, sizeInImage(sec[s]));
-		if(strcmp(name, ".debug_loc") == 0)
-			debug_loc = DPV<char>(sec[s].PointerToRawData, debug_loc_length = sizeInImage(sec[s]));
-		if(strcmp(name, ".debug_ranges") == 0)
-			debug_ranges = DPV<char>(sec[s].PointerToRawData, debug_ranges_length = sizeInImage(sec[s]));
-		if(strcmp(name, ".reloc") == 0)
-			reloc = DPV<char>(sec[s].PointerToRawData, reloc_length = sizeInImage(sec[s]));
+			initSec(debug_line_str, sec[s]);
+		if (strcmp(name, ".debug_frame") == 0)
+			initSec(debug_frame, sec[s]);
+		if (strcmp(name, ".debug_str") == 0)
+			initSec(debug_str, sec[s]);
+		if (strcmp(name, ".debug_loc") == 0)
+			initSec(debug_loc, sec[s]);
+		if (strcmp(name, ".debug_loclists") == 0)
+			initSec(debug_loclists, sec[s]);
+		if (strcmp(name, ".debug_ranges") == 0)
+			initSec(debug_ranges, sec[s]);
+		if (strcmp(name, ".debug_rnglists") == 0)
+			initSec(debug_rnglists, sec[s]);
+		if (strcmp(name, ".reloc") == 0)
+			initSec(reloc, sec[s]);
 		if(strcmp(name, ".text") == 0)
 			codeSegment = s;
 	}
@@ -511,18 +506,18 @@ void PEImage::initDWARFSegments()
 
 bool PEImage::relocateDebugLineInfo(unsigned int img_base)
 {
-	if(!reloc || !reloc_length)
+	if(!reloc.isPresent())
 		return true;
 
-	char* relocbase = reloc;
-	char* relocend = reloc + reloc_length;
+	char* relocbase = reloc.base;
+	char* relocend = relocbase + reloc.length;
 	while(relocbase < relocend)
 	{
 		unsigned int virtadr = *(unsigned int *) relocbase;
 		unsigned int chksize = *(unsigned int *) (relocbase + 4);
 
 		char* p = RVA<char> (virtadr, 1);
-		if(p >= debug_line && p < debug_line + debug_line_length)
+		if(debug_line.isPtrInside(p))
 		{
 			for (unsigned int w = 8; w < chksize; w += 2)
 			{
@@ -536,7 +531,7 @@ bool PEImage::relocateDebugLineInfo(unsigned int img_base)
 				}
 			}
 		}
-		if(chksize == 0 || chksize >= reloc_length)
+		if(chksize == 0 || chksize >= reloc.length)
 			break;
 		relocbase += chksize;
 	}

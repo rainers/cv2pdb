@@ -22,6 +22,34 @@ struct SymbolInfo
 	bool dllimport;
 };
 
+struct PESection
+{
+	char *base;
+	unsigned long length;
+
+	PESection()
+		: base(0)
+		, length(0)
+	{
+	}
+
+	bool isPresent() const
+	{
+		return base && length;
+	}
+
+	bool isPtrInside(const void *p) const
+	{
+		auto pInt = (uintptr_t)p;
+		return (pInt >= (uintptr_t)base && pInt < (uintptr_t)base + length);
+	}
+
+	unsigned int sectOff(void *p) const
+	{
+		return (unsigned int)((uintptr_t)p - (uintptr_t)base);
+	}
+};
+
 #define IMGHDR(x) (hdr32 ? hdr32->x : hdr64->x)
 
 class PEImage : public LastError
@@ -70,6 +98,7 @@ public:
 	bool save(const TCHAR* oname);
 
 	bool replaceDebugSection (const void* data, int datalen, bool initCV);
+	void initSec(PESection& peSec, const IMAGE_SECTION_HEADER& imgSec) const;
 	bool initCVPtr(bool initDbgDir);
 	bool initDbgPtr(bool initDbgDir);
 	bool initDWARFPtr(bool initDbgDir);
@@ -77,7 +106,7 @@ public:
     void initDWARFSegments();
 	bool relocateDebugLineInfo(unsigned int img_base);
 
-	bool hasDWARF() const { return debug_line != 0; }
+	bool hasDWARF() const { return debug_line.isPresent(); }
 	bool isX64() const { return x64; }
 	bool isDBG() const { return dbgfile; }
 
@@ -131,18 +160,18 @@ private:
 
 public:
 	//dwarf
-	char* debug_aranges;
-	char* debug_pubnames;
-	char* debug_pubtypes;
-	char* debug_info;     unsigned long debug_info_length;
-	char* debug_abbrev;   unsigned long debug_abbrev_length;
-	char* debug_line;     unsigned long debug_line_length;
-	char* debug_line_str; unsigned long debug_line_str_length;
-	char* debug_frame;    unsigned long debug_frame_length;
-	char* debug_str;
-	char* debug_loc;      unsigned long debug_loc_length;
-	char* debug_ranges;   unsigned long debug_ranges_length;
-	char* reloc;          unsigned long reloc_length;
+	PESection debug_addr;
+	PESection debug_info;
+	PESection debug_abbrev;
+	PESection debug_line;
+	PESection debug_line_str;
+	PESection debug_frame;
+	PESection debug_str;
+	PESection debug_loc;
+	PESection debug_loclists;
+	PESection debug_ranges;
+	PESection debug_rnglists;
+	PESection reloc;
 
 	int linesSegment;
 	int codeSegment;
