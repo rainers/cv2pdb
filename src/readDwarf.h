@@ -8,9 +8,9 @@
 #include <unordered_map>
 #include "mspdb.h"
 
-class PEImage;
-
 typedef unsigned char byte;
+class PEImage;
+class DIECursor;
 
 enum DebugLevel : unsigned {
 	DbgBasic = 0x1,
@@ -406,8 +406,8 @@ typedef std::unordered_map<std::pair<unsigned, unsigned>, byte*> abbrevMap_t;
 // as either an absolute value, a register, or a register-relative address.
 Location decodeLocation(const PEImage& img, const DWARF_Attribute& attr, const Location* frameBase = 0, int at = 0);
 
-void mergeAbstractOrigin(DWARF_InfoData& id, DWARF_CompilationUnit* cu);
-void mergeSpecification(DWARF_InfoData& id, DWARF_CompilationUnit* cu);
+void mergeAbstractOrigin(DWARF_InfoData& id, const DIECursor& parent);
+void mergeSpecification(DWARF_InfoData& id, const DIECursor& parent);
 
 // Debug Information Entry Cursor
 class DIECursor
@@ -433,6 +433,9 @@ public:
 	// Create a new DIECursor
 	DIECursor(DWARF_CompilationUnit* cu_, byte* ptr);
 
+	// Create a child DIECursor
+	DIECursor(const DIECursor& parent, byte* ptr_);
+
 	// Goto next sibling DIE.  If the last read DIE had any children, they will be skipped over.
 	void gotoSibling();
 
@@ -447,6 +450,15 @@ public:
 	// If stopAtNull is true, readNext() will stop upon reaching a null DIE (end of the current tree level).
 	// Otherwise, it will skip null DIEs and stop only at the end of the subtree for which this DIECursor was created.
 	bool readNext(DWARF_InfoData& id, bool stopAtNull = false);
+
+	// Read an address from p according to the ambient pointer size.
+	uint64_t RDAddr(byte* &p) const
+	{
+		if (cu->address_size == 4)
+			return RD4(p);
+
+		return RD8(p);
+	}
 };
 
 // iterate over DWARF debug_line information
