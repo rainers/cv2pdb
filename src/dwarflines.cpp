@@ -169,8 +169,13 @@ bool addLineInfo(const PEImage& img, mspdb::Mod* mod, DWARF_LineState& state)
 
 bool interpretDWARFLines(const PEImage& img, mspdb::Mod* mod, DebugLevel debug_)
 {
-	DWARF_CompilationUnit* cu = (DWARF_CompilationUnit*)img.debug_info.startByte();
-	int ptrsize = cu ? cu->address_size : 4;
+	DWARF_CompilationUnitInfo cu{};
+
+	if (!cu.read(img, 0)) {
+		return false;
+	}
+
+	int ptrsize = cu.address_size;
 
 	debug = debug_;
 
@@ -280,7 +285,7 @@ bool interpretDWARFLines(const PEImage& img, mspdb::Mod* mod, DebugLevel debug_)
 							{
 							case DW_FORM_line_strp:
 							{
-								size_t offset = cu->isDWARF64() ? RD8(p) : RD4(p);
+								size_t offset = cu.isDWARF64() ? RD8(p) : RD4(p);
 								state.include_dirs.push_back((const char*)img.debug_line_str.byteAt(offset));
 								break;
 							}
@@ -322,7 +327,7 @@ bool interpretDWARFLines(const PEImage& img, mspdb::Mod* mod, DebugLevel debug_)
 							{
 							case DW_FORM_line_strp:
 							{
-								size_t offset = cu->isDWARF64() ? RD8(p) : RD4(p);
+								size_t offset = cu.isDWARF64() ? RD8(p) : RD4(p);
 								fname.file_name = (const char*)img.debug_line_str.byteAt(offset);
 								break;
 							}

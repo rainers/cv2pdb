@@ -17,10 +17,12 @@ enum DebugLevel : unsigned {
 	DbgPdbTypes = 0x2,
 	DbgPdbSyms = 0x4,
 	DbgPdbLines = 0x8,
-	DbgDwarfTagRead = 0x10,
-	DbgDwarfAttrRead = 0x20,
-	DbgDwarfLocLists = 0x40,
-	DbgDwarfLines = 0x80
+	DbgPdbContrib = 0x10,
+	DbgDwarfTagRead = 0x100,
+	DbgDwarfAttrRead = 0x200,
+	DbgDwarfLocLists = 0x400,
+	DbgDwarfRangeLists = 0x800,
+	DbgDwarfLines = 0x1000
 };
 
 DEFINE_ENUM_FLAG_OPERATORS(DebugLevel);
@@ -57,7 +59,7 @@ inline int SLEB128(byte* &p)
 	return x;
 }
 
-inline unsigned int RD2(byte* &p)
+inline unsigned short RD2(byte* &p)
 {
 	unsigned int x = *p++;
 	x |= *p++ << 8;
@@ -122,17 +124,30 @@ struct DWARF_Attribute
 
 ///////////////////////////////////////////////////////////////////////////////
 
-#include "pshpack1.h"
-
-struct DWARF_CompilationUnit
+struct DWARF_CompilationUnitInfo
 {
-	unsigned int unit_length; // 12 byte in DWARF-64
+	uint32_t unit_length; // 12 byte in DWARF-64
 	unsigned short version;
-	unsigned int debug_abbrev_offset; // 8 byte in DWARF-64
 	byte address_size;
+	byte unit_type;
+	unsigned int debug_abbrev_offset; // 8 byte in DWARF-64
 
-	bool isDWARF64() const { return unit_length == ~0; }
-	int refSize() const { return unit_length == ~0 ? 8 : 4; }
+	// Value of the DW_AT_low_pc attribute for the current compilation unit.
+	// Specify the default base address for use in location lists and range
+	// lists.
+	uint32_t base_address;
+
+	// Offset within the debug_info section
+	uint32_t cu_offset;
+	byte* start_ptr;
+	byte* end_ptr;
+
+	bool is_dwarf64;
+
+	byte* read(const PEImage& img, unsigned long *off);
+
+	bool isDWARF64() const { return is_dwarf64; }
+	int refSize() const { return isDWARF64() ? 8 : 4; }
 };
 
 struct DWARF_FileName
@@ -260,6 +275,8 @@ struct DWARF_TypeForm
 	unsigned int type, form;
 };
 
+#include "pshpack1.h"
+
 struct DWARF_LineNumberProgramHeader
 {
 	unsigned int unit_length; // 12 byte in DWARF-64
@@ -309,6 +326,8 @@ struct DWARF2_LineNumberProgramHeader
 	// string include_directories[] // zero byte terminated
 	// DWARF_FileNames file_names[] // zero byte terminated
 };
+
+#include "poppack.h"
 
 struct DWARF_LineState
 {
@@ -372,7 +391,6 @@ struct DWARF_LineState
 	}
 };
 
-#include "poppack.h"
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -398,13 +416,61 @@ struct Location
 	bool is_regrel() const { return type == RegRel; }
 };
 
-typedef std::unordered_map<std::pair<unsigned, unsigned>, byte*> abbrevMap_t;
+// Location list entry
+class LOCEntry
+{
+public:
+	unsigned long beg_offset;
+	unsigned long end_offset;
+	Location loc;
+};
 
+// Location list cursor
+class LOCCursor
+{
+public:
+	LOCCursor(const DIECursor& parent, unsigned long off);
+
+	const DIECursor& parent;
+	byte* end;
+	byte* ptr;
+
+	bool readNext(LOCEntry& entry);
+};
+
+// Range list entry
+class RangeEntry
+{
+public:
+	uint64_t pclo;
+	uint64_t pchi;
+
+	void addBase(uint64_t base)
+	{
+		pclo += base;
+		pchi += base;
+	}
+};
+
+// Range list cursor
+class RangeCursor
+{
+public:
+	RangeCursor(const DIECursor& parent, unsigned long off);
+
+	const DIECursor& parent;
+	byte *end;
+	byte *ptr;
+
+	bool readNext(RangeEntry& entry);
+};
+
+typedef std::unordered_map<std::pair<unsigned, unsigned>, byte*> abbrevMap_t;
 
 // Attempts to partially evaluate DWARF location expressions.
 // The only supported expressions are those, whose result may be represented
 // as either an absolute value, a register, or a register-relative address.
-Location decodeLocation(const PEImage& img, const DWARF_Attribute& attr, const Location* frameBase = 0, int at = 0);
+Location decodeLocation(const DWARF_Attribute& attr, const Location* frameBase = 0, int at = 0);
 
 void mergeAbstractOrigin(DWARF_InfoData& id, const DIECursor& parent);
 void mergeSpecification(DWARF_InfoData& id, const DIECursor& parent);
@@ -413,7 +479,7 @@ void mergeSpecification(DWARF_InfoData& id, const DIECursor& parent);
 class DIECursor
 {
 public:
-	DWARF_CompilationUnit* cu;
+	DWARF_CompilationUnitInfo* cu;
 	byte* ptr;
 	unsigned int entryOff;
 	int level;
@@ -431,7 +497,7 @@ public:
 	static void setContext(PEImage* img_, DebugLevel debug_);
 
 	// Create a new DIECursor
-	DIECursor(DWARF_CompilationUnit* cu_, byte* ptr);
+	DIECursor(DWARF_CompilationUnitInfo* cu_, byte* ptr);
 
 	// Create a child DIECursor
 	DIECursor(const DIECursor& parent, byte* ptr_);

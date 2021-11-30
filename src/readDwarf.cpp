@@ -34,6 +34,41 @@ void DIECursor::setContext(PEImage* img_, DebugLevel debug_)
 	debug = debug_;
 }
 
+byte* DWARF_CompilationUnitInfo::read(const PEImage& img, unsigned long *off)
+{
+	byte* ptr = img.debug_info.byteAt(*off);
+
+	start_ptr = ptr;
+	cu_offset = *off;
+	is_dwarf64 = false;
+	base_address = 0;
+	unit_length = RD4(ptr);
+	if (unit_length == ~0) {
+		// DWARF64 doesn't make sense in the context of the PE format since the
+		// section size is limited to 32 bits.
+		fprintf(stderr, "%s:%d: WARNING: DWARF64 compilation unit at offset=%x is not supported\n", __FUNCTION__, __LINE__,
+				cu_offset);
+
+		uint64_t len64 = RD8(ptr);
+		*off = img.debug_info.sectOff(ptr + (intptr_t)len64);
+		return nullptr;
+	}
+
+	end_ptr = ptr + unit_length;
+	*off = img.debug_info.sectOff(end_ptr);
+	version = RD2(ptr);
+	if (version >= 5) {
+		fprintf(stderr, "%s:%d: WARNING: Unsupported dwarf version %d for compilation unit at offset=%x\n", __FUNCTION__, __LINE__,
+				version, cu_offset);
+
+		return nullptr;
+	}
+
+	debug_abbrev_offset = RD4(ptr);
+	address_size = *ptr++;
+	return ptr;
+}
+
 static Location mkInReg(unsigned reg)
 {
 	Location l;
@@ -61,7 +96,7 @@ static Location mkRegRel(int reg, int off)
 	return l;
 }
 
-Location decodeLocation(const PEImage& img, const DWARF_Attribute& attr, const Location* frameBase, int at)
+Location decodeLocation(const DWARF_Attribute& attr, const Location* frameBase, int at)
 {
 	static Location invalid = { Location::Invalid };
 
@@ -343,7 +378,66 @@ void mergeSpecification(DWARF_InfoData& id, const DIECursor& parent)
 	id.merge(idspec);
 }
 
-DIECursor::DIECursor(DWARF_CompilationUnit* cu_, byte* ptr_)
+LOCCursor::LOCCursor(const DIECursor& parent, unsigned long off)
+	: parent(parent)
+	, end(parent.img->debug_loc.endByte())
+	, ptr(parent.img->debug_loc.byteAt(off))
+{
+}
+
+bool LOCCursor::readNext(LOCEntry& entry)
+{
+	if (ptr >= end)
+		return false;
+
+	if (parent.debug & DbgDwarfLocLists)
+		fprintf(stderr, "%s:%d: loclist off=%x DIEoff=%x:\n", __FUNCTION__, __LINE__,
+				parent.img->debug_loc.sectOff(ptr), parent.entryOff);
+
+	entry.beg_offset = (unsigned long) parent.RDAddr(ptr);
+	entry.end_offset = (unsigned long) parent.RDAddr(ptr);
+	if (!entry.beg_offset && !entry.end_offset)
+		return false;
+
+	DWARF_Attribute attr;
+	attr.type = Block;
+	attr.block.len = RD2(ptr);
+	attr.block.ptr = ptr;
+	entry.loc = decodeLocation(attr);
+	ptr += attr.expr.len;
+	return true;
+}
+
+RangeCursor::RangeCursor(const DIECursor& parent, unsigned long off)
+	: parent(parent)
+	, end(parent.img->debug_ranges.endByte())
+	, ptr(parent.img->debug_ranges.byteAt(off))
+{
+}
+
+bool RangeCursor::readNext(RangeEntry& entry)
+{
+	while (ptr < end) {
+		if (parent.debug & DbgDwarfRangeLists)
+			fprintf(stderr, "%s:%d: rangelist off=%x DIEoff=%x:\n", __FUNCTION__, __LINE__,
+					parent.img->debug_ranges.sectOff(ptr), parent.entryOff);
+
+		entry.pclo = parent.RDAddr(ptr);
+		entry.pchi = parent.RDAddr(ptr);
+		if (!entry.pclo && !entry.pchi)
+			return false;
+
+		if (entry.pclo >= entry.pchi)
+			continue;
+
+		entry.addBase(parent.cu->base_address);
+		return true;
+	}
+
+	return false;
+}
+
+DIECursor::DIECursor(DWARF_CompilationUnitInfo* cu_, byte* ptr_)
 {
 	cu = cu_;
 	ptr = ptr_;
@@ -414,7 +508,7 @@ bool DIECursor::readNext(DWARF_InfoData& id, bool stopAtNull)
 		if (level == -1)
 			return false; // we were already at the end of the subtree
 
-		if (ptr >= ((byte*)cu + sizeof(cu->unit_length) + cu->unit_length))
+		if (ptr >= cu->end_ptr)
 			return false; // root of the tree does not have a null terminator, but we know the length
 
 		id.entryPtr = ptr;
@@ -447,7 +541,7 @@ bool DIECursor::readNext(DWARF_InfoData& id, bool stopAtNull)
 	id.hasChild = *abbrev++;
 	
 	if (debug & DbgDwarfAttrRead)
-		fprintf(stderr, "%s:%d: offs=%d level=%d tag=%d abbrev=%d\n", __FUNCTION__, __LINE__,
+		fprintf(stderr, "%s:%d: offs=%x level=%d tag=%d abbrev=%d\n", __FUNCTION__, __LINE__,
 				entryOff, level, id.tag, id.code);
 
 	int attr, form;
@@ -488,11 +582,11 @@ bool DIECursor::readNext(DWARF_InfoData& id, bool stopAtNull)
             case DW_FORM_strp:           a.type = String; a.string = (const char*)img->debug_str.byteAt(RDsize(ptr, cu->isDWARF64() ? 8 : 4)); break;
 			case DW_FORM_flag:           a.type = Flag; a.flag = (*ptr++ != 0); break;
 			case DW_FORM_flag_present:   a.type = Flag; a.flag = true; break;
-			case DW_FORM_ref1:           a.type = Ref; a.ref = (byte*)cu + *ptr++; break;
-			case DW_FORM_ref2:           a.type = Ref; a.ref = (byte*)cu + RD2(ptr); break;
-			case DW_FORM_ref4:           a.type = Ref; a.ref = (byte*)cu + RD4(ptr); break;
-			case DW_FORM_ref8:           a.type = Ref; a.ref = (byte*)cu + RD8(ptr); break;
-			case DW_FORM_ref_udata:      a.type = Ref; a.ref = (byte*)cu + LEB128(ptr); break;
+			case DW_FORM_ref1:           a.type = Ref; a.ref = cu->start_ptr + *ptr++; break;
+			case DW_FORM_ref2:           a.type = Ref; a.ref = cu->start_ptr + RD2(ptr); break;
+			case DW_FORM_ref4:           a.type = Ref; a.ref = cu->start_ptr + RD4(ptr); break;
+			case DW_FORM_ref8:           a.type = Ref; a.ref = cu->start_ptr + RD8(ptr); break;
+			case DW_FORM_ref_udata:      a.type = Ref; a.ref = cu->start_ptr + LEB128(ptr); break;
 			case DW_FORM_ref_addr:       a.type = Ref; a.ref = img->debug_info.byteAt(cu->isDWARF64() ? RD8(ptr) : RD4(ptr)); break;
 			case DW_FORM_ref_sig8:       a.type = Invalid; ptr += 8;  break;
 			case DW_FORM_exprloc:        a.type = ExprLoc; a.expr.len = LEB128(ptr); a.expr.ptr = ptr; ptr += a.expr.len; break;

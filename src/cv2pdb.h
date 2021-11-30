@@ -279,11 +279,6 @@ public:
 	// Default lower bound for the current compilation unit. This depends on
 	// the language of the current unit.
 	unsigned currentDefaultLowerBound;
-
-	// Value of the DW_AT_low_pc attribute for the current compilation unit.
-	// Specify the default base address for use in location lists and range
-	// lists.
-	uint32_t currentBaseAddress;
 };
 
 #endif //__CV2PDB_H__
