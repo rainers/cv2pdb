@@ -390,58 +390,185 @@ void mergeSpecification(DWARF_InfoData& id, const DIECursor& parent)
 
 LOCCursor::LOCCursor(const DIECursor& parent, unsigned long off)
 	: parent(parent)
-	, end(parent.img->debug_loc.endByte())
-	, ptr(parent.img->debug_loc.byteAt(off))
 {
+	base = parent.cu->base_address;
+	isLocLists = (parent.cu->version >= 5);
+
+	const PESection& sec = isLocLists ? parent.img->debug_loclists : parent.img->debug_loc;
+	ptr = sec.byteAt(off);
+	end = sec.endByte();
 }
 
 bool LOCCursor::readNext(LOCEntry& entry)
 {
-	if (ptr >= end)
-		return false;
+	if (isLocLists)
+	{
+		if (parent.debug & DbgDwarfLocLists)
+			fprintf(stderr, "%s:%d: loclists off=%x DIEoff=%x:\n", __FUNCTION__, __LINE__,
+					parent.img->debug_loclists.sectOff(ptr), parent.entryOff);
 
-	if (parent.debug & DbgDwarfLocLists)
-		fprintf(stderr, "%s:%d: loclist off=%x DIEoff=%x:\n", __FUNCTION__, __LINE__,
-				parent.img->debug_loc.sectOff(ptr), parent.entryOff);
+		auto readCountedLocation = [&entry](byte* &ptr) {
+			DWARF_Attribute attr;
+			attr.type = Block;
+			attr.block.len = LEB128(ptr);
+			attr.block.ptr = ptr;
+			ptr += attr.block.len;
+			entry.loc = decodeLocation(attr);
+			return true;
+		};
 
-	entry.beg_offset = (unsigned long) parent.RDAddr(ptr);
-	entry.end_offset = (unsigned long) parent.RDAddr(ptr);
-	if (!entry.beg_offset && !entry.end_offset)
-		return false;
+		while (ptr < end)
+		{
+			byte type = *ptr++;
+			switch (type)
+			{
+			case DW_LLE_end_of_list:
+				return false;
+			case DW_LLE_base_addressx:
+				base = parent.readIndirectAddr(LEB128(ptr));
+				continue;
+			case DW_LLE_startx_endx:
+				entry.beg_offset = parent.readIndirectAddr(LEB128(ptr));
+				entry.end_offset = parent.readIndirectAddr(LEB128(ptr));
+				return readCountedLocation(ptr);
+			case DW_LLE_startx_length:
+				entry.beg_offset = parent.readIndirectAddr(LEB128(ptr));
+				entry.end_offset = entry.beg_offset + LEB128(ptr);
+				return readCountedLocation(ptr);
+			case DW_LLE_offset_pair:
+				entry.beg_offset = LEB128(ptr);
+				entry.end_offset = LEB128(ptr);
+				return readCountedLocation(ptr);
+			case DW_LLE_default_location:
+				entry = {};
+				entry.isDefault = true;
+				return readCountedLocation(ptr);
+			case DW_LLE_base_address:
+				base = parent.RDAddr(ptr);
+				continue;
+			case DW_LLE_start_end:
+				entry.beg_offset = parent.RDAddr(ptr);
+				entry.end_offset = parent.RDAddr(ptr);
+				return readCountedLocation(ptr);
+			case DW_LLE_start_length:
+				entry.beg_offset = parent.RDAddr(ptr);
+				entry.end_offset = entry.beg_offset + LEB128(ptr);
+				return readCountedLocation(ptr);
+			default:
+				fprintf(stderr, "ERROR: %s:%d: unknown loclists entry %d at offs=%x die_offs=%x\n", __FUNCTION__, __LINE__,
+						type, parent.img->debug_loclists.sectOff(ptr - 1), parent.entryOff);
 
-	DWARF_Attribute attr;
-	attr.type = Block;
-	attr.block.len = RD2(ptr);
-	attr.block.ptr = ptr;
-	entry.loc = decodeLocation(attr);
-	ptr += attr.expr.len;
-	return true;
+				assert(false && "unknown rnglist opcode");
+				return false;
+			}
+		}
+	}
+	else
+	{
+		if (ptr >= end)
+			return false;
+
+		if (parent.debug & DbgDwarfLocLists)
+			fprintf(stderr, "%s:%d: loclist off=%x DIEoff=%x:\n", __FUNCTION__, __LINE__,
+					parent.img->debug_loc.sectOff(ptr), parent.entryOff);
+
+		entry.beg_offset = (unsigned long) parent.RDAddr(ptr);
+		entry.end_offset = (unsigned long) parent.RDAddr(ptr);
+		if (!entry.beg_offset && !entry.end_offset)
+			return false;
+
+		DWARF_Attribute attr;
+		attr.type = Block;
+		attr.block.len = RD2(ptr);
+		attr.block.ptr = ptr;
+		entry.loc = decodeLocation(attr);
+		ptr += attr.expr.len;
+		return true;
+	}
+
+	return false;
 }
 
 RangeCursor::RangeCursor(const DIECursor& parent, unsigned long off)
 	: parent(parent)
-	, end(parent.img->debug_ranges.endByte())
-	, ptr(parent.img->debug_ranges.byteAt(off))
 {
+	base = parent.cu->base_address;
+	isRngLists = (parent.cu->version >= 5);
+
+	const PESection& sec = isRngLists ? parent.img->debug_rnglists : parent.img->debug_ranges;
+	ptr = sec.byteAt(off);
+	end = sec.endByte();
 }
 
 bool RangeCursor::readNext(RangeEntry& entry)
 {
-	while (ptr < end) {
+	if (isRngLists)
+	{
 		if (parent.debug & DbgDwarfRangeLists)
-			fprintf(stderr, "%s:%d: rangelist off=%x DIEoff=%x:\n", __FUNCTION__, __LINE__,
-					parent.img->debug_ranges.sectOff(ptr), parent.entryOff);
+			fprintf(stderr, "%s:%d: rnglists off=%x DIEoff=%x:\n", __FUNCTION__, __LINE__,
+					parent.img->debug_rnglists.sectOff(ptr), parent.entryOff);
 
-		entry.pclo = parent.RDAddr(ptr);
-		entry.pchi = parent.RDAddr(ptr);
-		if (!entry.pclo && !entry.pchi)
-			return false;
+		while (ptr < end)
+		{
+			byte type = *ptr++;
+			switch (type)
+			{
+			case DW_RLE_end_of_list:
+				return false;
+			case DW_RLE_base_addressx:
+				base = parent.readIndirectAddr(LEB128(ptr));
+				continue;
+			case DW_RLE_startx_endx:
+				entry.pclo = parent.readIndirectAddr(LEB128(ptr));
+				entry.pchi = parent.readIndirectAddr(LEB128(ptr));
+				return true;
+			case DW_RLE_startx_length:
+				entry.pclo = parent.readIndirectAddr(LEB128(ptr));
+				entry.pchi = entry.pclo + LEB128(ptr);
+				return true;
+			case DW_RLE_offset_pair:
+				entry.pclo = LEB128(ptr);
+				entry.pchi = LEB128(ptr);
+				entry.addBase(base);
+				return true;
+			case DW_RLE_base_address:
+				base = parent.RDAddr(ptr);
+				continue;
+			case DW_RLE_start_end:
+				entry.pclo = parent.RDAddr(ptr);
+				entry.pchi = parent.RDAddr(ptr);
+				return true;
+			case DW_RLE_start_length:
+				entry.pclo = parent.RDAddr(ptr);
+				entry.pchi = entry.pclo + LEB128(ptr);
+				return true;
+			default:
+				fprintf(stderr, "ERROR: %s:%d: unknown rnglists entry %d at offs=%x die_offs=%x\n", __FUNCTION__, __LINE__,
+						type, parent.img->debug_rnglists.sectOff(ptr - 1), parent.entryOff);
 
-		if (entry.pclo >= entry.pchi)
-			continue;
+				assert(false && "unknown rnglist opcode");
+				return false;
+			}
+		}
+	}
+	else
+	{
+		while (ptr < end) {
+			if (parent.debug & DbgDwarfRangeLists)
+				fprintf(stderr, "%s:%d: rangelist off=%x DIEoff=%x:\n", __FUNCTION__, __LINE__,
+						parent.img->debug_ranges.sectOff(ptr), parent.entryOff);
 
-		entry.addBase(parent.cu->base_address);
-		return true;
+			entry.pclo = parent.RDAddr(ptr);
+			entry.pchi = parent.RDAddr(ptr);
+			if (!entry.pclo && !entry.pchi)
+				return false;
+
+			if (entry.pclo >= entry.pchi)
+				continue;
+
+			entry.addBase(parent.cu->base_address);
+			return true;
+		}
 	}
 
 	return false;

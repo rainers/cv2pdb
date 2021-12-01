@@ -435,7 +435,14 @@ class LOCEntry
 public:
 	unsigned long beg_offset;
 	unsigned long end_offset;
+	bool isDefault;
 	Location loc;
+
+	void addBase(uint32_t base)
+	{
+		beg_offset += base;
+		end_offset += base;
+	}
 };
 
 // Location list cursor
@@ -445,8 +452,10 @@ public:
 	LOCCursor(const DIECursor& parent, unsigned long off);
 
 	const DIECursor& parent;
+	uint32_t base;
 	byte* end;
 	byte* ptr;
+	bool isLocLists;
 
 	bool readNext(LOCEntry& entry);
 };
@@ -472,8 +481,10 @@ public:
 	RangeCursor(const DIECursor& parent, unsigned long off);
 
 	const DIECursor& parent;
+	uint32_t base;
 	byte *end;
 	byte *ptr;
+	bool isRngLists;
 
 	bool readNext(RangeEntry& entry);
 };
