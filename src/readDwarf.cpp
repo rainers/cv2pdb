@@ -506,6 +506,64 @@ DIECursor DIECursor::getSubtreeCursor()
 	}
 }
 
+const char Cv2PdbInvalidString[] = "<Cv2Pdb invalid string>";
+
+const char* DIECursor::resolveIndirectString(uint32_t index) const
+{
+	if (!cu->str_offset_base)
+	{
+		fprintf(stderr, "ERROR: %s:%d: no string base for cu_offs=%x die_offs=%x\n", __FUNCTION__, __LINE__,
+				cu->cu_offset, entryOff);
+		return Cv2PdbInvalidString;
+	}
+
+	byte* refAddr = cu->str_offset_base + index * refSize();
+	return (const char*)img->debug_str.byteAt(RDref(refAddr));
+}
+
+uint32_t DIECursor::readIndirectAddr(uint32_t index) const
+{
+	if (!cu->addr_base)
+	{
+		fprintf(stderr, "ERROR: %s:%d: no addr base for cu_offs=%x die_offs=%x\n", __FUNCTION__, __LINE__,
+				cu->cu_offset, entryOff);
+
+		return 0;
+	}
+
+	byte* refAddr = cu->addr_base + index * refSize();
+	return RDAddr(refAddr);
+}
+
+uint32_t DIECursor::resolveIndirectSecPtr(uint32_t index, const SectionDescriptor &secDesc, byte *baseAddress) const
+{
+	if (!baseAddress)
+	{
+		fprintf(stderr, "ERROR: %s:%d: no base address in section %s for cu_offs=%x die_offs=%x\n", __FUNCTION__, __LINE__,
+				secDesc.name, cu->cu_offset, entryOff);
+
+		return 0;
+	}
+
+	byte* refAddr = baseAddress + index * refSize();
+	byte* targetAddr = baseAddress + RDref(refAddr);
+	return (img->*(secDesc.pSec)).sectOff(targetAddr);
+}
+
+static byte* getPointerInSection(const PEImage &img, const SectionDescriptor &secDesc, uint32_t offset)
+{
+	const PESection &peSec = img.*(secDesc.pSec);
+
+	if (!peSec.isPresent() || offset >= peSec.length)
+	{
+		fprintf(stderr, "%s:%d: WARNING: offset %x is not valid in section %s\n", __FUNCTION__, __LINE__,
+				offset, secDesc.name);
+		return nullptr;
+	}
+
+	return peSec.byteAt(offset);
+}
+
 bool DIECursor::readNext(DWARF_InfoData& id, bool stopAtNull)
 {
 	id.clear();
@@ -577,7 +635,12 @@ bool DIECursor::readNext(DWARF_InfoData& id, bool stopAtNull)
 		DWARF_Attribute a;
 		switch (form)
 		{
-			case DW_FORM_addr:           a.type = Addr; a.addr = (unsigned long)RDsize(ptr, cu->address_size); break;
+			case DW_FORM_addr:           a.type = Addr; a.addr = RDAddr(ptr); break;
+			case DW_FORM_addrx:          a.type = Addr; a.addr = readIndirectAddr(LEB128(ptr)); break;
+			case DW_FORM_addrx1:
+			case DW_FORM_addrx2:
+			case DW_FORM_addrx3:
+			case DW_FORM_addrx4:         a.type = Addr; a.addr = readIndirectAddr(RDsize(ptr, 1 + (form - DW_FORM_addrx1))); break;
 			case DW_FORM_block:          a.type = Block; a.block.len = LEB128(ptr); a.block.ptr = ptr; ptr += a.block.len; break;
 			case DW_FORM_block1:         a.type = Block; a.block.len = *ptr++;      a.block.ptr = ptr; ptr += a.block.len; break;
 			case DW_FORM_block2:         a.type = Block; a.block.len = RD2(ptr);   a.block.ptr = ptr; ptr += a.block.len; break;
@@ -586,10 +649,19 @@ bool DIECursor::readNext(DWARF_InfoData& id, bool stopAtNull)
 			case DW_FORM_data2:          a.type = Const; a.cons = RD2(ptr); break;
 			case DW_FORM_data4:          a.type = Const; a.cons = RD4(ptr); break;
 			case DW_FORM_data8:          a.type = Const; a.cons = RD8(ptr); break;
+			case DW_FORM_data16:         a.type = Block; a.block.len = 16; a.block.ptr = ptr; ptr += a.block.len; break;
 			case DW_FORM_sdata:          a.type = Const; a.cons = SLEB128(ptr); break;
 			case DW_FORM_udata:          a.type = Const; a.cons = LEB128(ptr); break;
+			case DW_FORM_implicit_const: a.type = Const; a.cons = LEB128(abbrev); break;
 			case DW_FORM_string:         a.type = String; a.string = (const char*)ptr; ptr += strlen(a.string) + 1; break;
-            case DW_FORM_strp:           a.type = String; a.string = (const char*)img->debug_str.byteAt(RDsize(ptr, cu->isDWARF64() ? 8 : 4)); break;
+            case DW_FORM_strp:           a.type = String; a.string = (const char*)img->debug_str.byteAt(RDref(ptr)); break;
+			case DW_FORM_line_strp:      a.type = String; a.string = (const char*)img->debug_line_str.byteAt(RDref(ptr)); break;
+			case DW_FORM_strx:           a.type = String; a.string = resolveIndirectString(LEB128(ptr)); break;
+			case DW_FORM_strx1:
+			case DW_FORM_strx2:
+			case DW_FORM_strx3:
+			case DW_FORM_strx4:          a.type = String; a.string = resolveIndirectString(RDsize(ptr, 1 + (form - DW_FORM_strx1))); break;
+			case DW_FORM_strp_sup:       a.type = Invalid; assert(false && "Unsupported supplementary object"); ptr += refSize(); break;
 			case DW_FORM_flag:           a.type = Flag; a.flag = (*ptr++ != 0); break;
 			case DW_FORM_flag_present:   a.type = Flag; a.flag = true; break;
 			case DW_FORM_ref1:           a.type = Ref; a.ref = cu->start_ptr + *ptr++; break;
@@ -597,10 +669,14 @@ bool DIECursor::readNext(DWARF_InfoData& id, bool stopAtNull)
 			case DW_FORM_ref4:           a.type = Ref; a.ref = cu->start_ptr + RD4(ptr); break;
 			case DW_FORM_ref8:           a.type = Ref; a.ref = cu->start_ptr + RD8(ptr); break;
 			case DW_FORM_ref_udata:      a.type = Ref; a.ref = cu->start_ptr + LEB128(ptr); break;
-			case DW_FORM_ref_addr:       a.type = Ref; a.ref = img->debug_info.byteAt(cu->isDWARF64() ? RD8(ptr) : RD4(ptr)); break;
+			case DW_FORM_ref_addr:       a.type = Ref; a.ref = img->debug_info.byteAt(RDref(ptr)); break;
 			case DW_FORM_ref_sig8:       a.type = Invalid; ptr += 8;  break;
+			case DW_FORM_ref_sup4:       a.type = Invalid; assert(false && "Unsupported supplementary object"); ptr += 4; break;
+			case DW_FORM_ref_sup8:       a.type = Invalid; assert(false && "Unsupported supplementary object"); ptr += 8; break;
 			case DW_FORM_exprloc:        a.type = ExprLoc; a.expr.len = LEB128(ptr); a.expr.ptr = ptr; ptr += a.expr.len; break;
-			case DW_FORM_sec_offset:     a.type = SecOffset;  a.sec_offset = cu->isDWARF64() ? RD8(ptr) : RD4(ptr); break;
+			case DW_FORM_sec_offset:     a.type = SecOffset; a.sec_offset = RDref(ptr); break;
+			case DW_FORM_loclistx:       a.type = SecOffset; a.sec_offset = resolveIndirectSecPtr(LEB128(ptr), sec_desc_debug_loclists, cu->loclist_base); break;
+			case DW_FORM_rnglistx:       a.type = SecOffset; a.sec_offset = resolveIndirectSecPtr(LEB128(ptr), sec_desc_debug_rnglists, cu->rnglist_base); break;
 			default: assert(false && "Unsupported DWARF attribute form"); return false;
 		}
 
@@ -687,6 +763,19 @@ bool DIECursor::readNext(DWARF_InfoData& id, bool stopAtNull)
 				assert(a.type == Flag);
 				id.has_artificial = true;
 				id.is_artificial = true;
+				break;
+
+			case DW_AT_str_offsets_base:
+				cu->str_offset_base = getPointerInSection(*img, sec_desc_debug_str_offsets, a.sec_offset);
+				break;
+			case DW_AT_addr_base:
+				cu->addr_base = getPointerInSection(*img, sec_desc_debug_addr, a.sec_offset);
+				break;
+			case DW_AT_rnglists_base:
+				cu->rnglist_base = getPointerInSection(*img, sec_desc_debug_rnglists, a.sec_offset);
+				break;
+			case DW_AT_loclists_base:
+				cu->loclist_base = getPointerInSection(*img, sec_desc_debug_loclists, a.sec_offset);
 				break;
 		}
 	}

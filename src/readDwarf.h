@@ -11,6 +11,7 @@
 typedef unsigned char byte;
 class PEImage;
 class DIECursor;
+struct SectionDescriptor;
 
 enum DebugLevel : unsigned {
 	DbgBasic = 0x1,
@@ -138,6 +139,18 @@ struct DWARF_CompilationUnitInfo
 	// lists.
 	uint32_t base_address;
 
+	// Indirect base address in .debug_addr for addrx forms
+	byte* addr_base;
+
+	// Indirect base address in .debug_str_offsets for strx forms
+	byte* str_offset_base;
+
+	// Indirect base address in .debug_loclists for loclistx forms
+	byte* loclist_base;
+
+	// Indirect base address in the .debug_rnglists for rnglistx forms
+	byte* rnglist_base;
+
 	// Offset within the debug_info section
 	uint32_t cu_offset;
 	byte* start_ptr;
@@ -148,7 +161,6 @@ struct DWARF_CompilationUnitInfo
 	byte* read(DebugLevel debug, const PEImage& img, unsigned long *off);
 
 	bool isDWARF64() const { return is_dwarf64; }
-	int refSize() const { return isDWARF64() ? 8 : 4; }
 };
 
 struct DWARF_FileName
@@ -526,6 +538,15 @@ public:
 
 		return RD8(p);
 	}
+
+	unsigned long long RDref(byte* &ptr) const { return cu->isDWARF64() ? RD8(ptr) : RD4(ptr); }
+	int refSize() const { return cu->isDWARF64() ? 8 : 4; }
+
+	// Obtain the address of a string for a strx form.
+	const char *resolveIndirectString(uint32_t index) const ;
+	uint32_t readIndirectAddr(uint32_t index) const ;
+	uint32_t resolveIndirectSecPtr(uint32_t index, const SectionDescriptor &secDesc, byte *baseAddress) const;
+
 };
 
 // iterate over DWARF debug_line information
