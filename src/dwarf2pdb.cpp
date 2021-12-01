@@ -1294,16 +1294,26 @@ bool CV2PDB::mapTypes()
 	while (off < img.debug_info.length)
 	{
 		DWARF_CompilationUnitInfo cu{};
-		byte* ptr = cu.read(img, &off);
+		byte* ptr = cu.read(debug, img, &off);
 		if (!ptr)
 			continue;
+
+		if (cu.unit_type != DW_UT_compile) {
+			if (debug & DbgDwarfCompilationUnit)
+				fprintf(stderr, "%s:%d: skipping compilation unit offs=%x, unit_type=%d\n", __FUNCTION__, __LINE__,
+						cu.cu_offset, cu.unit_type);
+
+			continue;
+		}
 
 		DIECursor cursor(&cu, ptr);
 		DWARF_InfoData id;
 		while (cursor.readNext(id))
 		{
-			//printf("0x%08x, level = %d, id.code = %d, id.tag = %d\n",
-			//    (unsigned char*)cu + id.entryOff - (unsigned char*)img.debug_info, cursor.level, id.code, id.tag);
+			if (debug & DbgDwarfTagRead)
+				fprintf(stderr, "%s:%d: 0x%08x, level = %d, id.code = %d, id.tag = %d\n", __FUNCTION__, __LINE__,
+						cursor.entryOff, cursor.level, id.code, id.tag);
+
 			switch (id.tag)
 			{
 				case DW_TAG_base_type:
@@ -1359,9 +1369,17 @@ bool CV2PDB::createTypes()
 	while (off < img.debug_info.length)
 	{
 		DWARF_CompilationUnitInfo cu{};
-		byte* ptr = cu.read(img, &off);
+		byte* ptr = cu.read(debug, img, &off);
 		if (!ptr)
 			continue;
+
+		if (cu.unit_type != DW_UT_compile) {
+			if (debug & DbgDwarfCompilationUnit)
+				fprintf(stderr, "%s:%d: skipping compilation unit offs=%x, unit_type=%d\n", __FUNCTION__, __LINE__,
+						cu.cu_offset, cu.unit_type);
+
+			continue;
+		}
 
 		DIECursor cursor(&cu, ptr);
 		DWARF_InfoData id;

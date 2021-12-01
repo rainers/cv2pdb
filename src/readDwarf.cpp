@@ -34,7 +34,7 @@ void DIECursor::setContext(PEImage* img_, DebugLevel debug_)
 	debug = debug_;
 }
 
-byte* DWARF_CompilationUnitInfo::read(const PEImage& img, unsigned long *off)
+byte* DWARF_CompilationUnitInfo::read(DebugLevel debug, const PEImage& img, unsigned long *off)
 {
 	byte* ptr = img.debug_info.byteAt(*off);
 
@@ -57,15 +57,25 @@ byte* DWARF_CompilationUnitInfo::read(const PEImage& img, unsigned long *off)
 	end_ptr = ptr + unit_length;
 	*off = img.debug_info.sectOff(end_ptr);
 	version = RD2(ptr);
-	if (version >= 5) {
+	unit_type = DW_UT_compile;
+	if (version <= 4) {
+		debug_abbrev_offset = RD4(ptr);
+		address_size = *ptr++;
+	} else if (version == 5) {
+		unit_type = *ptr++;
+		address_size = *ptr++;
+		debug_abbrev_offset = RD4(ptr);
+	} else {
 		fprintf(stderr, "%s:%d: WARNING: Unsupported dwarf version %d for compilation unit at offset=%x\n", __FUNCTION__, __LINE__,
 				version, cu_offset);
 
 		return nullptr;
 	}
 
-	debug_abbrev_offset = RD4(ptr);
-	address_size = *ptr++;
+	if (debug & DbgDwarfCompilationUnit)
+		fprintf(stderr, "%s:%d: Reading compilation unit offs=%x, type=%d, ver=%d, addr_size=%d\n", __FUNCTION__, __LINE__,
+				cu_offset, unit_type, version, address_size);
+
 	return ptr;
 }
 
@@ -539,7 +549,7 @@ bool DIECursor::readNext(DWARF_InfoData& id, bool stopAtNull)
 	id.abbrev = abbrev;
 	id.tag = LEB128(abbrev);
 	id.hasChild = *abbrev++;
-	
+
 	if (debug & DbgDwarfAttrRead)
 		fprintf(stderr, "%s:%d: offs=%x level=%d tag=%d abbrev=%d\n", __FUNCTION__, __LINE__,
 				entryOff, level, id.tag, id.code);
@@ -591,7 +601,6 @@ bool DIECursor::readNext(DWARF_InfoData& id, bool stopAtNull)
 			case DW_FORM_ref_sig8:       a.type = Invalid; ptr += 8;  break;
 			case DW_FORM_exprloc:        a.type = ExprLoc; a.expr.len = LEB128(ptr); a.expr.ptr = ptr; ptr += a.expr.len; break;
 			case DW_FORM_sec_offset:     a.type = SecOffset;  a.sec_offset = cu->isDWARF64() ? RD8(ptr) : RD4(ptr); break;
-			case DW_FORM_indirect:
 			default: assert(false && "Unsupported DWARF attribute form"); return false;
 		}
 
@@ -722,6 +731,10 @@ byte* DIECursor::getDWARFAbbrev(unsigned off, unsigned findcode)
 		{
 			attr = LEB128(p);
 			form = LEB128(p);
+
+			// Implicit const forms have an extra constant value attached.
+			if (form == DW_FORM_implicit_const)
+				LEB128(p);
 		} while (attr || form);
 	}
 	return 0;

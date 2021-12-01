@@ -169,9 +169,11 @@ bool addLineInfo(const PEImage& img, mspdb::Mod* mod, DWARF_LineState& state)
 
 bool interpretDWARFLines(const PEImage& img, mspdb::Mod* mod, DebugLevel debug_)
 {
+
 	DWARF_CompilationUnitInfo cu{};
 
-	if (!cu.read(img, 0)) {
+	unsigned long offs = 0;
+	if (!cu.read(debug_, img, &offs)) {
 		return false;
 	}
 

@@ -18,11 +18,12 @@ enum DebugLevel : unsigned {
 	DbgPdbSyms = 0x4,
 	DbgPdbLines = 0x8,
 	DbgPdbContrib = 0x10,
-	DbgDwarfTagRead = 0x100,
-	DbgDwarfAttrRead = 0x200,
-	DbgDwarfLocLists = 0x400,
-	DbgDwarfRangeLists = 0x800,
-	DbgDwarfLines = 0x1000
+	DbgDwarfCompilationUnit = 0x100,
+	DbgDwarfTagRead = 0x200,
+	DbgDwarfAttrRead = 0x400,
+	DbgDwarfLocLists = 0x800,
+	DbgDwarfRangeLists = 0x1000,
+	DbgDwarfLines = 0x2000
 };
 
 DEFINE_ENUM_FLAG_OPERATORS(DebugLevel);
@@ -144,7 +145,7 @@ struct DWARF_CompilationUnitInfo
 
 	bool is_dwarf64;
 
-	byte* read(const PEImage& img, unsigned long *off);
+	byte* read(DebugLevel debug, const PEImage& img, unsigned long *off);
 
 	bool isDWARF64() const { return is_dwarf64; }
 	int refSize() const { return isDWARF64() ? 8 : 4; }
