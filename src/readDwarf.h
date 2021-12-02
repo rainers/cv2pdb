@@ -165,7 +165,7 @@ struct DWARF_CompilationUnitInfo
 
 struct DWARF_FileName
 {
-	const char* file_name;
+	std::string file_name;
 	unsigned int  dir_index;
 	unsigned long lastModification;
 	unsigned long fileLength;
@@ -173,7 +173,7 @@ struct DWARF_FileName
 	void read(byte* &p)
 	{
 		file_name = (const char*)p;
-		p += strlen((const char*)p) + 1;
+		p += file_name.size() + 1;
 		dir_index = LEB128(p);
 		lastModification = LEB128(p);
 		fileLength = LEB128(p);
@@ -345,7 +345,7 @@ struct DWARF2_LineNumberProgramHeader
 struct DWARF_LineState
 {
 	// hdr info
-	std::vector<const char*> include_dirs;
+	std::vector<std::string> include_dirs;
 	std::vector<DWARF_FileName> files;
 
 	unsigned long address;
@@ -362,7 +362,7 @@ struct DWARF_LineState
 	unsigned int  discriminator;
 
 	// not part of the "documented" state
-	DWARF_FileName* file_ptr;
+	DWARF_FileName cur_file;
 	unsigned long seg_offset;
 	unsigned long section;
 	unsigned long last_addr;
@@ -371,7 +371,6 @@ struct DWARF_LineState
 
 	DWARF_LineState()
 	{
-		file_ptr = nullptr;
 		seg_offset = 0x400000;
 		last_addr = 0;
 		lineInfo_file = 0;
