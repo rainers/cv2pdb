@@ -15,7 +15,6 @@
 
 #include <windows.h>
 #include <map>
-#include <unordered_map>
 
 extern "C" {
 	#include "mscvpdb.h"
@@ -30,7 +29,7 @@ class CFIIndex;
 class CV2PDB : public LastError
 {
 public:
-	CV2PDB(PEImage& image);
+	CV2PDB(PEImage& image, DebugLevel debug);
 	~CV2PDB();
 
 	bool cleanup(bool commit);
@@ -172,17 +171,17 @@ public:
 	bool writeDWARFImage(const TCHAR* opath);
 
 	bool addDWARFSectionContrib(mspdb::Mod* mod, unsigned long pclo, unsigned long pchi);
-	bool addDWARFProc(DWARF_InfoData& id, DWARF_CompilationUnit* cu, DIECursor cursor);
-	int  addDWARFStructure(DWARF_InfoData& id, DWARF_CompilationUnit* cu, DIECursor cursor);
-	int  addDWARFFields(DWARF_InfoData& structid, DWARF_CompilationUnit* cu, DIECursor cursor, int off);
-	int  addDWARFArray(DWARF_InfoData& arrayid, DWARF_CompilationUnit* cu, DIECursor cursor);
+	bool addDWARFProc(DWARF_InfoData& id, DIECursor cursor);
+	int  addDWARFStructure(DWARF_InfoData& id, DIECursor cursor);
+	int  addDWARFFields(DWARF_InfoData& structid, DIECursor cursor, int off);
+	int  addDWARFArray(DWARF_InfoData& arrayid, DIECursor cursor);
 	int  addDWARFBasicType(const char*name, int encoding, int byte_size);
-	int  addDWARFEnum(DWARF_InfoData& enumid, DWARF_CompilationUnit* cu, DIECursor cursor);
-	int  getTypeByDWARFPtr(DWARF_CompilationUnit* cu, byte* ptr);
-	int  getDWARFTypeSize(DWARF_CompilationUnit* cu, byte* ptr);
-	void getDWARFArrayBounds(DWARF_InfoData& arrayid, DWARF_CompilationUnit* cu, DIECursor cursor,
+	int  addDWARFEnum(DWARF_InfoData& enumid, DIECursor cursor);
+	int  getTypeByDWARFPtr(byte* ptr);
+	int  getDWARFTypeSize(const DIECursor& parent, byte* ptr);
+	void getDWARFArrayBounds(DWARF_InfoData& arrayid, DIECursor cursor,
 		int& basetype, int& lowerBound, int& upperBound);
-	void getDWARFSubrangeInfo(DWARF_InfoData& subrangeid, DWARF_CompilationUnit* cu,
+	void getDWARFSubrangeInfo(DWARF_InfoData& subrangeid, const DIECursor& parent,
 		int& basetype, int& lowerBound, int& upperBound);
 	int getDWARFBasicType(int encoding, int byte_size);
 
@@ -265,7 +264,7 @@ public:
 	bool useGlobalMod;
 	bool thisIsNotRef;
 	bool v3;
-	bool debug;
+	DebugLevel debug;
 	const char* lastError;
 
 	int srcLineSections;
@@ -280,11 +279,6 @@ public:
 	// Default lower bound for the current compilation unit. This depends on
 	// the language of the current unit.
 	unsigned currentDefaultLowerBound;
-
-	// Value of the DW_AT_low_pc attribute for the current compilation unit.
-	// Specify the default base address for use in location lists and range
-	// lists.
-	uint32_t currentBaseAddress;
 };
 
 #endif //__CV2PDB_H__

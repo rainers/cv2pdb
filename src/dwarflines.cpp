@@ -5,10 +5,13 @@
 // see file LICENSE for further details
 //
 
+#include <assert.h>
 #include "PEImage.h"
 #include "mspdb.h"
 #include "dwarf.h"
 #include "readDwarf.h"
+
+static DebugLevel debug;
 
 bool isRelativePath(const std::string& s)
 {
@@ -21,6 +24,13 @@ bool isRelativePath(const std::string& s)
 	if(s[1] == ':')
 		return false;
 	return true;
+}
+
+static void addTrailingSlash(std::string& dir)
+{
+	// Make sure dirs always end in a trailing slash
+	if (!dir.size() || (dir.back() != '\\' && dir.back() != '/'))
+		dir += '\\';
 }
 
 static int cmpAdr(const void* s1, const void* s2)
@@ -57,15 +67,11 @@ bool _flushDWARFLines(const PEImage& img, mspdb::Mod* mod, DWARF_LineState& stat
 		// throw away invalid lines (mostly due to "set address to 0")
 		state.lineInfo.resize(0);
 		return true;
-		//return false;
 	}
-
-//    if(saddr >= 0x4000)
-//        return true;
 
 	const DWARF_FileName* dfn;
 	if(state.lineInfo_file == 0)
-		dfn = state.file_ptr;
+		dfn = &state.cur_file;
 	else if(state.lineInfo_file > 0 && state.lineInfo_file <= state.files.size())
 		dfn = &state.files[state.lineInfo_file - 1];
 	else
@@ -76,8 +82,6 @@ bool _flushDWARFLines(const PEImage& img, mspdb::Mod* mod, DWARF_LineState& stat
 	   dfn->dir_index > 0 && dfn->dir_index <= state.include_dirs.size())
 	{
 		std::string dir = state.include_dirs[dfn->dir_index - 1];
-		if(dir.length() > 0 && dir[dir.length() - 1] != '/' && dir[dir.length() - 1] != '\\')
-			dir.append("\\");
 		fname = dir + fname;
 	}
 	for(size_t i = 0; i < fname.length(); i++)
@@ -92,14 +96,8 @@ bool _flushDWARFLines(const PEImage& img, mspdb::Mod* mod, DWARF_LineState& stat
 		return true;
     }
 #if 1
-	bool dump = false; // (fname == "cvtest.d");
 	//qsort(&state.lineInfo[0], state.lineInfo.size(), sizeof(state.lineInfo[0]), cmpAdr);
-#if 0
-	printf("%s:\n", fname.c_str());
-	for(size_t ln = 0; ln < state.lineInfo.size(); ln++)
-		printf("  %08x: %4d\n", state.lineInfo[ln].offset + 0x401000, state.lineInfo[ln].line);
-#endif
-	
+
 	int rc = 1;
 	unsigned int low_offset = state.lineInfo[0].offset;
 	unsigned short low_line = state.lineInfo[0].line;
@@ -120,9 +118,11 @@ bool _flushDWARFLines(const PEImage& img, mspdb::Mod* mod, DWARF_LineState& stat
 	// This subtraction can underflow to (unsigned)-1 if this info is only for a single instruction, but AddLines will immediately increment it to 0, so this is fine.  Not underflowing this can cause the debugger to ignore other line info for address ranges that include this address.
 	unsigned int address_range_length = high_offset - low_offset;
 
-	if (dump)
-		printf("AddLines(%08x+%04x, Line=%4d+%3d, %s)\n", low_offset, address_range_length, low_line,
-		       state.lineInfo.size(), fname.c_str());
+	if (debug & DbgPdbLines)
+		fprintf(stderr, "%s:%d: AddLines(%08x+%04x, Line=%4d+%3d, %s)\n", __FUNCTION__, __LINE__,
+				low_offset, address_range_length, low_line,
+				(unsigned int)state.lineInfo.size(), fname.c_str());
+
 	rc = mod->AddLines(fname.c_str(), segIndex + 1, low_offset, address_range_length, low_offset, low_line,
 	                   (unsigned char*)&state.lineInfo[0],
 	                   state.lineInfo.size() * sizeof(state.lineInfo[0]));
@@ -147,10 +147,6 @@ bool addLineInfo(const PEImage& img, mspdb::Mod* mod, DWARF_LineState& state)
 	if (state.end_sequence)
 		return _flushDWARFLines(img, mod, state);
 
-#if 0
-	const char* fname = (state.file == 0 ? state.file_ptr->file_name : state.files[state.file - 1].file_name);
-	printf("Adr:%08x Line: %5d File: %s\n", state.address, state.line, fname);
-#endif
 	if (state.address < state.seg_offset)
 		return true;
 	mspdb::LineInfoEntry entry;
@@ -177,15 +173,24 @@ bool addLineInfo(const PEImage& img, mspdb::Mod* mod, DWARF_LineState& state)
 	return true;
 }
 
-bool interpretDWARFLines(const PEImage& img, mspdb::Mod* mod)
+bool interpretDWARFLines(const PEImage& img, mspdb::Mod* mod, DebugLevel debug_)
 {
-	DWARF_CompilationUnit* cu = (DWARF_CompilationUnit*)img.debug_info;
-	int ptrsize = cu ? cu->address_size : 4;
+
+	DWARF_CompilationUnitInfo cu{};
+
+	unsigned long offs = 0;
+	if (!cu.read(debug_, img, &offs)) {
+		return false;
+	}
+
+	int ptrsize = cu.address_size;
+
+	debug = debug_;
 
 	DWARF_LineNumberProgramHeader hdr5;
-	for(unsigned long off = 0; off < img.debug_line_length; )
+	for(unsigned long off = 0; off < img.debug_line.length; )
 	{
-		DWARF_LineNumberProgramHeader* hdrver = (DWARF_LineNumberProgramHeader*) (img.debug_line + off);
+		DWARF_LineNumberProgramHeader* hdrver = (DWARF_LineNumberProgramHeader*)img.debug_line.byteAt(off);
 		int length = hdrver->unit_length;
 		if(length < 0)
 			break;
@@ -226,6 +231,10 @@ bool interpretDWARFLines(const PEImage& img, mspdb::Mod* mod)
 		unsigned char* p = (unsigned char*) hdrver + hdrlength;
 		unsigned char* end = (unsigned char*) hdrver + length;
 
+		if (debug & DbgDwarfLines)
+			fprintf(stderr, "%s:%d: LineNumberProgramHeader offs=%x ver=%d\n", __FUNCTION__, __LINE__,
+					off, hdr->version);
+
 		std::vector<unsigned int> opcode_lengths;
 		opcode_lengths.resize(hdr->opcode_base);
 		if (hdr->opcode_base > 0)
@@ -236,9 +245,8 @@ bool interpretDWARFLines(const PEImage& img, mspdb::Mod* mod)
 		}
 
 		DWARF_LineState state;
-		state.seg_offset = img.getImageBase() + img.getSection(img.codeSegment).VirtualAddress;
+		state.seg_offset = img.getImageBase() + img.getSection(img.text.secNo).VirtualAddress;
 
-		DWARF_FileName fname;
 		if (hdr->version <= 4)
 		{
 			// dirs
@@ -246,16 +254,19 @@ bool interpretDWARFLines(const PEImage& img, mspdb::Mod* mod)
 			{
 				if(*p == 0)
 					break;
-				state.include_dirs.push_back((const char*) p);
-				p += strlen((const char*) p) + 1;
+				state.include_dirs.emplace_back((const char*) p);
+				auto &dir = state.include_dirs.back();
+				p += dir.size() + 1;
+				addTrailingSlash(dir);
 			}
 			p++;
 
 			// files
 			while(p < end && *p)
 			{
+				DWARF_FileName fname;
 				fname.read(p);
-				state.files.push_back(fname);
+				state.files.emplace_back(std::move(fname));
 			}
 			p++;
 		}
@@ -275,31 +286,48 @@ bool interpretDWARFLines(const PEImage& img, mspdb::Mod* mod)
 			unsigned int directories_count = LEB128(p);
 			for (int o = 0; o < directories_count; o++)
 			{
-				for (int i = 0; i < directory_entry_format_count; i++)
+				for (const auto &typeForm : directory_entry_format)
 				{
-					switch (directory_entry_format[i].type)
+					switch (typeForm.type)
 					{
 						case DW_LNCT_path:
-							switch (directory_entry_format[i].form)
+						{
+							switch (typeForm.form)
 							{
 							case DW_FORM_line_strp:
 							{
-								size_t offset = cu->isDWARF64() ? RD8(p) : RD4(p);
-								state.include_dirs.push_back(img.debug_line_str + offset);
+								size_t offset = cu.isDWARF64() ? RD8(p) : RD4(p);
+								state.include_dirs.emplace_back((const char*)img.debug_line_str.byteAt(offset));
 								break;
 							}
 							case DW_FORM_string:
-								state.include_dirs.push_back((const char*)p);
+								state.include_dirs.emplace_back((const char*)p);
 								p += strlen((const char*)p) + 1;
 								break;
 							default:
+								fprintf(stderr, "%s:%d: ERROR: invalid form=%d for path lineHdrOffs=%x\n", __FUNCTION__, __LINE__,
+										typeForm.form, off);
+
 								return false;
 							}
+
+							auto& dir = state.include_dirs.back();
+
+							// Relative dirs are relative to the first directory
+							// in the table.
+							if (state.include_dirs.size() > 1 && isRelativePath(dir))
+								dir = state.include_dirs.front() + dir;
+
+							addTrailingSlash(dir);
 							break;
+						}
 						case DW_LNCT_directory_index:
 						case DW_LNCT_timestamp:
 						case DW_LNCT_size:
 						default:
+							fprintf(stderr, "%s:%d: ERROR: unexpected type=%d form=%d for directory path lineHdrOffs=%x\n", __FUNCTION__, __LINE__,
+										typeForm.type, typeForm.form, off);
+
 							return false;
 					}
 				}
@@ -317,17 +345,19 @@ bool interpretDWARFLines(const PEImage& img, mspdb::Mod* mod)
 			unsigned int file_names_count = LEB128(p);
 			for (int o = 0; o < file_names_count; o++)
 			{
-				for (int i = 0; i < file_name_entry_format_count; i++)
+				DWARF_FileName fname;
+
+				for (const auto &typeForm : file_name_entry_format)
 				{
-					switch (file_name_entry_format[i].type)
+					switch (typeForm.type)
 					{
 						case DW_LNCT_path:
-							switch (directory_entry_format[i].form)
+							switch (typeForm.form)
 							{
 							case DW_FORM_line_strp:
 							{
-								size_t offset = cu->isDWARF64() ? RD8(p) : RD4(p);
-								fname.file_name = img.debug_line_str + offset;
+								size_t offset = cu.isDWARF64() ? RD8(p) : RD4(p);
+								fname.file_name = (const char*)img.debug_line_str.byteAt(offset);
 								break;
 							}
 							case DW_FORM_string:
@@ -335,22 +365,41 @@ bool interpretDWARFLines(const PEImage& img, mspdb::Mod* mod)
 								p += strlen((const char*)p) + 1;
 								break;
 							default:
+								fprintf(stderr, "%s:%d: ERROR: invalid form=%d for path lineHdrOffs=%x\n", __FUNCTION__, __LINE__,
+										typeForm.form, off);
+
+
+								assert(false, "invalid path form");
 								return false;
 							}
 							break;
 						case DW_LNCT_directory_index:
-							if (file_name_entry_format[i].form == DW_FORM_udata)
-								fname.dir_index = LEB128(p);
+							// bias the directory index by 1 since _flushDWARFLines
+							// will check for 0 and subtract one (which is
+							// useful for DWARF4).
+							if (typeForm.form == DW_FORM_udata)
+							{
+								fname.dir_index = LEB128(p) + 1;
+							}
 							else
+							{
+								fprintf(stderr, "%s:%d: ERROR: invalid form=%d for directory index lineHdrOffs=%x\n", __FUNCTION__, __LINE__,
+										typeForm.form, off);
+
 								return false;
+							}
 							break;
 						case DW_LNCT_timestamp:
 						case DW_LNCT_size:
 						default:
+							fprintf(stderr, "%s:%d: ERROR: unexpected type=%d form=%d for file path lineHdrOffs=%x\n", __FUNCTION__, __LINE__,
+										typeForm.type, typeForm.form, off);
+
 							return false;
 					}
 				}
-				state.files.push_back(fname);
+
+				state.files.emplace_back(std::move(fname));
 			}
 		}
 
@@ -387,8 +436,6 @@ bool interpretDWARFLines(const PEImage& img, mspdb::Mod* mod)
 					switch(excode)
 					{
 					case DW_LNE_end_sequence:
-						if((char*)p - img.debug_line >= 0xe4e0)
-							p = p;
 						state.end_sequence = true;
 						state.last_addr = state.address;
 						if(!addLineInfo(img, mod, state))
@@ -398,15 +445,14 @@ bool interpretDWARFLines(const PEImage& img, mspdb::Mod* mod)
 					case DW_LNE_set_address:
 					{
 						if (!mod && state.section == -1)
-							state.section = img.getRelocationInLineSegment((char*)p - img.debug_line);
+							state.section = img.getRelocationInLineSegment(img.debug_line.sectOff(p));
 						unsigned long adr = ptrsize == 8 ? RD8(p) : RD4(p);
 						state.address = adr;
 						state.op_index = 0;
 						break;
 					}
 					case DW_LNE_define_file:
-						fname.read(p);
-						state.file_ptr = &fname;
+						state.cur_file.read(p);
 						state.file = 0;
 						break;
 					case DW_LNE_set_discriminator:
@@ -432,6 +478,11 @@ bool interpretDWARFLines(const PEImage& img, mspdb::Mod* mod)
 					break;
 				case DW_LNS_set_file:
 					state.file = LEB128(p);
+					// DWARF5 numbers all files starting at zero.  We will
+					// subtract one in _flushDWARFLines when indexing the files
+					// array.
+					if (hdr->version >= 5)
+						state.file += 1;
 					break;
 				case DW_LNS_set_column:
 					state.column = LEB128(p);

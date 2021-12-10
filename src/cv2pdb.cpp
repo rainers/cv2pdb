@@ -17,7 +17,7 @@
 
 static const int typePrefix = 4;
 
-CV2PDB::CV2PDB(PEImage& image)
+CV2PDB::CV2PDB(PEImage& image, DebugLevel debug_)
 : img(image), pdb(0), dbi(0), tpi(0), ipi(0), libraries(0), rsds(0), rsdsLen(0), modules(0), globmod(0)
 , segMap(0), segMapDesc(0), segFrame2Index(0), globalTypeHeader(0)
 , globalTypes(0), cbGlobalTypes(0), allocGlobalTypes(0)
@@ -28,7 +28,7 @@ CV2PDB::CV2PDB(PEImage& image)
 , srcLineStart(0), srcLineSections(0)
 , pointerTypes(0)
 , Dversion(2)
-, debug(false)
+, debug(debug_)
 , classEnumType(0), ifaceEnumType(0), cppIfaceEnumType(0), structEnumType(0)
 , classBaseType(0), ifaceBaseType(0), cppIfaceBaseType(0), structBaseType(0)
 , emptyFieldListType(0)
@@ -149,7 +149,7 @@ bool CV2PDB::openPDB(const TCHAR* pdbname, const TCHAR* pdbref)
 
 	if (!initMsPdb ())
 		return setError("cannot load PDB helper DLL");
-	if (debug)
+	if (debug & DbgBasic)
 	{
 		extern HMODULE modMsPdb;
 		char modpath[260];
@@ -737,6 +737,9 @@ int CV2PDB::countNestedTypes(const codeview_reftype* fieldlist, int type)
 int CV2PDB::addAggregate(codeview_type* dtype, bool clss, int n_element, int fieldlist, int property,
                          int derived, int vshape, int structlen, const char* name, const char* uniquename)
 {
+	if (debug & DbgPdbTypes)
+		fprintf(stderr, "%s:%d: adding aggregate %s -> fieldlist:%d\n", __FUNCTION__, __LINE__, name, fieldlist);
+
 	dtype->struct_v2.id = clss ? (v3 ? LF_CLASS_V3 : LF_CLASS_V2) : (v3 ? LF_STRUCTURE_V3 : LF_STRUCTURE_V2);
 	dtype->struct_v2.n_element = n_element;
 	dtype->struct_v2.fieldlist = fieldlist;
@@ -771,6 +774,9 @@ int CV2PDB::addStruct(codeview_type* dtype, int n_element, int fieldlist, int pr
 int CV2PDB::addEnum(codeview_type* dtype, int count, int fieldlist, int property,
                     int type, const char*name)
 {
+	if (debug & DbgPdbTypes)
+		fprintf(stderr, "%s:%d: adding enum %s -> fieldlist:%d\n", __FUNCTION__, __LINE__, name, fieldlist);
+
 	dtype->enumeration_v2.id = (v3 ? LF_ENUM_V3 : LF_ENUM_V2);
 	dtype->enumeration_v2.count = count;
 	dtype->enumeration_v2.fieldlist = fieldlist;
@@ -2074,6 +2080,9 @@ int CV2PDB::appendTypedef(int type, const char* name, bool saveTranslation)
 	if(type == 0x78)
 		basetype = 0x75; // dchar type not understood by debugger, use uint instead
 
+	if (debug & DbgPdbTypes)
+		fprintf(stderr, "%s:%d: adding typedef %s -> %d\n", __FUNCTION__, __LINE__, name, type);
+
 	int typedefType;
 	if(useTypedefEnum)
 	{
@@ -2981,6 +2990,9 @@ bool CV2PDB::addPublics()
 					char symname[kMaxNameLen];
 					dsym2c((BYTE*)sym->data_v1.p_name.name, sym->data_v1.p_name.namelen, symname, sizeof(symname));
 					int type = translateType(sym->data_v1.symtype);
+					if (debug & DbgPdbSyms)
+						fprintf(stderr, "%s:%d: AddPublic2 %s\n", __FUNCTION__, __LINE__, (const char *)symname);
+
 					if (mod)
 						rc = mod->AddPublic2(symname, sym->data_v1.segment, sym->data_v1.offset, type);
 					else
@@ -2997,6 +3009,8 @@ bool CV2PDB::addPublics()
 
 bool CV2PDB::initGlobalSymbols()
 {
+	if (debug & DbgBasic)
+		fprintf(stderr, "%s:%d, countEntries: %d\n", __FUNCTION__, __LINE__, (int)countEntries);
 	for (int m = 0; m < countEntries; m++)
 	{
 		OMFDirEntry* entry = img.getCVEntry(m);

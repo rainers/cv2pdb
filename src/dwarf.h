@@ -229,10 +229,32 @@ extern "C" {
 #define DW_FORM_flag_present            0x19 /* DWARF4 */
 #define DW_FORM_strx                    0x1a /* DWARF5 */
 #define DW_FORM_addrx                   0x1b /* DWARF5 */
+#define DW_FORM_ref_sup4                0x1c /* DWARF5 */
 #define DW_FORM_strp_sup                0x1d /* DWARF5 */
 #define DW_FORM_data16                  0x1e /* DWARF5 */
 #define DW_FORM_line_strp               0x1f /* DWARF5 */
 #define DW_FORM_ref_sig8                0x20 /* DWARF4 */
+#define DW_FORM_implicit_const          0x21 /* DWARF5 */
+#define DW_FORM_loclistx                0x22 /* DWARF5 */
+#define DW_FORM_rnglistx                0x23 /* DWARF5 */
+#define DW_FORM_ref_sup8                0x24 /* DWARF5 */
+#define DW_FORM_strx1                   0x25 /* DWARF5 */
+#define DW_FORM_strx2                   0x26 /* DWARF5 */
+#define DW_FORM_strx3                   0x27 /* DWARF5 */
+#define DW_FORM_strx4                   0x28 /* DWARF5 */
+#define DW_FORM_addrx1                  0x29 /* DWARF5 */
+#define DW_FORM_addrx2                  0x2a /* DWARF5 */
+#define DW_FORM_addrx3                  0x2b /* DWARF5 */
+#define DW_FORM_addrx4                  0x2c /* DWARF5 */
+
+#define DW_UT_compile                   0x01 /* DWARF5 */
+#define DW_UT_type                      0x02 /* DWARF5 */
+#define DW_UT_partial                   0x03 /* DWARF5 */
+#define DW_UT_skeleton                  0x04 /* DWARF5 */
+#define DW_UT_split_compile             0x05 /* DWARF5 */
+#define DW_UT_split_type                0x06 /* DWARF5 */
+#define DW_UT_lo_user                   0x80 /* DWARF5 */
+#define DW_UT_hi_user                   0xff /* DWARF5 */
 
 #define DW_AT_sibling                           0x01
 #define DW_AT_location                          0x02
@@ -331,6 +353,35 @@ extern "C" {
 #define DW_AT_const_expr                        0x6c /* DWARF4 */
 #define DW_AT_enum_class                        0x6d /* DWARF4 */
 #define DW_AT_linkage_name                      0x6e /* DWARF4 */
+#define DW_AT_string_length_bit_size            0x6f /* DWARF5 */
+#define DW_AT_string_length_byte_size           0x70 /* DWARF5 */
+#define DW_AT_rank                              0x71 /* DWARF5 */
+#define DW_AT_str_offsets_base                  0x72 /* DWARF5 */
+#define DW_AT_addr_base                         0x73 /* DWARF5 */
+#define DW_AT_rnglists_base                     0x74 /* DWARF5 */
+#define DW_AT_dwo_name                          0x76 /* DWARF5 */
+#define DW_AT_reference                         0x77 /* DWARF5 */
+#define DW_AT_rvalue_reference                  0x78 /* DWARF5 */
+#define DW_AT_macros                            0x79 /* DWARF5 */
+#define DW_AT_call_all_calls                    0x7a /* DWARF5 */
+#define DW_AT_call_all_source_calls             0x7b /* DWARF5 */
+#define DW_AT_call_all_tail_calls               0x7c /* DWARF5 */
+#define DW_AT_call_return_pc                    0x7d /* DWARF5 */
+#define DW_AT_call_value                        0x7e /* DWARF5 */
+#define DW_AT_call_origin                       0x7f /* DWARF5 */
+#define DW_AT_call_parameter                    0x80 /* DWARF5 */
+#define DW_AT_call_pc                           0x81 /* DWARF5 */
+#define DW_AT_call_tail_call                    0x82 /* DWARF5 */
+#define DW_AT_call_target                       0x83 /* DWARF5 */
+#define DW_AT_call_target_clobbered             0x84 /* DWARF5 */
+#define DW_AT_call_data_location                0x85 /* DWARF5 */
+#define DW_AT_call_data_value                   0x86 /* DWARF5 */
+#define DW_AT_noreturn                          0x87 /* DWARF5 */
+#define DW_AT_alignment                         0x88 /* DWARF5 */
+#define DW_AT_export_symbols                    0x89 /* DWARF5 */
+#define DW_AT_deleted                           0x8a /* DWARF5 */
+#define DW_AT_defaulted                         0x8b /* DWARF5 */
+#define DW_AT_loclists_base                     0x8c /* DWARF5 */
 
 /* In extensions, we attempt to include the vendor extension
    in the name even when the vendor leaves it out. */
@@ -901,6 +952,27 @@ extern "C" {
 #define DW_LNE_HP_source_file_correlation   0x80 /* HP */
 #define DW_LNE_lo_user                  0x80 /* DWARF3 */
 #define DW_LNE_hi_user                  0xff /* DWARF3 */
+
+/* DWARF5 debug_rnglists entries */
+#define DW_RLE_end_of_list              0x00
+#define DW_RLE_base_addressx            0x01
+#define DW_RLE_startx_endx              0x02
+#define DW_RLE_startx_length            0x03
+#define DW_RLE_offset_pair              0x04
+#define DW_RLE_base_address             0x05
+#define DW_RLE_start_end                0x06
+#define DW_RLE_start_length             0x07
+
+/* DWARF5 debug_loclists entries */
+#define DW_LLE_end_of_list              0x00
+#define DW_LLE_base_addressx            0x01
+#define DW_LLE_startx_endx              0x02
+#define DW_LLE_startx_length            0x03
+#define DW_LLE_offset_pair              0x04
+#define DW_LLE_default_location         0x05
+#define DW_LLE_base_address             0x06
+#define DW_LLE_start_end                0x07
+#define DW_LLE_start_length             0x08
 
 /* These are known values for DW_LNS_set_isa. */
 #define DW_ISA_UNKNOWN   0

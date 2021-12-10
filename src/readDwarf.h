@@ -1,12 +1,33 @@
 #ifndef __READDWARF_H__
 #define __READDWARF_H__
 
+#include <Windows.h>
 #include <cstring>
 #include <string>
 #include <vector>
+#include <unordered_map>
 #include "mspdb.h"
 
 typedef unsigned char byte;
+class PEImage;
+class DIECursor;
+struct SectionDescriptor;
+
+enum DebugLevel : unsigned {
+	DbgBasic = 0x1,
+	DbgPdbTypes = 0x2,
+	DbgPdbSyms = 0x4,
+	DbgPdbLines = 0x8,
+	DbgPdbContrib = 0x10,
+	DbgDwarfCompilationUnit = 0x100,
+	DbgDwarfTagRead = 0x200,
+	DbgDwarfAttrRead = 0x400,
+	DbgDwarfLocLists = 0x800,
+	DbgDwarfRangeLists = 0x1000,
+	DbgDwarfLines = 0x2000
+};
+
+DEFINE_ENUM_FLAG_OPERATORS(DebugLevel);
 
 inline unsigned int LEB128(byte* &p)
 {
@@ -40,7 +61,7 @@ inline int SLEB128(byte* &p)
 	return x;
 }
 
-inline unsigned int RD2(byte* &p)
+inline unsigned short RD2(byte* &p)
 {
 	unsigned int x = *p++;
 	x |= *p++ << 8;
@@ -105,22 +126,46 @@ struct DWARF_Attribute
 
 ///////////////////////////////////////////////////////////////////////////////
 
-#include "pshpack1.h"
-
-struct DWARF_CompilationUnit
+struct DWARF_CompilationUnitInfo
 {
-	unsigned int unit_length; // 12 byte in DWARF-64
+	uint32_t unit_length; // 12 byte in DWARF-64
 	unsigned short version;
-	unsigned int debug_abbrev_offset; // 8 byte in DWARF-64
 	byte address_size;
+	byte unit_type;
+	unsigned int debug_abbrev_offset; // 8 byte in DWARF-64
 
-	bool isDWARF64() const { return unit_length == ~0; }
-	int refSize() const { return unit_length == ~0 ? 8 : 4; }
+	// Value of the DW_AT_low_pc attribute for the current compilation unit.
+	// Specify the default base address for use in location lists and range
+	// lists.
+	uint32_t base_address;
+
+	// Indirect base address in .debug_addr for addrx forms
+	byte* addr_base;
+
+	// Indirect base address in .debug_str_offsets for strx forms
+	byte* str_offset_base;
+
+	// Indirect base address in .debug_loclists for loclistx forms
+	byte* loclist_base;
+
+	// Indirect base address in the .debug_rnglists for rnglistx forms
+	byte* rnglist_base;
+
+	// Offset within the debug_info section
+	uint32_t cu_offset;
+	byte* start_ptr;
+	byte* end_ptr;
+
+	bool is_dwarf64;
+
+	byte* read(DebugLevel debug, const PEImage& img, unsigned long *off);
+
+	bool isDWARF64() const { return is_dwarf64; }
 };
 
 struct DWARF_FileName
 {
-	const char* file_name;
+	std::string file_name;
 	unsigned int  dir_index;
 	unsigned long lastModification;
 	unsigned long fileLength;
@@ -128,7 +173,7 @@ struct DWARF_FileName
 	void read(byte* &p)
 	{
 		file_name = (const char*)p;
-		p += strlen((const char*)p) + 1;
+		p += file_name.size() + 1;
 		dir_index = LEB128(p);
 		lastModification = LEB128(p);
 		fileLength = LEB128(p);
@@ -138,7 +183,6 @@ struct DWARF_FileName
 struct DWARF_InfoData
 {
 	byte* entryPtr;
-	unsigned entryOff; // offset in the cu
 	int code;
 	byte* abbrev;
 	int tag;
@@ -244,6 +288,8 @@ struct DWARF_TypeForm
 	unsigned int type, form;
 };
 
+#include "pshpack1.h"
+
 struct DWARF_LineNumberProgramHeader
 {
 	unsigned int unit_length; // 12 byte in DWARF-64
@@ -294,10 +340,12 @@ struct DWARF2_LineNumberProgramHeader
 	// DWARF_FileNames file_names[] // zero byte terminated
 };
 
+#include "poppack.h"
+
 struct DWARF_LineState
 {
 	// hdr info
-	std::vector<const char*> include_dirs;
+	std::vector<std::string> include_dirs;
 	std::vector<DWARF_FileName> files;
 
 	unsigned long address;
@@ -314,7 +362,7 @@ struct DWARF_LineState
 	unsigned int  discriminator;
 
 	// not part of the "documented" state
-	DWARF_FileName* file_ptr;
+	DWARF_FileName cur_file;
 	unsigned long seg_offset;
 	unsigned long section;
 	unsigned long last_addr;
@@ -323,7 +371,6 @@ struct DWARF_LineState
 
 	DWARF_LineState()
 	{
-		file_ptr = nullptr;
 		seg_offset = 0x400000;
 		last_addr = 0;
 		lineInfo_file = 0;
@@ -356,7 +403,6 @@ struct DWARF_LineState
 	}
 };
 
-#include "poppack.h"
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -382,34 +428,102 @@ struct Location
 	bool is_regrel() const { return type == RegRel; }
 };
 
-class PEImage;
+// Location list entry
+class LOCEntry
+{
+public:
+	unsigned long beg_offset;
+	unsigned long end_offset;
+	bool isDefault;
+	Location loc;
+
+	void addBase(uint32_t base)
+	{
+		beg_offset += base;
+		end_offset += base;
+	}
+};
+
+// Location list cursor
+class LOCCursor
+{
+public:
+	LOCCursor(const DIECursor& parent, unsigned long off);
+
+	const DIECursor& parent;
+	uint32_t base;
+	byte* end;
+	byte* ptr;
+	bool isLocLists;
+
+	bool readNext(LOCEntry& entry);
+};
+
+// Range list entry
+class RangeEntry
+{
+public:
+	uint64_t pclo;
+	uint64_t pchi;
+
+	void addBase(uint64_t base)
+	{
+		pclo += base;
+		pchi += base;
+	}
+};
+
+// Range list cursor
+class RangeCursor
+{
+public:
+	RangeCursor(const DIECursor& parent, unsigned long off);
+
+	const DIECursor& parent;
+	uint32_t base;
+	byte *end;
+	byte *ptr;
+	bool isRngLists;
+
+	bool readNext(RangeEntry& entry);
+};
+
+typedef std::unordered_map<std::pair<unsigned, unsigned>, byte*> abbrevMap_t;
 
 // Attempts to partially evaluate DWARF location expressions.
 // The only supported expressions are those, whose result may be represented
 // as either an absolute value, a register, or a register-relative address.
-Location decodeLocation(const PEImage& img, const DWARF_Attribute& attr, const Location* frameBase = 0, int at = 0);
+Location decodeLocation(const DWARF_Attribute& attr, const Location* frameBase = 0, int at = 0);
 
-void mergeAbstractOrigin(DWARF_InfoData& id, DWARF_CompilationUnit* cu);
-void mergeSpecification(DWARF_InfoData& id, DWARF_CompilationUnit* cu);
+void mergeAbstractOrigin(DWARF_InfoData& id, const DIECursor& parent);
+void mergeSpecification(DWARF_InfoData& id, const DIECursor& parent);
 
 // Debug Information Entry Cursor
 class DIECursor
 {
 public:
-	DWARF_CompilationUnit* cu;
+	DWARF_CompilationUnitInfo* cu;
 	byte* ptr;
+	unsigned int entryOff;
 	int level;
 	bool hasChild; // indicates whether the last read DIE has children
 	byte* sibling;
+
+	static PEImage *img;
+	static abbrevMap_t abbrevMap;
+	static DebugLevel debug;
 
 	byte* getDWARFAbbrev(unsigned off, unsigned findcode);
 
 public:
 
-	static void setContext(PEImage* img_);
+	static void setContext(PEImage* img_, DebugLevel debug_);
 
 	// Create a new DIECursor
-	DIECursor(DWARF_CompilationUnit* cu_, byte* ptr);
+	DIECursor(DWARF_CompilationUnitInfo* cu_, byte* ptr);
+
+	// Create a child DIECursor
+	DIECursor(const DIECursor& parent, byte* ptr_);
 
 	// Goto next sibling DIE.  If the last read DIE had any children, they will be skipped over.
 	void gotoSibling();
@@ -425,10 +539,28 @@ public:
 	// If stopAtNull is true, readNext() will stop upon reaching a null DIE (end of the current tree level).
 	// Otherwise, it will skip null DIEs and stop only at the end of the subtree for which this DIECursor was created.
 	bool readNext(DWARF_InfoData& id, bool stopAtNull = false);
+
+	// Read an address from p according to the ambient pointer size.
+	uint64_t RDAddr(byte* &p) const
+	{
+		if (cu->address_size == 4)
+			return RD4(p);
+
+		return RD8(p);
+	}
+
+	unsigned long long RDref(byte* &ptr) const { return cu->isDWARF64() ? RD8(ptr) : RD4(ptr); }
+	int refSize() const { return cu->isDWARF64() ? 8 : 4; }
+
+	// Obtain the address of a string for a strx form.
+	const char *resolveIndirectString(uint32_t index) const ;
+	uint32_t readIndirectAddr(uint32_t index) const ;
+	uint32_t resolveIndirectSecPtr(uint32_t index, const SectionDescriptor &secDesc, byte *baseAddress) const;
+
 };
 
 // iterate over DWARF debug_line information
 // if mod is null, print them out, otherwise add to module
-bool interpretDWARFLines(const PEImage& img, mspdb::Mod* mod);
+bool interpretDWARFLines(const PEImage& img, mspdb::Mod* mod, DebugLevel debug = DebugLevel{});
 
 #endif

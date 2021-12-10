@@ -1,14 +1,82 @@
 #include "readDwarf.h"
 #include <assert.h>
-#include <unordered_map>
 #include <array>
-#include <windows.h>
 
 #include "PEImage.h"
 #include "dwarf.h"
 #include "mspdb.h"
 extern "C" {
 	#include "mscvpdb.h"
+}
+
+
+// declare hasher for pair<T1,T2>
+namespace std
+{
+template<typename T1, typename T2>
+struct hash<std::pair<T1, T2>>
+{
+	size_t operator()(const std::pair<T1, T2>& t) const
+	{
+		return std::hash<T1>()(t.first) ^ std::hash<T2>()(t.second);
+	}
+};
+}
+
+PEImage* DIECursor::img;
+abbrevMap_t DIECursor::abbrevMap;
+DebugLevel DIECursor::debug;
+
+void DIECursor::setContext(PEImage* img_, DebugLevel debug_)
+{
+	img = img_;
+	abbrevMap.clear();
+	debug = debug_;
+}
+
+byte* DWARF_CompilationUnitInfo::read(DebugLevel debug, const PEImage& img, unsigned long *off)
+{
+	byte* ptr = img.debug_info.byteAt(*off);
+
+	start_ptr = ptr;
+	cu_offset = *off;
+	is_dwarf64 = false;
+	base_address = 0;
+	unit_length = RD4(ptr);
+	if (unit_length == ~0) {
+		// DWARF64 doesn't make sense in the context of the PE format since the
+		// section size is limited to 32 bits.
+		fprintf(stderr, "%s:%d: WARNING: DWARF64 compilation unit at offset=%x is not supported\n", __FUNCTION__, __LINE__,
+				cu_offset);
+
+		uint64_t len64 = RD8(ptr);
+		*off = img.debug_info.sectOff(ptr + (intptr_t)len64);
+		return nullptr;
+	}
+
+	end_ptr = ptr + unit_length;
+	*off = img.debug_info.sectOff(end_ptr);
+	version = RD2(ptr);
+	unit_type = DW_UT_compile;
+	if (version <= 4) {
+		debug_abbrev_offset = RD4(ptr);
+		address_size = *ptr++;
+	} else if (version == 5) {
+		unit_type = *ptr++;
+		address_size = *ptr++;
+		debug_abbrev_offset = RD4(ptr);
+	} else {
+		fprintf(stderr, "%s:%d: WARNING: Unsupported dwarf version %d for compilation unit at offset=%x\n", __FUNCTION__, __LINE__,
+				version, cu_offset);
+
+		return nullptr;
+	}
+
+	if (debug & DbgDwarfCompilationUnit)
+		fprintf(stderr, "%s:%d: Reading compilation unit offs=%x, type=%d, ver=%d, addr_size=%d\n", __FUNCTION__, __LINE__,
+				cu_offset, unit_type, version, address_size);
+
+	return ptr;
 }
 
 static Location mkInReg(unsigned reg)
@@ -38,7 +106,7 @@ static Location mkRegRel(int reg, int off)
 	return l;
 }
 
-Location decodeLocation(const PEImage& img, const DWARF_Attribute& attr, const Location* frameBase, int at)
+Location decodeLocation(const DWARF_Attribute& attr, const Location* frameBase, int at)
 {
 	static Location invalid = { Location::Invalid };
 
@@ -292,60 +360,221 @@ Location decodeLocation(const PEImage& img, const DWARF_Attribute& attr, const L
 	return stack[0];
 }
 
-void mergeAbstractOrigin(DWARF_InfoData& id, DWARF_CompilationUnit* cu)
+void mergeAbstractOrigin(DWARF_InfoData& id, const DIECursor& parent)
 {
-	DIECursor specCursor(cu, id.abstract_origin);
+	DIECursor specCursor(parent, id.abstract_origin);
 	DWARF_InfoData idspec;
 	specCursor.readNext(idspec);
 	// assert seems invalid, combination DW_TAG_member and DW_TAG_variable found in the wild
 	// assert(id.tag == idspec.tag);
 	if (idspec.abstract_origin)
-		mergeAbstractOrigin(idspec, cu);
+		mergeAbstractOrigin(idspec, parent);
 	if (idspec.specification)
-		mergeSpecification(idspec, cu);
+		mergeSpecification(idspec, parent);
 	id.merge(idspec);
 }
 
-void mergeSpecification(DWARF_InfoData& id, DWARF_CompilationUnit* cu)
+void mergeSpecification(DWARF_InfoData& id, const DIECursor& parent)
 {
-	DIECursor specCursor(cu, id.specification);
+	DIECursor specCursor(parent, id.specification);
 	DWARF_InfoData idspec;
 	specCursor.readNext(idspec);
 	//assert seems invalid, combination DW_TAG_member and DW_TAG_variable found in the wild
 	//assert(id.tag == idspec.tag);
 	if (idspec.abstract_origin)
-		mergeAbstractOrigin(idspec, cu);
+		mergeAbstractOrigin(idspec, parent);
 	if (idspec.specification)
-		mergeSpecification(idspec, cu);
+		mergeSpecification(idspec, parent);
 	id.merge(idspec);
 }
 
-// declare hasher for pair<T1,T2>
-namespace std
+LOCCursor::LOCCursor(const DIECursor& parent, unsigned long off)
+	: parent(parent)
 {
-	template<typename T1, typename T2>
-	struct hash<std::pair<T1, T2>>
+	base = parent.cu->base_address;
+	isLocLists = (parent.cu->version >= 5);
+
+	const PESection& sec = isLocLists ? parent.img->debug_loclists : parent.img->debug_loc;
+	ptr = sec.byteAt(off);
+	end = sec.endByte();
+}
+
+bool LOCCursor::readNext(LOCEntry& entry)
+{
+	if (isLocLists)
 	{
-		size_t operator()(const std::pair<T1, T2>& t) const
+		if (parent.debug & DbgDwarfLocLists)
+			fprintf(stderr, "%s:%d: loclists off=%x DIEoff=%x:\n", __FUNCTION__, __LINE__,
+					parent.img->debug_loclists.sectOff(ptr), parent.entryOff);
+
+		auto readCountedLocation = [&entry](byte* &ptr) {
+			DWARF_Attribute attr;
+			attr.type = Block;
+			attr.block.len = LEB128(ptr);
+			attr.block.ptr = ptr;
+			ptr += attr.block.len;
+			entry.loc = decodeLocation(attr);
+			return true;
+		};
+
+		while (ptr < end)
 		{
-			return std::hash<T1>()(t.first) ^ std::hash<T2>()(t.second);
+			byte type = *ptr++;
+			switch (type)
+			{
+			case DW_LLE_end_of_list:
+				return false;
+			case DW_LLE_base_addressx:
+				base = parent.readIndirectAddr(LEB128(ptr));
+				continue;
+			case DW_LLE_startx_endx:
+				entry.beg_offset = parent.readIndirectAddr(LEB128(ptr));
+				entry.end_offset = parent.readIndirectAddr(LEB128(ptr));
+				return readCountedLocation(ptr);
+			case DW_LLE_startx_length:
+				entry.beg_offset = parent.readIndirectAddr(LEB128(ptr));
+				entry.end_offset = entry.beg_offset + LEB128(ptr);
+				return readCountedLocation(ptr);
+			case DW_LLE_offset_pair:
+				entry.beg_offset = LEB128(ptr);
+				entry.end_offset = LEB128(ptr);
+				return readCountedLocation(ptr);
+			case DW_LLE_default_location:
+				entry = {};
+				entry.isDefault = true;
+				return readCountedLocation(ptr);
+			case DW_LLE_base_address:
+				base = parent.RDAddr(ptr);
+				continue;
+			case DW_LLE_start_end:
+				entry.beg_offset = parent.RDAddr(ptr);
+				entry.end_offset = parent.RDAddr(ptr);
+				return readCountedLocation(ptr);
+			case DW_LLE_start_length:
+				entry.beg_offset = parent.RDAddr(ptr);
+				entry.end_offset = entry.beg_offset + LEB128(ptr);
+				return readCountedLocation(ptr);
+			default:
+				fprintf(stderr, "ERROR: %s:%d: unknown loclists entry %d at offs=%x die_offs=%x\n", __FUNCTION__, __LINE__,
+						type, parent.img->debug_loclists.sectOff(ptr - 1), parent.entryOff);
+
+				assert(false && "unknown rnglist opcode");
+				return false;
+			}
 		}
-	};
+	}
+	else
+	{
+		if (ptr >= end)
+			return false;
+
+		if (parent.debug & DbgDwarfLocLists)
+			fprintf(stderr, "%s:%d: loclist off=%x DIEoff=%x:\n", __FUNCTION__, __LINE__,
+					parent.img->debug_loc.sectOff(ptr), parent.entryOff);
+
+		entry.beg_offset = (unsigned long) parent.RDAddr(ptr);
+		entry.end_offset = (unsigned long) parent.RDAddr(ptr);
+		if (!entry.beg_offset && !entry.end_offset)
+			return false;
+
+		DWARF_Attribute attr;
+		attr.type = Block;
+		attr.block.len = RD2(ptr);
+		attr.block.ptr = ptr;
+		entry.loc = decodeLocation(attr);
+		ptr += attr.expr.len;
+		return true;
+	}
+
+	return false;
 }
 
-typedef std::unordered_map<std::pair<unsigned, unsigned>, byte*> abbrevMap_t;
-
-static PEImage* img;
-static abbrevMap_t abbrevMap;
-
-void DIECursor::setContext(PEImage* img_)
+RangeCursor::RangeCursor(const DIECursor& parent, unsigned long off)
+	: parent(parent)
 {
-	img = img_;
-	abbrevMap.clear();
+	base = parent.cu->base_address;
+	isRngLists = (parent.cu->version >= 5);
+
+	const PESection& sec = isRngLists ? parent.img->debug_rnglists : parent.img->debug_ranges;
+	ptr = sec.byteAt(off);
+	end = sec.endByte();
 }
 
+bool RangeCursor::readNext(RangeEntry& entry)
+{
+	if (isRngLists)
+	{
+		if (parent.debug & DbgDwarfRangeLists)
+			fprintf(stderr, "%s:%d: rnglists off=%x DIEoff=%x:\n", __FUNCTION__, __LINE__,
+					parent.img->debug_rnglists.sectOff(ptr), parent.entryOff);
 
-DIECursor::DIECursor(DWARF_CompilationUnit* cu_, byte* ptr_)
+		while (ptr < end)
+		{
+			byte type = *ptr++;
+			switch (type)
+			{
+			case DW_RLE_end_of_list:
+				return false;
+			case DW_RLE_base_addressx:
+				base = parent.readIndirectAddr(LEB128(ptr));
+				continue;
+			case DW_RLE_startx_endx:
+				entry.pclo = parent.readIndirectAddr(LEB128(ptr));
+				entry.pchi = parent.readIndirectAddr(LEB128(ptr));
+				return true;
+			case DW_RLE_startx_length:
+				entry.pclo = parent.readIndirectAddr(LEB128(ptr));
+				entry.pchi = entry.pclo + LEB128(ptr);
+				return true;
+			case DW_RLE_offset_pair:
+				entry.pclo = LEB128(ptr);
+				entry.pchi = LEB128(ptr);
+				entry.addBase(base);
+				return true;
+			case DW_RLE_base_address:
+				base = parent.RDAddr(ptr);
+				continue;
+			case DW_RLE_start_end:
+				entry.pclo = parent.RDAddr(ptr);
+				entry.pchi = parent.RDAddr(ptr);
+				return true;
+			case DW_RLE_start_length:
+				entry.pclo = parent.RDAddr(ptr);
+				entry.pchi = entry.pclo + LEB128(ptr);
+				return true;
+			default:
+				fprintf(stderr, "ERROR: %s:%d: unknown rnglists entry %d at offs=%x die_offs=%x\n", __FUNCTION__, __LINE__,
+						type, parent.img->debug_rnglists.sectOff(ptr - 1), parent.entryOff);
+
+				assert(false && "unknown rnglist opcode");
+				return false;
+			}
+		}
+	}
+	else
+	{
+		while (ptr < end) {
+			if (parent.debug & DbgDwarfRangeLists)
+				fprintf(stderr, "%s:%d: rangelist off=%x DIEoff=%x:\n", __FUNCTION__, __LINE__,
+						parent.img->debug_ranges.sectOff(ptr), parent.entryOff);
+
+			entry.pclo = parent.RDAddr(ptr);
+			entry.pchi = parent.RDAddr(ptr);
+			if (!entry.pclo && !entry.pchi)
+				return false;
+
+			if (entry.pclo >= entry.pchi)
+				continue;
+
+			entry.addBase(parent.cu->base_address);
+			return true;
+		}
+	}
+
+	return false;
+}
+
+DIECursor::DIECursor(DWARF_CompilationUnitInfo* cu_, byte* ptr_)
 {
 	cu = cu_;
 	ptr = ptr_;
@@ -354,6 +583,11 @@ DIECursor::DIECursor(DWARF_CompilationUnit* cu_, byte* ptr_)
 	sibling = 0;
 }
 
+DIECursor::DIECursor(const DIECursor& parent, byte* ptr_)
+	: DIECursor(parent)
+{
+	ptr = ptr_;
+}
 
 void DIECursor::gotoSibling()
 {
@@ -399,6 +633,64 @@ DIECursor DIECursor::getSubtreeCursor()
 	}
 }
 
+const char Cv2PdbInvalidString[] = "<Cv2Pdb invalid string>";
+
+const char* DIECursor::resolveIndirectString(uint32_t index) const
+{
+	if (!cu->str_offset_base)
+	{
+		fprintf(stderr, "ERROR: %s:%d: no string base for cu_offs=%x die_offs=%x\n", __FUNCTION__, __LINE__,
+				cu->cu_offset, entryOff);
+		return Cv2PdbInvalidString;
+	}
+
+	byte* refAddr = cu->str_offset_base + index * refSize();
+	return (const char*)img->debug_str.byteAt(RDref(refAddr));
+}
+
+uint32_t DIECursor::readIndirectAddr(uint32_t index) const
+{
+	if (!cu->addr_base)
+	{
+		fprintf(stderr, "ERROR: %s:%d: no addr base for cu_offs=%x die_offs=%x\n", __FUNCTION__, __LINE__,
+				cu->cu_offset, entryOff);
+
+		return 0;
+	}
+
+	byte* refAddr = cu->addr_base + index * refSize();
+	return RDAddr(refAddr);
+}
+
+uint32_t DIECursor::resolveIndirectSecPtr(uint32_t index, const SectionDescriptor &secDesc, byte *baseAddress) const
+{
+	if (!baseAddress)
+	{
+		fprintf(stderr, "ERROR: %s:%d: no base address in section %s for cu_offs=%x die_offs=%x\n", __FUNCTION__, __LINE__,
+				secDesc.name, cu->cu_offset, entryOff);
+
+		return 0;
+	}
+
+	byte* refAddr = baseAddress + index * refSize();
+	byte* targetAddr = baseAddress + RDref(refAddr);
+	return (img->*(secDesc.pSec)).sectOff(targetAddr);
+}
+
+static byte* getPointerInSection(const PEImage &img, const SectionDescriptor &secDesc, uint32_t offset)
+{
+	const PESection &peSec = img.*(secDesc.pSec);
+
+	if (!peSec.isPresent() || offset >= peSec.length)
+	{
+		fprintf(stderr, "%s:%d: WARNING: offset %x is not valid in section %s\n", __FUNCTION__, __LINE__,
+				offset, secDesc.name);
+		return nullptr;
+	}
+
+	return peSec.byteAt(offset);
+}
+
 bool DIECursor::readNext(DWARF_InfoData& id, bool stopAtNull)
 {
 	id.clear();
@@ -411,11 +703,11 @@ bool DIECursor::readNext(DWARF_InfoData& id, bool stopAtNull)
 		if (level == -1)
 			return false; // we were already at the end of the subtree
 
-		if (ptr >= ((byte*)cu + sizeof(cu->unit_length) + cu->unit_length))
+		if (ptr >= cu->end_ptr)
 			return false; // root of the tree does not have a null terminator, but we know the length
 
 		id.entryPtr = ptr;
-		id.entryOff = ptr - (byte*)cu;
+		entryOff = img->debug_info.sectOff(ptr);
 		id.code = LEB128(ptr);
 		if (id.code == 0)
 		{
@@ -432,13 +724,20 @@ bool DIECursor::readNext(DWARF_InfoData& id, bool stopAtNull)
 	}
 
 	byte* abbrev = getDWARFAbbrev(cu->debug_abbrev_offset, id.code);
-	assert(abbrev);
-	if (!abbrev)
+	if (!abbrev) {
+		fprintf(stderr, "ERROR: %s:%d: unknown abbrev: num=%d off=%x\n", __FUNCTION__, __LINE__,
+				id.code, entryOff);
+		assert(abbrev);
 		return false;
+	}
 
 	id.abbrev = abbrev;
 	id.tag = LEB128(abbrev);
 	id.hasChild = *abbrev++;
+
+	if (debug & DbgDwarfAttrRead)
+		fprintf(stderr, "%s:%d: offs=%x level=%d tag=%d abbrev=%d\n", __FUNCTION__, __LINE__,
+				entryOff, level, id.tag, id.code);
 
 	int attr, form;
 	for (;;)
@@ -449,13 +748,26 @@ bool DIECursor::readNext(DWARF_InfoData& id, bool stopAtNull)
 		if (attr == 0 && form == 0)
 			break;
 
-		while (form == DW_FORM_indirect)
+		if (debug & DbgDwarfAttrRead)
+			fprintf(stderr, "%s:%d: offs=%x, attr=%d, form=%d\n", __FUNCTION__, __LINE__,
+					img->debug_info.sectOff(ptr), attr, form);
+
+		while (form == DW_FORM_indirect) {
 			form = LEB128(ptr);
+			if (debug & DbgDwarfAttrRead)
+				fprintf(stderr, "%s:%d: attr=%d, form=%d\n", __FUNCTION__, __LINE__,
+						attr, form);
+		}
 
 		DWARF_Attribute a;
 		switch (form)
 		{
-			case DW_FORM_addr:           a.type = Addr; a.addr = (unsigned long)RDsize(ptr, cu->address_size); break;
+			case DW_FORM_addr:           a.type = Addr; a.addr = RDAddr(ptr); break;
+			case DW_FORM_addrx:          a.type = Addr; a.addr = readIndirectAddr(LEB128(ptr)); break;
+			case DW_FORM_addrx1:
+			case DW_FORM_addrx2:
+			case DW_FORM_addrx3:
+			case DW_FORM_addrx4:         a.type = Addr; a.addr = readIndirectAddr(RDsize(ptr, 1 + (form - DW_FORM_addrx1))); break;
 			case DW_FORM_block:          a.type = Block; a.block.len = LEB128(ptr); a.block.ptr = ptr; ptr += a.block.len; break;
 			case DW_FORM_block1:         a.type = Block; a.block.len = *ptr++;      a.block.ptr = ptr; ptr += a.block.len; break;
 			case DW_FORM_block2:         a.type = Block; a.block.len = RD2(ptr);   a.block.ptr = ptr; ptr += a.block.len; break;
@@ -464,22 +776,34 @@ bool DIECursor::readNext(DWARF_InfoData& id, bool stopAtNull)
 			case DW_FORM_data2:          a.type = Const; a.cons = RD2(ptr); break;
 			case DW_FORM_data4:          a.type = Const; a.cons = RD4(ptr); break;
 			case DW_FORM_data8:          a.type = Const; a.cons = RD8(ptr); break;
+			case DW_FORM_data16:         a.type = Block; a.block.len = 16; a.block.ptr = ptr; ptr += a.block.len; break;
 			case DW_FORM_sdata:          a.type = Const; a.cons = SLEB128(ptr); break;
 			case DW_FORM_udata:          a.type = Const; a.cons = LEB128(ptr); break;
+			case DW_FORM_implicit_const: a.type = Const; a.cons = LEB128(abbrev); break;
 			case DW_FORM_string:         a.type = String; a.string = (const char*)ptr; ptr += strlen(a.string) + 1; break;
-            case DW_FORM_strp:           a.type = String; a.string = (const char*)(img->debug_str + RDsize(ptr, cu->isDWARF64() ? 8 : 4)); break;
+            case DW_FORM_strp:           a.type = String; a.string = (const char*)img->debug_str.byteAt(RDref(ptr)); break;
+			case DW_FORM_line_strp:      a.type = String; a.string = (const char*)img->debug_line_str.byteAt(RDref(ptr)); break;
+			case DW_FORM_strx:           a.type = String; a.string = resolveIndirectString(LEB128(ptr)); break;
+			case DW_FORM_strx1:
+			case DW_FORM_strx2:
+			case DW_FORM_strx3:
+			case DW_FORM_strx4:          a.type = String; a.string = resolveIndirectString(RDsize(ptr, 1 + (form - DW_FORM_strx1))); break;
+			case DW_FORM_strp_sup:       a.type = Invalid; assert(false && "Unsupported supplementary object"); ptr += refSize(); break;
 			case DW_FORM_flag:           a.type = Flag; a.flag = (*ptr++ != 0); break;
 			case DW_FORM_flag_present:   a.type = Flag; a.flag = true; break;
-			case DW_FORM_ref1:           a.type = Ref; a.ref = (byte*)cu + *ptr++; break;
-			case DW_FORM_ref2:           a.type = Ref; a.ref = (byte*)cu + RD2(ptr); break;
-			case DW_FORM_ref4:           a.type = Ref; a.ref = (byte*)cu + RD4(ptr); break;
-			case DW_FORM_ref8:           a.type = Ref; a.ref = (byte*)cu + RD8(ptr); break;
-			case DW_FORM_ref_udata:      a.type = Ref; a.ref = (byte*)cu + LEB128(ptr); break;
-			case DW_FORM_ref_addr:       a.type = Ref; a.ref = (byte*)img->debug_info + (cu->isDWARF64() ? RD8(ptr) : RD4(ptr)); break;
+			case DW_FORM_ref1:           a.type = Ref; a.ref = cu->start_ptr + *ptr++; break;
+			case DW_FORM_ref2:           a.type = Ref; a.ref = cu->start_ptr + RD2(ptr); break;
+			case DW_FORM_ref4:           a.type = Ref; a.ref = cu->start_ptr + RD4(ptr); break;
+			case DW_FORM_ref8:           a.type = Ref; a.ref = cu->start_ptr + RD8(ptr); break;
+			case DW_FORM_ref_udata:      a.type = Ref; a.ref = cu->start_ptr + LEB128(ptr); break;
+			case DW_FORM_ref_addr:       a.type = Ref; a.ref = img->debug_info.byteAt(RDref(ptr)); break;
 			case DW_FORM_ref_sig8:       a.type = Invalid; ptr += 8;  break;
+			case DW_FORM_ref_sup4:       a.type = Invalid; assert(false && "Unsupported supplementary object"); ptr += 4; break;
+			case DW_FORM_ref_sup8:       a.type = Invalid; assert(false && "Unsupported supplementary object"); ptr += 8; break;
 			case DW_FORM_exprloc:        a.type = ExprLoc; a.expr.len = LEB128(ptr); a.expr.ptr = ptr; ptr += a.expr.len; break;
-			case DW_FORM_sec_offset:     a.type = SecOffset;  a.sec_offset = cu->isDWARF64() ? RD8(ptr) : RD4(ptr); break;
-			case DW_FORM_indirect:
+			case DW_FORM_sec_offset:     a.type = SecOffset; a.sec_offset = RDref(ptr); break;
+			case DW_FORM_loclistx:       a.type = SecOffset; a.sec_offset = resolveIndirectSecPtr(LEB128(ptr), sec_desc_debug_loclists, cu->loclist_base); break;
+			case DW_FORM_rnglistx:       a.type = SecOffset; a.sec_offset = resolveIndirectSecPtr(LEB128(ptr), sec_desc_debug_rnglists, cu->rnglist_base); break;
 			default: assert(false && "Unsupported DWARF attribute form"); return false;
 		}
 
@@ -567,6 +891,19 @@ bool DIECursor::readNext(DWARF_InfoData& id, bool stopAtNull)
 				id.has_artificial = true;
 				id.is_artificial = true;
 				break;
+
+			case DW_AT_str_offsets_base:
+				cu->str_offset_base = getPointerInSection(*img, sec_desc_debug_str_offsets, a.sec_offset);
+				break;
+			case DW_AT_addr_base:
+				cu->addr_base = getPointerInSection(*img, sec_desc_debug_addr, a.sec_offset);
+				break;
+			case DW_AT_rnglists_base:
+				cu->rnglist_base = getPointerInSection(*img, sec_desc_debug_rnglists, a.sec_offset);
+				break;
+			case DW_AT_loclists_base:
+				cu->loclist_base = getPointerInSection(*img, sec_desc_debug_loclists, a.sec_offset);
+				break;
 		}
 	}
 
@@ -578,7 +915,7 @@ bool DIECursor::readNext(DWARF_InfoData& id, bool stopAtNull)
 
 byte* DIECursor::getDWARFAbbrev(unsigned off, unsigned findcode)
 {
-	if (!img->debug_abbrev)
+	if (!img->debug_abbrev.isPresent())
 		return 0;
 
 	std::pair<unsigned, unsigned> key = std::make_pair(off, findcode);
@@ -588,8 +925,8 @@ byte* DIECursor::getDWARFAbbrev(unsigned off, unsigned findcode)
 		return it->second;
 	}
 
-	byte* p = (byte*)img->debug_abbrev + off;
-	byte* end = (byte*)img->debug_abbrev + img->debug_abbrev_length;
+	byte* p = img->debug_abbrev.byteAt(off);
+	byte* end = img->debug_abbrev.endByte();
 	while (p < end)
 	{
 		int code = LEB128(p);
@@ -610,6 +947,10 @@ byte* DIECursor::getDWARFAbbrev(unsigned off, unsigned findcode)
 		{
 			attr = LEB128(p);
 			form = LEB128(p);
+
+			// Implicit const forms have an extra constant value attached.
+			if (form == DW_FORM_implicit_const)
+				LEB128(p);
 		} while (attr || form);
 	}
 	return 0;

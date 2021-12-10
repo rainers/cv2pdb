@@ -52,4 +52,9 @@ jobs:
 
           gcc -g -o hello.exe hello.c &&
           bin/${{env.BUILD_CONFIGURATION}}*/cv2pdb.exe hello.exe world.exe &&
-          ls -l hello* world*
+
+          ls -l hello* world* &&
+
+          curl -Lo cvdump.exe https://raw.githubusercontent.com/microsoft/microsoft-pdb/HEAD/cvdump/cvdump.exe &&
+          ./cvdump.exe world.pdb >world.cvdump &&
+          grep '^S_PUB32: .*, Flags: 00000000, main$' world.cvdump
