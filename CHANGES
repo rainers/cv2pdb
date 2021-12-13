@@ -306,3 +306,7 @@ unreleased Version 0.22
   * Added rudimentary support for DWARF5. Thanks to dscho.
 
   * also search mspdb* DLL via vswhere.exe. Thanks to dscho.
+
+2021-12-13 Version 0.50
+
+  * Added support for DWARF5. Thanks to neerajsi-msft.

@@ -110,7 +110,7 @@ int dumpObjectFile(TCHAR* fname)
 		fatal(SARG ": %s", fname, img.getLastError());
 
     img.initDWARFObject();
-	if(img.debug_line)
+	if(img.debug_line.isPresent())
     {
         if (!interpretDWARFLines(img, 0))
 	    	fatal(SARG ": cannot dump line numbers", fname);
