@@ -161,7 +161,7 @@ int T_main(int argc, TCHAR* argv[])
 
 	if (argc < 2)
 	{
-		printf("Convert DMD CodeView/DWARF debug information to PDB files, Version %g\n", VERSION);
+		printf("Convert DMD CodeView/DWARF debug information to PDB files, Version %.02f\n", VERSION);
 		printf("Copyright (c) 2009-2012 by Rainer Schuetze, All Rights Reserved\n");
 		printf("\n");
 		printf("License for redistribution is given by the Artistic License 2.0\n");
