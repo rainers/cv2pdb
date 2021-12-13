@@ -23,7 +23,7 @@ jobs:
         run: msbuild /m /p:PlatformToolset=${{env.BUILD_PLATFORM_TOOLSET}} /p:Platform=${{env.BUILD_PLATFORM}} /p:Configuration=${{env.BUILD_CONFIGURATION}} ${{env.SOLUTION_FILE_PATH}}
       - name: Build dumplines
         working-directory: ${{env.GITHUB_WORKSPACE}}
-        run: msbuild /m /p:PlatformToolset=${{env.BUILD_PLATFORM_TOOLSET}} /p:Platform=${{env.BUILD_PLATFORM}} /p:Configuration=${{env.BUILD_CONFIGURATION}} src/dumplines.vcxproj
+        run: msbuild /m /p:PlatformToolset=${{env.BUILD_PLATFORM_TOOLSET}} /p:Platform=Win32 /p:Configuration=${{env.BUILD_CONFIGURATION}} src/dumplines.vcxproj
       - name: Upload bin/
         uses: actions/upload-artifact@v2
         with:
