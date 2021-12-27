@@ -9,6 +9,8 @@
 #include "symutil.h"
 
 #include <direct.h>
+#include <shlwapi.h>
+#pragma comment(lib, "shlwapi.lib")
 
 double
 #include "../VERSION"
@@ -61,6 +63,11 @@ void makefullpath(TCHAR* pdbname)
 	TCHAR* pdbstart = pdbname;
 	TCHAR fullname[260];
 	TCHAR* pfullname = fullname;
+
+	if (PathIsUNC(pdbname))
+	{
+		return;
+	}
 
 	int drive = 0;
 	if (pdbname[0] && pdbname[1] == ':')
