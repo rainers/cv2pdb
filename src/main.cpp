@@ -9,8 +9,6 @@
 #include "symutil.h"
 
 #include <direct.h>
-#include <shlwapi.h>
-#pragma comment(lib, "shlwapi.lib")
 
 double
 #include "../VERSION"
@@ -64,7 +62,12 @@ void makefullpath(TCHAR* pdbname)
 	TCHAR fullname[260];
 	TCHAR* pfullname = fullname;
 
-	if (PathIsUNC(pdbname))
+	if (!pdbname || T_strlen(pdbname) < 2)
+	{
+		return;
+	}
+	// If the path starts with "\\\\", it is considered to be a full path, such as UNC path, VolumeGUID path: "\\\\?\\Volume"
+	if (pdbname[0] == '\\' && pdbname[1] == '\\')
 	{
 		return;
 	}
