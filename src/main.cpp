@@ -62,6 +62,16 @@ void makefullpath(TCHAR* pdbname)
 	TCHAR fullname[260];
 	TCHAR* pfullname = fullname;
 
+	if (!pdbname || T_strlen(pdbname) < 2)
+	{
+		return;
+	}
+	// If the path starts with "\\\\", it is considered to be a full path, such as UNC path, VolumeGUID path: "\\\\?\\Volume"
+	if (pdbname[0] == '\\' && pdbname[1] == '\\')
+	{
+		return;
+	}
+
 	int drive = 0;
 	if (pdbname[0] && pdbname[1] == ':')
 	{
