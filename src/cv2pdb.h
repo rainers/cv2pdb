@@ -171,7 +171,7 @@ public:
 	bool writeDWARFImage(const TCHAR* opath);
 
 	bool addDWARFSectionContrib(mspdb::Mod* mod, unsigned long pclo, unsigned long pchi);
-	bool addDWARFProc(DWARF_InfoData& id, DIECursor cursor);
+	bool addDWARFProc(DWARF_InfoData& id, const std::vector<RangeEntry> &ranges, DIECursor cursor);
 	int  addDWARFStructure(DWARF_InfoData& id, DIECursor cursor);
 	int  addDWARFFields(DWARF_InfoData& structid, DIECursor cursor, int off);
 	int  addDWARFArray(DWARF_InfoData& arrayid, DIECursor cursor);
