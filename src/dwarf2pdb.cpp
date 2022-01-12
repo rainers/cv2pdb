@@ -59,7 +59,7 @@ static std::vector<RangeEntry> getRanges(DIECursor cursor, const DWARF_InfoData 
 				std::uint64_t pclo = range.pclo;
 				range.pclo = id.pcentry;
 				ret.insert(ret.begin(), range);
-				if (pclo == id.pcentry)
+				if (pclo != id.pcentry)
 				{
 					range.pclo = pclo;
 					range.pchi = id.pcentry;
