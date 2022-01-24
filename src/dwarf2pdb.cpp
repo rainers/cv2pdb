@@ -22,6 +22,58 @@
 #include <string>
 #include <vector>
 
+// Returns all non-empty address ranges specified by id.  The entry point (if applicable) is always the low address of the first range.
+static std::vector<RangeEntry> getRanges(DIECursor cursor, const DWARF_InfoData &id)
+{
+	std::vector<RangeEntry> ret;
+	RangeEntry range;
+	if (id.pclo)
+	{
+		if (id.pchi == 0 || id.pchi == id.pclo)
+			return ret;
+		if (id.pclo < id.pcentry && id.pcentry < id.pchi)
+		{
+			range.pclo = id.pcentry;
+			range.pchi = id.pchi;
+			ret.push_back(range);
+			range.pclo = id.pclo;
+			range.pchi = id.pcentry;
+			ret.push_back(range);
+		}
+		else
+		{
+			range.pclo = id.pclo;
+			range.pchi = id.pchi;
+			ret.push_back(range);
+		}
+	}
+	else if (id.ranges != ~0)
+	{
+		RangeCursor rangeCursor(cursor, id.ranges);
+		while (rangeCursor.readNext(range))
+		{
+			if (range.pclo == range.pchi)
+				continue;
+			if (range.pclo <= id.pcentry && id.pcentry < range.pchi)
+			{
+				std::uint64_t pclo = range.pclo;
+				range.pclo = id.pcentry;
+				ret.insert(ret.begin(), range);
+				if (pclo != id.pcentry)
+				{
+					range.pclo = pclo;
+					range.pchi = id.pcentry;
+					ret.push_back(range);
+				}
+			}
+			else
+			{
+				ret.push_back(range);
+			}
+		}
+	}
+	return ret;
+}
 
 void CV2PDB::checkDWARFTypeAlloc(int size, int add)
 {
@@ -643,10 +695,10 @@ void CV2PDB::appendLexicalBlock(DWARF_InfoData& id, unsigned int proclo)
 	cbUdtSymbols += len;
 }
 
-bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, DIECursor cursor)
+bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, const std::vector<RangeEntry> &ranges, DIECursor cursor)
 {
-	unsigned int pclo = procid.pclo - codeSegOff;
-	unsigned int pchi = procid.pchi - codeSegOff;
+	unsigned int pclo = ranges.front().pclo - codeSegOff;
+	unsigned int pchi = ranges.front().pchi - codeSegOff;
 
 	unsigned int len;
 	unsigned int align = 4;
@@ -787,6 +839,26 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, DIECursor cursor)
 	else
 	{
 		appendEndArg();
+		appendEnd();
+	}
+
+	for (std::size_t i=1; i<ranges.size(); ++i)
+	{
+		const int sepcode_size = sizeof(codeview_symbol::sepcode_v3);
+		checkUdtSymbolAlloc(sepcode_size);
+		codeview_symbol*cvs = (codeview_symbol*) (udtSymbols + cbUdtSymbols);
+		cvs->sepcode_v3.id = S_SEPCODE_V3;
+		cvs->sepcode_v3.len = sepcode_size - 2;
+		cvs->sepcode_v3.parent = 0;
+		cvs->sepcode_v3.end = 0;
+		cvs->sepcode_v3.length = ranges[i].pchi - ranges[i].pclo;
+		cvs->sepcode_v3.flags = 0;
+		cvs->sepcode_v3.offset = ranges[i].pclo - codeSegOff;
+		cvs->sepcode_v3.parent_offset = pclo;
+		cvs->sepcode_v3.section = img.text.secNo + 1;
+		cvs->sepcode_v3.parent_section = img.text.secNo + 1;
+		cbUdtSymbols += sepcode_size;
+
 		appendEnd();
 	}
 	return true;
@@ -1453,42 +1525,19 @@ bool CV2PDB::createTypes()
 			case DW_TAG_subprogram:
 				if (id.name)
 				{
-					if (!id.is_artificial)
+					std::vector<RangeEntry> ranges = getRanges(cursor, id);
+					if (!ranges.empty())
 					{
-						unsigned long entry_point = 0;
-						if (id.pcentry)
+						if (!id.is_artificial)
 						{
-							entry_point = id.pcentry;
-						}
-						else if (id.pclo)
-						{
-							entry_point = id.pclo;
-						}
-						else if (id.ranges != ~0)
-						{
-							entry_point = ~0;
-							RangeEntry range;
-							RangeCursor rangeCursor(cursor, id.ranges);
-							while (rangeCursor.readNext(range))
-							{
-								entry_point = min(entry_point, range.pclo);
-							}
-
-							if (entry_point == ~0)
-								entry_point = 0;
-						}
-
-						if (entry_point)
-						{
+							std::uint64_t entry_point = ranges.front().pclo;
 							if (debug & DbgPdbSyms)
 								fprintf(stderr, "%s:%d: Adding a public: %s at %x\n", __FUNCTION__, __LINE__, id.name, entry_point);
 
 							mod->AddPublic2(id.name, img.text.secNo + 1, entry_point - codeSegOff, 0);
 						}
+						addDWARFProc(id, ranges, cursor.getSubtreeCursor());
 					}
-
-					if (id.pclo && id.pchi)
-						addDWARFProc(id, cursor.getSubtreeCursor());
 				}
 				break;
 

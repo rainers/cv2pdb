@@ -1670,6 +1670,20 @@ union codeview_symbol
 		// return UDT,instance constructor,instance constructor with virtual base
 		unsigned int            unknown2;
 	} funcinfo_32;
+
+	struct
+	{
+		short int               len;
+		short int               id;
+		unsigned int            parent;
+		unsigned int            end;
+		unsigned int            length;
+		unsigned int            flags;
+		unsigned int            offset;
+		unsigned int            parent_offset;
+		short int               section;
+		short int               parent_section;
+	} sepcode_v3;
 };
 
 #define S_COMPILAND_V1  0x0001
@@ -1745,6 +1759,7 @@ union codeview_symbol
 #define S_MSTOOL_V3     0x1116  /* compiler command line options and build information */
 #define S_PUB_FUNC1_V3  0x1125  /* didn't get the difference between the two */
 #define S_PUB_FUNC2_V3  0x1127
+#define S_SEPCODE_V3    0x1132
 #define S_SECTINFO_V3   0x1136
 #define S_SUBSECTINFO_V3 0x1137
 #define S_ENTRYPOINT_V3 0x1138
