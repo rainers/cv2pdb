@@ -202,6 +202,7 @@ bool tryLoadMsPdbVSWhere(const char* mspdb)
 	{
 		CloseHandle(processInformation.hProcess);
 		CloseHandle(processInformation.hThread);
+		CloseHandle(write);
 
 		DWORD length;
 		if (ReadFile(read, buffer, sizeof(buffer) - 1, &length, NULL))
@@ -210,8 +211,9 @@ bool tryLoadMsPdbVSWhere(const char* mspdb)
 			vsPath += buffer;
 		}
 	}
+	else
+		CloseHandle(write);
 	CloseHandle(read);
-	CloseHandle(write);
 	rtrim(vsPath);
 	if (vsPath.empty())
 		return false;
