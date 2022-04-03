@@ -310,3 +310,9 @@ unreleased Version 0.22
 2021-12-13 Version 0.50
 
   * Added support for DWARF5. Thanks to neerajsi-msft.
+
+2022-03-27 Version 0.51
+
+  * fix handling of UNC paths. Thanks to sonyps5201314.
+  * DWARF: added support for non-contiguous functions. Thanks to marc-groundctl
+  * Fixed stalling if vswhere doesn't produce any output
