@@ -307,7 +307,6 @@ bool interpretDWARFLines(const PEImage& img, mspdb::Mod* mod, DebugLevel debug_)
 							default:
 								fprintf(stderr, "%s:%d: ERROR: invalid form=%d for path lineHdrOffs=%x\n", __FUNCTION__, __LINE__,
 										typeForm.form, off);
-
 								return false;
 							}
 
@@ -327,7 +326,6 @@ bool interpretDWARFLines(const PEImage& img, mspdb::Mod* mod, DebugLevel debug_)
 						default:
 							fprintf(stderr, "%s:%d: ERROR: unexpected type=%d form=%d for directory path lineHdrOffs=%x\n", __FUNCTION__, __LINE__,
 										typeForm.type, typeForm.form, off);
-
 							return false;
 					}
 				}
@@ -367,8 +365,6 @@ bool interpretDWARFLines(const PEImage& img, mspdb::Mod* mod, DebugLevel debug_)
 							default:
 								fprintf(stderr, "%s:%d: ERROR: invalid form=%d for path lineHdrOffs=%x\n", __FUNCTION__, __LINE__,
 										typeForm.form, off);
-
-
 								assert(false, "invalid path form");
 								return false;
 							}
@@ -377,15 +373,20 @@ bool interpretDWARFLines(const PEImage& img, mspdb::Mod* mod, DebugLevel debug_)
 							// bias the directory index by 1 since _flushDWARFLines
 							// will check for 0 and subtract one (which is
 							// useful for DWARF4).
-							if (typeForm.form == DW_FORM_udata)
+							switch (typeForm.form)
 							{
+							case DW_FORM_data1:
+								fname.dir_index = *p++ + 1;
+								break;
+							case DW_FORM_data2:
+								fname.dir_index = RD2(p) + 1;
+								break;
+							case DW_FORM_udata:
 								fname.dir_index = LEB128(p) + 1;
-							}
-							else
-							{
+								break;
+							default:
 								fprintf(stderr, "%s:%d: ERROR: invalid form=%d for directory index lineHdrOffs=%x\n", __FUNCTION__, __LINE__,
 										typeForm.form, off);
-
 								return false;
 							}
 							break;
@@ -394,7 +395,6 @@ bool interpretDWARFLines(const PEImage& img, mspdb::Mod* mod, DebugLevel debug_)
 						default:
 							fprintf(stderr, "%s:%d: ERROR: unexpected type=%d form=%d for file path lineHdrOffs=%x\n", __FUNCTION__, __LINE__,
 										typeForm.type, typeForm.form, off);
-
 							return false;
 					}
 				}
