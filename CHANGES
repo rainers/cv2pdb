@@ -316,3 +316,8 @@ unreleased Version 0.22
   * fix handling of UNC paths. Thanks to sonyps5201314.
   * DWARF: added support for non-contiguous functions. Thanks to marc-groundctl
   * Fixed stalling if vswhere doesn't produce any output
+
+2022-05-28 Version 0.52
+
+  * support DW_FORM_data1 and DW_FORM_data2 in DW_LNCT_directory_index
+  * fix emitting bad debug info if struct description exceeds 64 kB, clipped for now

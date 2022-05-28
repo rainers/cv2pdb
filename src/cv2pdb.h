@@ -173,7 +173,7 @@ public:
 	bool addDWARFSectionContrib(mspdb::Mod* mod, unsigned long pclo, unsigned long pchi);
 	bool addDWARFProc(DWARF_InfoData& id, const std::vector<RangeEntry> &ranges, DIECursor cursor);
 	int  addDWARFStructure(DWARF_InfoData& id, DIECursor cursor);
-	int  addDWARFFields(DWARF_InfoData& structid, DIECursor cursor, int off);
+	int  addDWARFFields(DWARF_InfoData& structid, DIECursor cursor, int off, int flStart);
 	int  addDWARFArray(DWARF_InfoData& arrayid, DIECursor cursor);
 	int  addDWARFBasicType(const char*name, int encoding, int byte_size);
 	int  addDWARFEnum(DWARF_InfoData& enumid, DIECursor cursor);

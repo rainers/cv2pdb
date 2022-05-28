@@ -864,16 +864,18 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, const std::vector<RangeEntry> 
 	return true;
 }
 
-int CV2PDB::addDWARFFields(DWARF_InfoData& structid, DIECursor cursor, int baseoff)
+int CV2PDB::addDWARFFields(DWARF_InfoData& structid, DIECursor cursor, int baseoff, int flStart)
 {
 	bool isunion = structid.tag == DW_TAG_union_type;
 	int nfields = 0;
 
 	// cursor points to the first member
 	DWARF_InfoData id;
-	int len = 0;
 	while (cursor.readNext(id, true))
 	{
+		if (cbDwarfTypes - flStart > 0x10000 - kMaxNameLen - 100)
+			break; // no more space in field list, TODO: add continuation record, see addDWARFEnum
+
 		int cvid = -1;
 		if (id.tag == DW_TAG_member)
 		{
@@ -916,7 +918,7 @@ int CV2PDB::addDWARFFields(DWARF_InfoData& structid, DIECursor cursor, int baseo
 						case DW_TAG_class_type:
 						case DW_TAG_structure_type:
 						case DW_TAG_union_type:
-							nfields += addDWARFFields(memberid, membercursor, baseoff + off);
+							nfields += addDWARFFields(memberid, membercursor, baseoff + off, flStart);
 							break;
 						}
 					}
@@ -979,7 +981,7 @@ int CV2PDB::addDWARFStructure(DWARF_InfoData& structid, DIECursor cursor)
 			nfields++;
 		}
 #endif
-		nfields += addDWARFFields(structid, cursor, 0);
+		nfields += addDWARFFields(structid, cursor, 0, flbegin);
 		fl = (codeview_reftype*) (dwarfTypes + flbegin);
 		fl->fieldlist.len = cbDwarfTypes - flbegin - 2;
 		fieldlistType = nextDwarfType++;
@@ -1318,8 +1320,10 @@ int CV2PDB::addDWARFEnum(DWARF_InfoData& enumid, DIECursor cursor)
 
 int CV2PDB::getTypeByDWARFPtr(byte* ptr)
 {
+	if (ptr == nullptr)
+		return 0x03; // void
 	std::unordered_map<byte*, int>::iterator it = mapOffsetToType.find(ptr);
-	if(it == mapOffsetToType.end())
+	if (it == mapOffsetToType.end())
 		return 0x03; // void
 	return it->second;
 }
@@ -1424,6 +1428,7 @@ bool CV2PDB::mapTypes()
 		fprintf(stderr, "%s:%d: mapped %zd types\n", __FUNCTION__, __LINE__, mapOffsetToType.size());
 
 	nextDwarfType = typeID;
+	assert(nextDwarfType == nextUserType + mapOffsetToType.size());
 	return true;
 }
 
@@ -1431,6 +1436,7 @@ bool CV2PDB::createTypes()
 {
 	img.createSymbolCache();
 	mspdb::Mod* mod = globalMod();
+	int firstUserType = nextUserType;
 	int typeID = nextUserType;
 	int pointerAttr = img.isX64() ? 0x1000C : 0x800A;
 
@@ -1532,7 +1538,7 @@ bool CV2PDB::createTypes()
 						{
 							std::uint64_t entry_point = ranges.front().pclo;
 							if (debug & DbgPdbSyms)
-								fprintf(stderr, "%s:%d: Adding a public: %s at %x\n", __FUNCTION__, __LINE__, id.name, entry_point);
+								fprintf(stderr, "%s:%d: Adding a public: %s at %llx\n", __FUNCTION__, __LINE__, id.name, entry_point);
 
 							mod->AddPublic2(id.name, img.text.secNo + 1, entry_point - codeSegOff, 0);
 						}
@@ -1645,10 +1651,13 @@ bool CV2PDB::createTypes()
 			{
 				assert(cvtype == typeID); typeID++;
 				assert(mapOffsetToType[id.entryPtr] == cvtype);
+				assert(typeID == nextUserType);
 			}
 		}
 	}
 
+	assert(typeID == nextUserType);
+	assert(typeID == firstUserType + mapOffsetToType.size());
 	return true;
 }
 
