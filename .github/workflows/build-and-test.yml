@@ -8,12 +8,14 @@ env:
 
   # Configuration type to build.
   BUILD_CONFIGURATION: Release
-  BUILD_PLATFORM: x64
   BUILD_PLATFORM_TOOLSET: v142
 
 jobs:
   build:
     runs-on: windows-latest
+    strategy:
+      matrix:
+        BUILD_PLATFORM: [x64, ARM64]
     steps:
       - uses: actions/checkout@v2
       - name: Add MSBuild to PATH
