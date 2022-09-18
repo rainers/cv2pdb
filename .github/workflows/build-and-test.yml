@@ -27,6 +27,7 @@ jobs:
         working-directory: ${{env.GITHUB_WORKSPACE}}
         run: msbuild /m /p:PlatformToolset=${{env.BUILD_PLATFORM_TOOLSET}} /p:Platform=Win32 /p:Configuration=${{env.BUILD_CONFIGURATION}} src/dumplines.vcxproj
       - name: Upload bin/
+        if: matrix.BUILD_PLATFORM == 'x64'
         uses: actions/upload-artifact@v2
         with:
           name: bin
