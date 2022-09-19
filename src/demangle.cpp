@@ -20,6 +20,11 @@
 
 #ifdef _M_X64
 extern "C" void cvt80to64(void * in, long double * out);
+#elif _M_ARM64
+void cvt80to64(void * in, long double * out) {
+	printf("cvt80to64 is only supported on x64 processors.");
+	exit(1);
+}
 #endif
 
 #define USE_STDSTRING 1
@@ -462,7 +467,7 @@ public:
 			p[i] = b;
 		}
 		// extract 10-byte double from rdata
-#ifdef _M_X64
+#ifndef _M_IX86
 		cvt80to64(rdata, &r);
 #else
 		__asm {
