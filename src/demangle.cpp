@@ -15,7 +15,6 @@
 #include <string>
 #include <ctype.h>
 #include <assert.h>
-#include <stdexcept>
 
 #include "symutil.h"
 
@@ -23,7 +22,8 @@
 extern "C" void cvt80to64(void * in, long double * out);
 #elif _M_ARM64
 void cvt80to64(void * in, long double * out) {
-	throw std::runtime_error("cvt80to64 is only supported on x64 processors.");
+	printf("cvt80to64 is only supported on x64 processors.");
+	exit(1);
 }
 #endif
 
