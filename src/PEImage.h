@@ -10,6 +10,7 @@
 #include "LastError.h"
 
 #include <windows.h>
+#include <string>
 #include <unordered_map>
 
 struct OMFDirHeader;
