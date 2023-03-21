@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?> 
+<AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
+	<Type Name="DWARF_InfoData">
+		<DisplayString>tag={tag} code={code} {name,s}</DisplayString>
+		<Expand>
+			<Synthetic Name="children" Condition="children">
+				<Expand>
+					<LinkedListItems>
+						<HeadPointer>children</HeadPointer>
+						<NextPointer>next</NextPointer>
+						<ValueNode>this</ValueNode>
+					</LinkedListItems>
+				</Expand>
+			</Synthetic>
+			<Synthetic Name="siblings" Condition="next">
+				<Expand>
+					<LinkedListItems>
+						<HeadPointer>next</HeadPointer>
+						<NextPointer>next</NextPointer>
+						<ValueNode>this</ValueNode>
+					</LinkedListItems>
+				</Expand>
+			</Synthetic>
+		</Expand>
+	</Type>
+</AutoVisualizer>
