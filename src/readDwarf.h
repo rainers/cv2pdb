@@ -191,6 +191,8 @@ struct DWARF_InfoData
 	// Pointer into the memory-mapped image section where this DIE is located.
 	byte* entryPtr;
 
+	unsigned int entryOff = 0;  // the entry offset in the section it is in.
+
 	// Code to find the abbrev entry for this DIE, or 0 if it a sentinel marking
 	// the end of a sibling chain.
 	int code;

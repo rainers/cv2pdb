@@ -735,13 +735,29 @@ void CV2PDB::formatFullyQualifiedProcName(const DWARF_InfoData* proc, char* buf,
 
 	// Format the parents in reverse order with :: operator in between.
 	for (int i = segments.size() - 1; i >= 0; --i) {
-		const int nameLen = strlen(segments[i]->name);
+		const char* name = segments[i]->name;
+		char nameBuf[64] = {};
+		int nameLen = 0;
+		if (!segments[i]->name) {
+			// This segment has no name. This could be because it is part of
+			// an anonymous class, which often happens for lambda expressions.
+			// Generate a unique anonymous name for it.
+			nameLen = sprintf_s(nameBuf, "[anon_%x]", segments[i]->entryOff);
+			if (nameLen < 0) {
+				// Formatting failed. Try a default name.
+				assert(false);  // crash in debug builds.
+				name = "[anon]";
+			}
+			name = nameBuf;
+		} else {
+			nameLen = strlen(name);
+		}
 		if (remain < nameLen) {
 			fprintf(stderr, "unable to fit full proc name: %s\n", proc->name);
 			return;
 		}
 
-		memcpy(p, segments[i]->name, nameLen);
+		memcpy(p, name, nameLen);
 
 		p += nameLen;
 		remain -= nameLen;

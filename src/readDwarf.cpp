@@ -766,7 +766,7 @@ DWARF_InfoData* DIECursor::readNext(DWARF_InfoData* entry, bool stopAtNull)
 			return nullptr; // root of the tree does not have a null terminator, but we know the length
 
 		id.entryPtr = ptr;
-		entryOff = img->debug_info.sectOff(ptr);
+		entryOff = id.entryOff = img->debug_info.sectOff(ptr);
 		id.code = LEB128(ptr);
 
 		// If the previously scanned node claimed to have a child, this must be a valid DIE.
