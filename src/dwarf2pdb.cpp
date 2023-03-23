@@ -695,6 +695,74 @@ void CV2PDB::appendLexicalBlock(DWARF_InfoData& id, unsigned int proclo)
 	cbUdtSymbols += len;
 }
 
+// Helper to format a fully qualified proc name like 'some_ns::Foo::Foo' since
+// for a Foo constructor in a Foo class in a namespace called "some_ns".
+// PDBs require fully qualified names in their symbols.
+// TODO: better error handling for out of space.
+void CV2PDB::formatFullyQualifiedProcName(const DWARF_InfoData* proc, char* buf, size_t cbBuf) const {
+	if (proc->specification) {
+		// If the proc has a "specification", i.e. a declaration, use it instead
+		// of the definition, as it has a proper hierarchy connected to it
+		// which will give us a proper fully-qualified name like Foo::Foo
+		// instead of just Foo.
+		const DWARF_InfoData* entry = findEntryByPtr(proc->specification);
+		if (entry) {
+			proc = entry;
+		}
+	}
+	DWARF_InfoData* parent = proc->parent;
+	std::vector<const DWARF_InfoData*> segments;
+	segments.push_back(proc);
+
+	// Accumulate all the valid parent scopes so that we can reverse them for
+	// formatting.
+	while (parent) {
+		switch (parent->tag) {
+		// TODO: are there any other kinds of valid parents?
+		case DW_TAG_class_type:
+		case DW_TAG_structure_type:
+		case DW_TAG_namespace:			
+			segments.push_back(parent);
+			break;
+		default:
+			break;
+		}
+		parent = parent->parent;
+	}
+
+	int remain = cbBuf;
+	char* p = buf;
+
+	// Format the parents in reverse order with :: operator in between.
+	for (int i = segments.size() - 1; i >= 0; --i) {
+		const int nameLen = strlen(segments[i]->name);
+		if (remain < nameLen) {
+			fprintf(stderr, "unable to fit full proc name: %s\n", proc->name);
+			return;
+		}
+
+		memcpy(p, segments[i]->name, nameLen);
+
+		p += nameLen;
+		remain -= nameLen;
+
+		if (i > 0) {
+			// Append :: separator
+			if (remain < 2) {
+				fprintf(stderr, "unable to fit full proc name (:: separator): %s\n", proc->name);
+				return;
+			}
+			*p++ = ':';
+			*p++ = ':';
+			remain -= 2;
+		}
+	}
+	
+	if (remain > 0) {
+		*p = 0;  // NUL terminate.
+	}
+}
+
 bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, const std::vector<RangeEntry> &ranges, DIECursor cursor)
 {
 	unsigned int pclo = ranges.front().pclo - codeSegOff;
@@ -723,8 +791,9 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, const std::vector<RangeEntry> 
 	cvs->proc_v2.flags    = 0;
 
 //    printf("GlobalPROC %s\n", procid.name);
-
-	len = cstrcpy_v (v3, (BYTE*) &cvs->proc_v2.p_name, procid.name);
+	char namebuf[kMaxNameLen] = {};
+	formatFullyQualifiedProcName(&procid, namebuf, sizeof namebuf);
+	len = cstrcpy_v (v3, (BYTE*) &cvs->proc_v2.p_name, namebuf);
 	len += (BYTE*) &cvs->proc_v2.p_name - (BYTE*) cvs;
 	for (; len & (align-1); len++)
 		udtSymbols[cbUdtSymbols + len] = 0xf4 - (len & 3);
@@ -762,8 +831,13 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, const std::vector<RangeEntry> 
 		DWARF_InfoData id;
 		int off = 8;
 
+		// Save off the cursor to the start of the proc.
 		DIECursor prev = cursor;
-		while (cursor.readNext(id, true))
+
+		// First, collect all the formal parameters of the proc.
+		// Don't worry about storing these in the tree as we're not going to need
+		// to generate fully-qualified names like we would for functions/classes.
+		while (cursor.readNext(&id, true /* stopAtNull */))
 		{
 			if (id.tag == DW_TAG_formal_parameter && id.name)
 			{
@@ -778,7 +852,11 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, const std::vector<RangeEntry> 
 		}
 		appendEndArg();
 
+		//  Now, collect all the lexical blocks and their stack variables.
 		std::vector<DIECursor> lexicalBlocks;
+
+		// Start from the proc base, and push all nested lexical blocks as you
+		// encounter them.
 		lexicalBlocks.push_back(prev);
 
 		while (!lexicalBlocks.empty())
@@ -786,7 +864,7 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, const std::vector<RangeEntry> 
 			cursor = lexicalBlocks.back();
 			lexicalBlocks.pop_back();
 
-			while (cursor.readNext(id))
+			while (cursor.readNext(&id))
 			{
 				if (id.tag == DW_TAG_lexical_block)
 				{
@@ -813,15 +891,23 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, const std::vector<RangeEntry> 
 					{
 						appendLexicalBlock(id, pclo + codeSegOff);
 						DIECursor next = cursor;
+
+						// Compute the sibling node of this lexical block.
 						next.gotoSibling();
 						assert(lexicalBlocks.empty() || next.ptr <= lexicalBlocks.back().ptr);
+
+						// Append the next lexical block to the list of blocks
+						// to scan later.
 						lexicalBlocks.push_back(next);
+
+						// But for now, scan down the current lexical block.
 						cursor = cursor.getSubtreeCursor();
 						continue;
 					}
 				}
 				else if (id.tag == DW_TAG_variable)
 				{
+					// Found a local variable.
 					if (id.name && (id.location.type == ExprLoc || id.location.type == Block))
 					{
 						Location loc = id.location.type == SecOffset ? findBestFBLoc(cursor, id.location.sec_offset)
@@ -864,14 +950,15 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, const std::vector<RangeEntry> 
 	return true;
 }
 
-int CV2PDB::addDWARFFields(DWARF_InfoData& structid, DIECursor cursor, int baseoff, int flStart)
+// Only looks at DW_TAG_member and DW_TAG_inheritance
+int CV2PDB::addDWARFFields(DWARF_InfoData& structid, DIECursor& cursor, int baseoff, int flStart)
 {
 	bool isunion = structid.tag == DW_TAG_union_type;
 	int nfields = 0;
 
-	// cursor points to the first member
+	// cursor points to the first member of the class/struct/union.
 	DWARF_InfoData id;
-	while (cursor.readNext(id, true))
+	while (cursor.readNext(&id, true))
 	{
 		if (cbDwarfTypes - flStart > 0x10000 - kMaxNameLen - 100)
 			break; // no more space in field list, TODO: add continuation record, see addDWARFEnum
@@ -905,12 +992,12 @@ int CV2PDB::addDWARFFields(DWARF_InfoData& structid, DIECursor cursor, int baseo
 					// if it doesn't have a name, and it's a struct or union, embed it directly
 					DIECursor membercursor(cursor, id.type);
 					DWARF_InfoData memberid;
-					if (membercursor.readNext(memberid))
+					if (membercursor.readNext(&memberid))
 					{
 						if (memberid.abstract_origin)
-							mergeAbstractOrigin(memberid, cursor);
+							mergeAbstractOrigin(memberid, *this);
 						if (memberid.specification)
-							mergeSpecification(memberid, cursor);
+							mergeSpecification(memberid, *this);
 
 						int cvtype = -1;
 						switch (memberid.tag)
@@ -1002,14 +1089,17 @@ int CV2PDB::addDWARFStructure(DWARF_InfoData& structid, DIECursor cursor)
 	return cvtype;
 }
 
-void CV2PDB::getDWARFArrayBounds(DWARF_InfoData& arrayid, DIECursor cursor, int& basetype, int& lowerBound, int& upperBound)
+// Compute the array bounds of the DIE at the given 'cursor'.
+void CV2PDB::getDWARFArrayBounds(DIECursor cursor, int& basetype, int& lowerBound, int& upperBound)
 {
 	DWARF_InfoData id;
 
 	// TODO: handle multi-dimensional arrays
 	if (cursor.cu)
 	{
-		while (cursor.readNext(id, true))
+		// Don't insert these elements into the DB. We're just using it for
+		// array bounds calculation.
+		while (cursor.readNext(&id, true /* stopAtNull */))
 		{
 			if (id.tag == DW_TAG_subrange_type)
 			{
@@ -1042,6 +1132,7 @@ void CV2PDB::getDWARFSubrangeInfo(DWARF_InfoData& subrangeid, const DIECursor& p
 	upperBound = subrangeid.upper_bound;
 }
 
+// Compute a type ID for a basic DWARF type.
 int CV2PDB::getDWARFBasicType(int encoding, int byte_size)
 {
 	int type = 0, mode = 0, size = 0;
@@ -1104,10 +1195,13 @@ int CV2PDB::getDWARFBasicType(int encoding, int byte_size)
 	return translateType(t);
 }
 
-int CV2PDB::addDWARFArray(DWARF_InfoData& arrayid, DIECursor cursor)
+// TODO: Array wanted to be scanned twice due to DW_TAG_subrange_type being looked at
+// in the caller. See if it can be handled in a single place for clarity, simplicity & efficiency.
+// Goal: don't rescan the same DIE twice.
+int CV2PDB::addDWARFArray(DWARF_InfoData& arrayid, const DIECursor& cursor)
 {
 	int basetype, upperBound, lowerBound;
-	getDWARFArrayBounds(arrayid, cursor, basetype, lowerBound, upperBound);
+	getDWARFArrayBounds(cursor, basetype, lowerBound, upperBound);
 
 	checkUserTypeAlloc(kMaxNameLen + 100);
 	codeview_type* cvt = (codeview_type*) (userTypes + cbUserTypes);
@@ -1243,7 +1337,7 @@ int CV2PDB::addDWARFEnum(DWARF_InfoData& enumid, DIECursor cursor)
 
 	/* Now fill this field list with the enumerators we find in DWARF. */
 	DWARF_InfoData id;
-	while (cursor.readNext(id, true))
+	while (cursor.readNext(&id, true /* stopAtNull */))
 	{
 		if (id.tag == DW_TAG_enumerator && id.has_const_value)
 		{
@@ -1323,18 +1417,22 @@ int CV2PDB::getTypeByDWARFPtr(byte* ptr)
 {
 	if (ptr == nullptr)
 		return 0x03; // void
-	std::unordered_map<byte*, int>::iterator it = mapOffsetToType.find(ptr);
-	if (it == mapOffsetToType.end())
+	std::unordered_map<byte*, int>::iterator it = mapEntryPtrToTypeID.find(ptr);
+	if (it == mapEntryPtrToTypeID.end())
 		return 0x03; // void
 	return it->second;
 }
 
+// Get the logical size of a DWARF type, starting from 'typePtr' and recursing
+// if necessary. E.g. for arrays.
 int CV2PDB::getDWARFTypeSize(const DIECursor& parent, byte* typePtr)
 {
 	DWARF_InfoData id;
 	DIECursor cursor(parent, typePtr);
 
-	if (!cursor.readNext(id))
+	// Don't allocate this into the tree since we're just interested
+	// in computing a type.
+	if (!cursor.readNext(&id))
 		return 0;
 
 	if(id.byte_size > 0)
@@ -1349,7 +1447,7 @@ int CV2PDB::getDWARFTypeSize(const DIECursor& parent, byte* typePtr)
 		case DW_TAG_array_type:
 		{
 			int basetype, upperBound, lowerBound;
-			getDWARFArrayBounds(id, cursor, basetype, lowerBound, upperBound);
+			getDWARFArrayBounds(cursor, basetype, lowerBound, upperBound);
 			return (upperBound - lowerBound + 1) * getDWARFTypeSize(cursor, id.type);
 		}
 		default:
@@ -1362,6 +1460,8 @@ int CV2PDB::getDWARFTypeSize(const DIECursor& parent, byte* typePtr)
 
 // Scan the .debug_info section and allocate type IDs for each unique type and
 // create a mapping to look them up by their address.
+// This is the first pass scan that builds up the DWARF tree. The second pass (createTypes)
+// emits the actual PDB symbols.
 bool CV2PDB::mapTypes()
 {
 	int typeID = nextUserType;
@@ -1369,6 +1469,9 @@ bool CV2PDB::mapTypes()
 
 	if (debug & DbgBasic)
 		fprintf(stderr, "%s:%d: mapTypes()\n", __FUNCTION__, __LINE__);
+
+	// Maintain the first node of each CU to ensure all of them get linked.
+	DWARF_InfoData* firstNode = nullptr;
 
 	// Scan each compilation unit in '.debug_info'.
 	while (off < img.debug_info.length)
@@ -1391,12 +1494,33 @@ bool CV2PDB::mapTypes()
 		}
 
 		DIECursor cursor(&cu, ptr);
-		DWARF_InfoData id;
-		while (cursor.readNext(id))
+
+		// Set up link to ensure this CU links to the prior one.
+		cursor.prevNode = firstNode;
+
+		DWARF_InfoData* node = nullptr;
+		bool setFirstNode = false;
+		// Start scanning this CU from the beginning and *build a tree of DIE nodes*.
+		while ((node = cursor.readNext(nullptr)) != nullptr)
 		{
+			DWARF_InfoData& id = *node;
+
+			// Initialize the head of the DWARF DIE list the first time.
+			if (!dwarfHead) {
+				dwarfHead = node;
+			}
+
+			if (!setFirstNode) {
+				firstNode = node;
+				setFirstNode = true;
+			}
+
 			if (debug & DbgDwarfTagRead)
 				fprintf(stderr, "%s:%d: 0x%08x, level = %d, id.code = %d, id.tag = %d\n", __FUNCTION__, __LINE__,
 						cursor.entryOff, cursor.level, id.code, id.tag);
+
+			// Insert it into the map.
+			mapEntryPtrToEntry[node->entryPtr] = node;
 
 			switch (id.tag)
 			{
@@ -1427,20 +1551,21 @@ bool CV2PDB::mapTypes()
 				case DW_TAG_shared_type:
 				case DW_TAG_rvalue_reference_type:
 					// Reserve a typeID and store it in the map for quick lookup.
-					mapOffsetToType.insert(std::make_pair(id.entryPtr, typeID));
+					mapEntryPtrToTypeID.insert(std::make_pair(id.entryPtr, typeID));
 					typeID++;
 			}
 		}
 	}
 
 	if (debug & DbgBasic)
-		fprintf(stderr, "%s:%d: mapped %zd types\n", __FUNCTION__, __LINE__, mapOffsetToType.size());
+		fprintf(stderr, "%s:%d: mapped %zd types\n", __FUNCTION__, __LINE__, mapEntryPtrToTypeID.size());
 
 	nextDwarfType = typeID;
-	assert(nextDwarfType == nextUserType + mapOffsetToType.size());
+	assert(nextDwarfType == nextUserType + mapEntryPtrToTypeID.size());
 	return true;
 }
 
+// Walks the .debug_info section and builds a DIE tree.
 bool CV2PDB::createTypes()
 {
 	img.createSymbolCache();
@@ -1474,17 +1599,24 @@ bool CV2PDB::createTypes()
 		}
 
 		DIECursor cursor(&cu, ptr);
+
+		DWARF_InfoData* node = nullptr;
+		bool setFirstNode = false;
 		DWARF_InfoData id;
-		while (cursor.readNext(id))
+
+		// Scan the DIEs in this CU, reusing the elements.
+		while (cursor.readNext(&id))
 		{
 			if (debug & DbgDwarfTagRead)
 				fprintf(stderr, "%s:%d: 0x%08x, level = %d, id.code = %d, id.tag = %d\n", __FUNCTION__, __LINE__,
 						cursor.entryOff, cursor.level, id.code, id.tag);
 
+			// Merge in related entries. This relies on the DWARF tree having been built
+			// in the first pass (mapTypes).
 			if (id.abstract_origin)
-				mergeAbstractOrigin(id, cursor);
+				mergeAbstractOrigin(id, *this);
 			if (id.specification)
-				mergeSpecification(id, cursor);
+				mergeSpecification(id, *this);
 
 			int cvtype = -1;
 			switch (id.tag)
@@ -1515,14 +1647,14 @@ bool CV2PDB::createTypes()
 			case DW_TAG_class_type:
 			case DW_TAG_structure_type:
 			case DW_TAG_union_type:
-				cvtype = addDWARFStructure(id, cursor.getSubtreeCursor());
+				cvtype = addDWARFStructure(id, cursor);
 				break;
 			case DW_TAG_array_type:
-				cvtype = addDWARFArray(id, cursor.getSubtreeCursor());
+				cvtype = addDWARFArray(id, cursor);
 				break;
 
 			case DW_TAG_enumeration_type:
-				cvtype = addDWARFEnum(id, cursor.getSubtreeCursor());
+				cvtype = addDWARFEnum(id, cursor);
 				break;
 
 			case DW_TAG_subroutine_type:
@@ -1556,7 +1688,17 @@ bool CV2PDB::createTypes()
 
 							mod->AddPublic2(id.name, img.text.secNo + 1, entry_point - codeSegOff, 0);
 						}
-						addDWARFProc(id, ranges, cursor.getSubtreeCursor());
+
+						// Only add the definition, not declaration, because
+						// MSVC toolset only produces a single symbol for
+						// each function and will get confused if there are
+						// 2 PDB symbols for the same routine.
+						//
+						// TODO: Add more type info to the routine. Today we
+						// expose it as "T_NOTYPE" when we could do better.
+						if (!id.isDecl) {
+							addDWARFProc(id, ranges, cursor);
+						}
 					}
 				}
 				break;
@@ -1663,16 +1805,40 @@ bool CV2PDB::createTypes()
 
 			if (cvtype >= 0)
 			{
-				assert(cvtype == typeID); typeID++;
-				assert(mapOffsetToType[id.entryPtr] == cvtype);
+				assert(cvtype == typeID); 
+				typeID++;
+
+				assert(mapEntryPtrToTypeID[id.entryPtr] == cvtype);
 				assert(typeID == nextUserType);
 			}
 		}
 	}
 
 	assert(typeID == nextUserType);
-	assert(typeID == firstUserType + mapOffsetToType.size());
+	assert(typeID == firstUserType + mapEntryPtrToTypeID.size());
 	return true;
+}
+
+void printIndent(int level) {
+	for (int i = 0; i < level; ++i) {
+		printf("  ");
+	}
+}
+
+void dumpTreeHelper(DWARF_InfoData* node, int level) {
+	for (DWARF_InfoData* n = node; n; n = n->next) {
+		const unsigned dieOffset = n->img->debug_info.sectOff(n->entryPtr);
+
+		printIndent(level);
+		printf("offset: %#x, name: \"%s\", tag: %#x, abbrev: %d\n", dieOffset, n->name, n->tag, n->code);
+
+		// Visit the children.
+		dumpTreeHelper(n->children, level + 1);
+	}
+}
+
+void CV2PDB::dumpDwarfTree() const {
+	dumpTreeHelper(dwarfHead, 0);	
 }
 
 bool CV2PDB::createDWARFModules()
@@ -1722,6 +1888,10 @@ bool CV2PDB::createDWARFModules()
 		return false;
 	if (!createTypes())
 		return false;
+
+	if (debug & DbgPrintDwarfTree) {
+		dumpDwarfTree();
+	}
 
 	/*
 	if(!iterateDWARFDebugInfo(kOpMapTypes))
@@ -1776,6 +1946,20 @@ bool CV2PDB::addDWARFPublics()
 	if (rc <= 0)
 		return setError("cannot add public");
 	return true;
+}
+
+// Try to lookup a DWARF_InfoData in the constructed DWARF tree given its
+// "entryPtr". I.e. its memory-mapped location in the loaded PE image buffer.
+DWARF_InfoData* CV2PDB::findEntryByPtr(byte* entryPtr) const
+{
+	auto it = mapEntryPtrToEntry.find(entryPtr);
+	if (it == mapEntryPtrToEntry.end()) {
+		// Could not find decl for this definition.
+		return nullptr;
+	}
+	else {
+		return it->second;
+	}
 }
 
 bool CV2PDB::writeDWARFImage(const TCHAR* opath)

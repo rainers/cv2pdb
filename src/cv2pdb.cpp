@@ -897,6 +897,7 @@ void CV2PDB::checkGlobalTypeAlloc(int size, int add)
 	}
 }
 
+// Get the CodeView type descriptor for the given type ID.
 // CV-only. Returns NULL for DWARF-based images.
 const codeview_type* CV2PDB::getTypeData(int type)
 {
@@ -913,6 +914,7 @@ const codeview_type* CV2PDB::getTypeData(int type)
 	return (codeview_type*)(typeData + offset[type - BASE_USER_TYPE]);
 }
 
+// CV-only. Never called for DWARF.
 const codeview_type* CV2PDB::getUserTypeData(int type)
 {
 	type -= BASE_USER_TYPE + globalTypeHeader->cTypes;
@@ -2116,6 +2118,7 @@ int CV2PDB::appendTypedef(int type, const char* name, bool saveTranslation)
 	return typedefType;
 }
 
+// CV-only.
 void CV2PDB::appendTypedefs()
 {
 	if(Dversion == 0)

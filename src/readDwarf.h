@@ -11,6 +11,7 @@
 typedef unsigned char byte;
 class PEImage;
 class DIECursor;
+class CV2PDB;
 struct SectionDescriptor;
 
 enum DebugLevel : unsigned {
@@ -24,7 +25,8 @@ enum DebugLevel : unsigned {
 	DbgDwarfAttrRead = 0x400,
 	DbgDwarfLocLists = 0x800,
 	DbgDwarfRangeLists = 0x1000,
-	DbgDwarfLines = 0x2000
+	DbgDwarfLines = 0x2000,
+	DbgPrintDwarfTree = 0x4000,
 };
 
 DEFINE_ENUM_FLAG_OPERATORS(DebugLevel);
@@ -183,7 +185,10 @@ struct DWARF_FileName
 // In-memory representation of a DIE (Debugging Info Entry).
 struct DWARF_InfoData
 {
-	// Pointer into the mapped image section where this DIE is located.
+	// The PEImage for this entry.
+	PEImage* img = nullptr;
+
+	// Pointer into the memory-mapped image section where this DIE is located.
 	byte* entryPtr;
 
 	// Code to find the abbrev entry for this DIE, or 0 if it a sentinel marking
@@ -196,6 +201,18 @@ struct DWARF_InfoData
 
 	// Does this DIE have children?
 	int hasChild;
+
+	// Parent of this DIE, or NULL if top-level element.
+	DWARF_InfoData* parent = nullptr;
+
+	// Pointer to sibling in the tree. Not to be confused with 'sibling' below,
+	// which is a raw pointer to the DIE in the mapped/loaded image section.
+	// NULL if no more elements.
+	DWARF_InfoData* next = nullptr;
+
+	// Pointer to first child. This forms a linked list with the 'next' pointer.
+	// NULL if no children.
+	DWARF_InfoData* children = nullptr;
 
 	const char* name;
 	const char* linkage_name;
@@ -213,10 +230,14 @@ struct DWARF_InfoData
 	// Pointer to the DW_AT_type DIE describing the type of this DIE.
 	byte* type;
 	byte* containing_type;
+
+	// Pointer to the DIE representing the declaration for this element if it
+	// is a definition. E.g. function decl for its definition/body.
 	byte* specification;
 	byte* abstract_origin;
 	unsigned long inlined;
-	bool external;
+	bool external = false; // is this subroutine visible outside its compilation unit?
+	bool isDecl = false; // is this a declaration?
 	DWARF_Attribute location;
 	DWARF_Attribute member_location;
 	DWARF_Attribute frame_base;
@@ -236,6 +257,7 @@ struct DWARF_InfoData
 		abbrev = 0;
 		tag = 0;
 		hasChild = 0;
+		parent = nullptr;
 
 		name = 0;
 		linkage_name = 0;
@@ -252,7 +274,8 @@ struct DWARF_InfoData
 		specification = 0;
 		abstract_origin = 0;
 		inlined = 0;
-		external = 0;
+		external = false;
+		isDecl = false;
 		member_location.type = Invalid;
 		location.type = Invalid;
 		frame_base.type = Invalid;
@@ -508,19 +531,31 @@ typedef std::unordered_map<std::pair<unsigned, unsigned>, byte*> abbrevMap_t;
 // as either an absolute value, a register, or a register-relative address.
 Location decodeLocation(const DWARF_Attribute& attr, const Location* frameBase = 0, int at = 0);
 
-void mergeAbstractOrigin(DWARF_InfoData& id, const DIECursor& parent);
-void mergeSpecification(DWARF_InfoData& id, const DIECursor& parent);
+void mergeAbstractOrigin(DWARF_InfoData& id, const CV2PDB& context);
+void mergeSpecification(DWARF_InfoData& id, const CV2PDB& context);
 
 // Debug Information Entry Cursor
 class DIECursor
 {
+	// TODO: make these private.
 public:
-	DWARF_CompilationUnitInfo* cu;
-	byte* ptr;
+	DWARF_CompilationUnitInfo* cu = nullptr; // the CU we are reading from.
+	byte* ptr = nullptr; // the current mapped location we are reading from.
 	unsigned int entryOff;
-	int level;
-	bool hasChild; // indicates whether the last read DIE has children
-	byte* sibling;
+	int level; // the current level of the tree in the scan.
+	bool prevHasChild = false; // indicates whether the last read DIE has children
+
+	// last DIE scanned. Used to link subsequent nodes in a list.
+	DWARF_InfoData* prevNode = nullptr;
+	
+	// The last parent node to which all subsequent nodes should be assigned.
+	// Initially, NULL, but as we encounter a node with children, we establish
+	// it as the new "parent" for future nodes, and reset it once we reach
+	// a top level node.
+	DWARF_InfoData* prevParent = nullptr;
+
+	// The mapped address of the sibling of the last scanned node, if any.
+	byte* sibling = nullptr;
 
 	static PEImage *img;
 	static abbrevMap_t abbrevMap;
@@ -541,17 +576,13 @@ public:
 	// Goto next sibling DIE.  If the last read DIE had any children, they will be skipped over.
 	void gotoSibling();
 
-	// Reads next sibling DIE.  If the last read DIE had any children, they will be skipped over.
-	// Returns 'false' upon reaching the last sibling on the current level.
-	bool readSibling(DWARF_InfoData& id);
-
 	// Returns cursor that will enumerate children of the last read DIE.
 	DIECursor getSubtreeCursor();
 
-	// Reads the next DIE in physical order, returns 'true' if succeeds.
+	// Reads the next DIE in physical order, returns non-NULL if succeeds.
 	// If stopAtNull is true, readNext() will stop upon reaching a null DIE (end of the current tree level).
 	// Otherwise, it will skip null DIEs and stop only at the end of the subtree for which this DIECursor was created.
-	bool readNext(DWARF_InfoData& id, bool stopAtNull = false);
+	DWARF_InfoData* readNext(DWARF_InfoData* entry, bool stopAtNull = false);
 
 	// Read an address from p according to the ambient pointer size.
 	uint64_t RDAddr(byte* &p) const
