@@ -211,6 +211,7 @@ public:
 	OMFSegMapDesc* segMapDesc;
 	int* segFrame2Index;
 
+	// CV-only
 	OMFGlobalTypes* globalTypeHeader;
 
 	unsigned char* globalTypes;
@@ -236,8 +237,11 @@ public:
 	int cbDwarfTypes;
 	int allocDwarfTypes;
 
-	int nextUserType;
-	int nextDwarfType;
+	static constexpr int BASE_USER_TYPE = 0x1000;
+	static constexpr int BASE_DWARF_TYPE = 0x1000;
+
+	int nextUserType = BASE_USER_TYPE;
+	int nextDwarfType = BASE_DWARF_TYPE;
 	int objectType;
 
 	int emptyFieldListType;

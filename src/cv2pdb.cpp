@@ -36,8 +36,6 @@ CV2PDB::CV2PDB(PEImage& image, DebugLevel debug_)
 	memset(typedefs, 0, sizeof(typedefs));
 	memset(translatedTypedefs, 0, sizeof(translatedTypedefs));
 	cntTypedefs = 0;
-	nextUserType = 0x1000;
-	nextDwarfType = 0x1000;
 
 	addClassTypeEnum = true;
 	addObjectViewHelper = true;
@@ -899,25 +897,26 @@ void CV2PDB::checkGlobalTypeAlloc(int size, int add)
 	}
 }
 
+// CV-only. Returns NULL for DWARF-based images.
 const codeview_type* CV2PDB::getTypeData(int type)
 {
-	if (!globalTypeHeader)
+	if (!globalTypeHeader) // NULL for DWARF.
 		return 0;
-	if (type < 0x1000 || type >= (int) (0x1000 + globalTypeHeader->cTypes + nextUserType))
+	if (type < BASE_USER_TYPE || type >= (int) (BASE_USER_TYPE + globalTypeHeader->cTypes + nextUserType))
 		return 0;
-	if (type >= (int) (0x1000 + globalTypeHeader->cTypes))
+	if (type >= (int) (BASE_USER_TYPE + globalTypeHeader->cTypes))
 		return getUserTypeData(type);
 
 	DWORD* offset = (DWORD*)(globalTypeHeader + 1);
 	BYTE* typeData = (BYTE*)(offset + globalTypeHeader->cTypes);
 
-	return (codeview_type*)(typeData + offset[type - 0x1000]);
+	return (codeview_type*)(typeData + offset[type - BASE_USER_TYPE]);
 }
 
 const codeview_type* CV2PDB::getUserTypeData(int type)
 {
-	type -= 0x1000 + globalTypeHeader->cTypes;
-	if (type < 0 || type >= nextUserType - 0x1000)
+	type -= BASE_USER_TYPE + globalTypeHeader->cTypes;
+	if (type < 0 || type >= nextUserType - BASE_USER_TYPE)
 		return 0;
 
 	int pos = 0;
@@ -933,8 +932,8 @@ const codeview_type* CV2PDB::getUserTypeData(int type)
 
 const codeview_type* CV2PDB::getConvertedTypeData(int type)
 {
-	type -= 0x1000;
-	if (type < 0 || type >= nextUserType - 0x1000)
+	type -= BASE_USER_TYPE;
+	if (type < 0 || type >= nextUserType - BASE_USER_TYPE)
 		return 0;
 
 	int pos = typePrefix;
@@ -1013,7 +1012,7 @@ int CV2PDB::findMemberFunctionType(codeview_symbol* lastGProcSym, int thisPtrTyp
 				type->mfunction_v1.call == proctype->procedure_v1.call &&
 				type->mfunction_v1.rvtype == proctype->procedure_v1.rvtype)
 			{
-				return t + 0x1000;
+				return t + BASE_USER_TYPE;
 			}
 		}
 	}
@@ -1123,7 +1122,7 @@ int CV2PDB::sizeofBasicType(int type)
 
 int CV2PDB::sizeofType(int type)
 {
-	if (type < 0x1000)
+	if (type < BASE_USER_TYPE)
 		return sizeofBasicType(type);
 
 	const codeview_type* cvtype = getTypeData(type);
@@ -1144,11 +1143,14 @@ int CV2PDB::sizeofType(int type)
 // to be used when writing new type only to avoid double translation
 int CV2PDB::translateType(int type)
 {
-	if (type < 0x1000)
+	if (type < BASE_USER_TYPE)
 	{
+		// Check D lang typedefs.
 		for(int i = 0; i < cntTypedefs; i++)
 			if(type == typedefs[i])
 				return translatedTypedefs[i];
+
+		// Return original type.
 		return type;
 	}
 
@@ -1279,7 +1281,7 @@ bool CV2PDB::nameOfModifierType(int type, int mod, char* name, int maxlen)
 
 bool CV2PDB::nameOfType(int type, char* name, int maxlen)
 {
-	if(type < 0x1000)
+	if(type < BASE_USER_TYPE)
 		return nameOfBasicType(type, name, maxlen);
 
 	const codeview_type* ptype = getTypeData(type);
@@ -2032,7 +2034,7 @@ void CV2PDB::ensureUDT(int type, const codeview_type* cvtype)
 	if (getStructProperty(cvtype) & kPropIncomplete)
 		cvtype = findCompleteClassType(cvtype, &type);
 
-	if(findUdtSymbol(type + 0x1000))
+	if(findUdtSymbol(type + BASE_USER_TYPE))
 		return;
 
 	char name[kMaxNameLen];
@@ -2054,9 +2056,9 @@ void CV2PDB::ensureUDT(int type, const codeview_type* cvtype)
 		int viewHelperType = nextUserType++;
 		// addUdtSymbol(viewHelperType, "object_viewhelper");
 		addUdtSymbol(viewHelperType, name);
+	} else {
+		addUdtSymbol(type + BASE_USER_TYPE, name);
 	}
-	else
-		addUdtSymbol(type + 0x1000, name);
 }
 
 int CV2PDB::createEmptyFieldListType()
@@ -2135,6 +2137,7 @@ void CV2PDB::appendTypedefs()
 	appendComplex(0x52, 0x42, 10, "creal");
 }
 
+// CV-only.
 bool CV2PDB::initGlobalTypes()
 {
 	int object_derived_type = 0;
@@ -2160,7 +2163,7 @@ bool CV2PDB::initGlobalTypes()
 			*(DWORD*) globalTypes = 4;
 			cbGlobalTypes = typePrefix;
 
-			nextUserType = globalTypeHeader->cTypes + 0x1000;
+			nextUserType = globalTypeHeader->cTypes + BASE_USER_TYPE;
 
 			appendTypedefs();
 			if(Dversion > 0)
@@ -2277,7 +2280,7 @@ bool CV2PDB::initGlobalTypes()
 						if(const codeview_type* td = getTypeData(type->struct_v1.fieldlist))
 							if(td->generic.id == LF_FIELDLIST_V1 || td->generic.id == LF_FIELDLIST_V2)
 								dtype->struct_v2.n_element = countFields((const codeview_reftype*)td);
-					dtype->struct_v2.property = fixProperty(t + 0x1000, type->struct_v1.property,
+					dtype->struct_v2.property = fixProperty(t + BASE_USER_TYPE, type->struct_v1.property,
 					                                        type->struct_v1.fieldlist);
 #if REMOVE_LF_DERIVED
 					dtype->struct_v2.derived = 0;
@@ -2308,7 +2311,7 @@ bool CV2PDB::initGlobalTypes()
 					dtype->union_v2.id = v3 ? LF_UNION_V3 : LF_UNION_V2;
 					dtype->union_v2.count = type->union_v1.count;
 					dtype->union_v2.fieldlist = type->struct_v1.fieldlist;
-					dtype->union_v2.property = fixProperty(t + 0x1000, type->struct_v1.property, type->struct_v1.fieldlist);
+					dtype->union_v2.property = fixProperty(t + BASE_USER_TYPE, type->struct_v1.property, type->struct_v1.fieldlist);
 					leaf_len = numeric_leaf(&value, &type->union_v1.un_len);
 					memcpy (&dtype->union_v2.un_len, &type->union_v1.un_len, leaf_len);
 					len = pstrcpy_v(v3, (BYTE*)      &dtype->union_v2.un_len + leaf_len,
@@ -2349,10 +2352,10 @@ bool CV2PDB::initGlobalTypes()
 					dtype->mfunction_v2.rvtype = translateType(type->mfunction_v1.rvtype);
 					clsstype = type->mfunction_v1.class_type;
 					dtype->mfunction_v2.class_type = translateType(clsstype);
-					if (clsstype >= 0x1000 && clsstype < 0x1000 + globalTypeHeader->cTypes)
+					if (clsstype >= BASE_USER_TYPE && clsstype < BASE_USER_TYPE + globalTypeHeader->cTypes)
 					{
 						// fix class_type to point to class, not pointer to class
-						codeview_type* ctype = (codeview_type*)(typeData + offset[clsstype - 0x1000]);
+						codeview_type* ctype = (codeview_type*)(typeData + offset[clsstype - BASE_USER_TYPE]);
 						if (ctype->generic.id == LF_POINTER_V1)
 							dtype->mfunction_v2.class_type = translateType(ctype->pointer_v1.datatype);
 					}
@@ -2370,12 +2373,12 @@ bool CV2PDB::initGlobalTypes()
 					dtype->enumeration_v2.count = type->enumeration_v1.count;
 					dtype->enumeration_v2.type = translateType(type->enumeration_v1.type);
 					dtype->enumeration_v2.fieldlist = type->enumeration_v1.fieldlist;
-					dtype->enumeration_v2.property = fixProperty(t + 0x1000, type->enumeration_v1.property, type->enumeration_v1.fieldlist);
+					dtype->enumeration_v2.property = fixProperty(t + BASE_USER_TYPE, type->enumeration_v1.property, type->enumeration_v1.fieldlist);
 					len = pstrcpy_v (v3, (BYTE*) &dtype->enumeration_v2.p_name, (BYTE*) &type->enumeration_v1.p_name);
 					len += sizeof(dtype->enumeration_v2) - sizeof(dtype->enumeration_v2.p_name);
 					if(dtype->enumeration_v2.fieldlist && v3)
-						if(!findUdtSymbol(t + 0x1000))
-							addUdtSymbol(t + 0x1000, (char*) &dtype->enumeration_v2.p_name);
+						if(!findUdtSymbol(t + BASE_USER_TYPE))
+							addUdtSymbol(t + BASE_USER_TYPE, (char*) &dtype->enumeration_v2.p_name);
 					break;
 
 				case LF_FIELDLIST_V1:
@@ -2392,7 +2395,7 @@ bool CV2PDB::initGlobalTypes()
 					rdtype->derived_v2.id = LF_DERIVED_V2;
 					rdtype->derived_v2.num = rtype->derived_v1.num;
 					for (int i = 0; i < rtype->derived_v1.num; i++)
-						if (rtype->derived_v1.drvdcls[i] < 0x1000) // + globalTypeHeader->cTypes)
+						if (rtype->derived_v1.drvdcls[i] < BASE_USER_TYPE) // + globalTypeHeader->cTypes)
 							rdtype->derived_v2.drvdcls[i] = translateType(rtype->derived_v1.drvdcls[i] + 0xfff);
 						else
 							rdtype->derived_v2.drvdcls[i] = translateType(rtype->derived_v1.drvdcls[i]);
@@ -3166,8 +3169,8 @@ int CV2PDB::copySymbols(BYTE* srcSymbols, int srcSize, BYTE* destSymbols, int de
 					codeview_symbol* dsym = (codeview_symbol*)(destSymbols + destSize);
 					memcpy(dsym, sym, length);
 #endif
-					if (type >= 0x1000 && pointerTypes[type - 0x1000])
-						type = pointerTypes[type - 0x1000];
+					if (type >= BASE_USER_TYPE && pointerTypes[type - BASE_USER_TYPE])
+						type = pointerTypes[type - BASE_USER_TYPE];
 				}
 			}
 			dsym->stack_v2.id = v3 ? S_BPREL_V3 : S_BPREL_V1;
@@ -3279,6 +3282,8 @@ bool isUDTid(int id)
 	return id == S_UDT_V1 || id == S_UDT_V2 || id == S_UDT_V3;
 }
 
+// Find a user-defined type CV symbol.
+// CV-only.
 codeview_symbol* CV2PDB::findUdtSymbol(int type)
 {
 	type = translateType(type);
