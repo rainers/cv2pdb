@@ -699,20 +699,27 @@ void CV2PDB::appendLexicalBlock(DWARF_InfoData& id, unsigned int proclo)
 // for a Foo constructor in a Foo class in a namespace called "some_ns".
 // PDBs require fully qualified names in their symbols.
 // TODO: better error handling for out of space.
-void CV2PDB::formatFullyQualifiedProcName(const DWARF_InfoData* proc, char* buf, size_t cbBuf) const {
-	if (proc->specification) {
+void CV2PDB::formatFullyQualifiedName(const DWARF_InfoData* node, char* buf, size_t cbBuf) const {
+	if (node->specification) {
 		// If the proc has a "specification", i.e. a declaration, use it instead
 		// of the definition, as it has a proper hierarchy connected to it
 		// which will give us a proper fully-qualified name like Foo::Foo
 		// instead of just Foo.
-		const DWARF_InfoData* entry = findEntryByPtr(proc->specification);
+		const DWARF_InfoData* entry = findEntryByPtr(node->specification);
 		if (entry) {
-			proc = entry;
+			node = entry;
 		}
+	} else {
+		// Find the node's entry in the DWARF tree. We can't use 'node' as is because
+		// it is a local copy without linkage into the tree, as it comes from
+		// the 2nd pass scan after the tree is already built.
+		const DWARF_InfoData* entry = findEntryByPtr(node->entryPtr);
+		assert(entry);  // how can it not exist? Bug in tree construction.
+		node = entry;
 	}
-	DWARF_InfoData* parent = proc->parent;
+	DWARF_InfoData* parent = node->parent;
 	std::vector<const DWARF_InfoData*> segments;
-	segments.push_back(proc);
+	segments.push_back(node);
 
 	// Accumulate all the valid parent scopes so that we can reverse them for
 	// formatting.
@@ -753,7 +760,7 @@ void CV2PDB::formatFullyQualifiedProcName(const DWARF_InfoData* proc, char* buf,
 			nameLen = strlen(name);
 		}
 		if (remain < nameLen) {
-			fprintf(stderr, "unable to fit full proc name: %s\n", proc->name);
+			fprintf(stderr, "unable to fit full symbol name: %s\n", node->name);
 			return;
 		}
 
@@ -765,7 +772,7 @@ void CV2PDB::formatFullyQualifiedProcName(const DWARF_InfoData* proc, char* buf,
 		if (i > 0) {
 			// Append :: separator
 			if (remain < 2) {
-				fprintf(stderr, "unable to fit full proc name (:: separator): %s\n", proc->name);
+				fprintf(stderr, "unable to fit full symbol name (:: separator): %s\n", node->name);
 				return;
 			}
 			*p++ = ':';
@@ -808,7 +815,7 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, const std::vector<RangeEntry> 
 
 //    printf("GlobalPROC %s\n", procid.name);
 	char namebuf[kMaxNameLen] = {};
-	formatFullyQualifiedProcName(&procid, namebuf, sizeof namebuf);
+	formatFullyQualifiedName(&procid, namebuf, sizeof namebuf);
 	len = cstrcpy_v (v3, (BYTE*) &cvs->proc_v2.p_name, namebuf);
 	len += (BYTE*) &cvs->proc_v2.p_name - (BYTE*) cvs;
 	for (; len & (align-1); len++)
@@ -974,7 +981,7 @@ int CV2PDB::addDWARFFields(DWARF_InfoData& structid, DIECursor& cursor, int base
 
 	// cursor points to the first member of the class/struct/union.
 	DWARF_InfoData id;
-	while (cursor.readNext(&id, true))
+	while (cursor.readNext(&id, true /* stopAtNull */))
 	{
 		if (cbDwarfTypes - flStart > 0x10000 - kMaxNameLen - 100)
 			break; // no more space in field list, TODO: add continuation record, see addDWARFEnum
@@ -1094,14 +1101,15 @@ int CV2PDB::addDWARFStructure(DWARF_InfoData& structid, DIECursor cursor)
 	checkUserTypeAlloc(kMaxNameLen + 100);
 	codeview_type* cvt = (codeview_type*) (userTypes + cbUserTypes);
 
-	const char* name = (structid.name ? structid.name : "__noname");
+	char namebuf[kMaxNameLen] = {};
+	formatFullyQualifiedName(&structid, namebuf, sizeof namebuf);
 	int attr = fieldlistType ? 0 : kPropIncomplete;
-	int len = addAggregate(cvt, false, nfields, fieldlistType, attr, 0, 0, structid.byte_size, name, nullptr);
+	int len = addAggregate(cvt, false, nfields, fieldlistType, attr, 0, 0, structid.byte_size, namebuf, nullptr);
 	cbUserTypes += len;
 
 	//ensureUDT()?
 	int cvtype = nextUserType++;
-	addUdtSymbol(cvtype, name);
+	addUdtSymbol(cvtype, namebuf);
 	return cvtype;
 }
 
@@ -1429,14 +1437,93 @@ int CV2PDB::addDWARFEnum(DWARF_InfoData& enumid, DIECursor cursor)
 	return enumType;
 }
 
-int CV2PDB::getTypeByDWARFPtr(byte* ptr)
+// Try to find or compute the "best" CV TypeID for a given DIE found by following
+// a DW_AT_type attribute or its closest counterpart.
+int CV2PDB::getTypeByDWARFPtr(byte* typePtr)
 {
-	if (ptr == nullptr)
-		return 0x03; // void
-	std::unordered_map<byte*, int>::iterator it = mapEntryPtrToTypeID.find(ptr);
-	if (it == mapEntryPtrToTypeID.end())
-		return 0x03; // void
-	return it->second;
+	if (typePtr == nullptr)
+		return T_NOTYPE;
+
+	// First just attempt to find the type entry directly.
+	int ret = findTypeIdByPtr(typePtr);
+	if (!ret) {
+		// TypeID was not found in the map. This may be due to struct
+		// decl / definition consolidation. I.e. we don't emit the struct decl
+		// because they show up as "empty" structs (devoid of members).
+		// Try to match this against the logically equivalent "definition"
+		// type.
+		DWARF_InfoData* entry = findEntryByPtr(typePtr);
+		assert(entry); // how can the entry not exist in the map?
+
+		// Skip anonymous structures or similar.
+		if (!entry || !entry->name) {
+			return T_NOTYPE;
+		}
+
+		// See if there exists another "logically equivalent" entry in the tree.
+		// 
+		// First, find all entries with the same (local) name as this type.
+		auto range = mapEntryNameToEntries.equal_range(entry->name);
+		for (auto it = range.first; it != range.second; ++it) {
+			DWARF_InfoData* candidate = it->second;
+
+			// Skip self.
+			if (candidate == entry) {
+				continue;
+			}
+
+			// Skip declarations (as when they are of structs, they don't help.
+			// We want definitions only as they define the fields in DWARF.)
+			if (candidate->isDecl) {
+				continue;
+			}
+			
+			// Filter nodes based on the matching tag.
+			if (candidate->tag != entry->tag) {
+				continue;
+			}
+
+			// Found a matching tag for this element. Walk up the tree and check
+			// if all parent tags and names match also. If they do, we found an
+			// "equivalent" node to 'typePtr' one that wasn't added to the
+			// typeID registry (because it was likely a decl that we filtered out)
+			DWARF_InfoData* candidateParent = candidate->parent;
+			DWARF_InfoData* entryParent = entry->parent;
+
+			bool equivalentHierarchy = true;
+			while (candidateParent && entryParent) {
+				if (candidateParent->tag != entryParent->tag) {
+					// Tag mismatch.
+					equivalentHierarchy = false;
+					break;
+				}
+
+				// Skip CUs as of course they have different names. We only
+				// care about namespaces, other containing structs, classes, etc.
+				// Entries have the same tag. Checking one is sufficient.
+				if (entryParent->tag != DW_TAG_compile_unit) {
+
+					if (strcmp(candidateParent->name, entryParent->name)) {
+						// Name mismatch.
+						equivalentHierarchy = false;
+						break;
+					}
+				}
+
+				candidateParent = candidateParent->parent;
+				entryParent = entryParent->parent;
+			}
+
+			if (equivalentHierarchy) {
+				// Try another lookup with this new candidate.
+				ret = findTypeIdByPtr(candidate->entryPtr);
+				assert(ret);  // how can it now be in the map?
+			} else {
+				fprintf(stderr, "warn: could not find equivalent entry for typePtr %p\n", typePtr);
+			}
+		}
+	}
+	return ret;
 }
 
 // Get the logical size of a DWARF type, starting from 'typePtr' and recursing
@@ -1535,24 +1622,32 @@ bool CV2PDB::mapTypes()
 				fprintf(stderr, "%s:%d: 0x%08x, level = %d, id.code = %d, id.tag = %d\n", __FUNCTION__, __LINE__,
 						cursor.entryOff, cursor.level, id.code, id.tag);
 
-			// Insert it into the map.
+			// Insert the node into the entryPtr-based index.
 			mapEntryPtrToEntry[node->entryPtr] = node;
+
+			// Insert named nodes into the name-based index.
+			if (node->name) {
+				mapEntryNameToEntries.insert({ node->name, node });
+			}
 
 			switch (id.tag)
 			{
+				case DW_TAG_structure_type:
+				case DW_TAG_class_type:
+				case DW_TAG_union_type:
+					// skip generating a typeID for declaration flavor of
+					// class/struct/union since we don't emit the PDB symbol
+					// for them. See related code in CV2PDB::createTypes().
+					if (id.isDecl) continue; 
 				case DW_TAG_base_type:
 				case DW_TAG_typedef:
 				case DW_TAG_pointer_type:
 				case DW_TAG_subroutine_type:
 				case DW_TAG_array_type:
 				case DW_TAG_const_type:
-				case DW_TAG_structure_type:
 				case DW_TAG_reference_type:
-
-				case DW_TAG_class_type:
 				case DW_TAG_enumeration_type:
 				case DW_TAG_string_type:
-				case DW_TAG_union_type:
 				case DW_TAG_ptr_to_member_type:
 				case DW_TAG_set_type:
 				case DW_TAG_subrange_type:
@@ -1663,7 +1758,16 @@ bool CV2PDB::createTypes()
 			case DW_TAG_class_type:
 			case DW_TAG_structure_type:
 			case DW_TAG_union_type:
-				cvtype = addDWARFStructure(id, cursor);
+				if (!id.isDecl) {
+					// Only export the non-declaration version of structs/classes.
+					// DWARF emits multiple copies of the same class, some of
+					// which are marked as declarations and lack members, resulting
+					// in an empty struct UDT in the PDB. Then when we encounter
+					// the non-declaration copy we emit it again, but now we
+					// end up with multiple copies of the same UDT in the PDB
+					// and the debugger gets confused.
+					cvtype = addDWARFStructure(id, cursor);
+				}
 				break;
 			case DW_TAG_array_type:
 				cvtype = addDWARFArray(id, cursor);
@@ -1972,10 +2076,20 @@ DWARF_InfoData* CV2PDB::findEntryByPtr(byte* entryPtr) const
 	if (it == mapEntryPtrToEntry.end()) {
 		// Could not find decl for this definition.
 		return nullptr;
+	} 
+	return it->second;
+}
+
+// Try to lookup a TypeID in the set of registered types by a
+// "typePtr". I.e. its memory-mapped location in the loaded PE image buffer.
+int CV2PDB::findTypeIdByPtr(byte* typePtr) const
+{
+	auto it = mapEntryPtrToTypeID.find(typePtr);
+	if (it == mapEntryPtrToTypeID.end()) {
+		// Could not find type for this definition.
+		return T_NOTYPE;
 	}
-	else {
-		return it->second;
-	}
+	return it->second;
 }
 
 bool CV2PDB::writeDWARFImage(const TCHAR* opath)

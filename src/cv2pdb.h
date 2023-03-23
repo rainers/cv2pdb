@@ -176,14 +176,15 @@ public:
 
 	bool addDWARFSectionContrib(mspdb::Mod* mod, unsigned long pclo, unsigned long pchi);
 	bool addDWARFProc(DWARF_InfoData& id, const std::vector<RangeEntry> &ranges, DIECursor cursor);
-	void formatFullyQualifiedProcName(const DWARF_InfoData* proc, char* buf, size_t cbBuf) const;
+	void formatFullyQualifiedName(const DWARF_InfoData* node, char* buf, size_t cbBuf) const;
 
 	int  addDWARFStructure(DWARF_InfoData& id, DIECursor cursor);
 	int  addDWARFFields(DWARF_InfoData& structid, DIECursor& cursor, int off, int flStart);
 	int  addDWARFArray(DWARF_InfoData& arrayid, const DIECursor& cursor);
 	int  addDWARFBasicType(const char*name, int encoding, int byte_size);
 	int  addDWARFEnum(DWARF_InfoData& enumid, DIECursor cursor);
-	int  getTypeByDWARFPtr(byte* ptr);
+	int  getTypeByDWARFPtr(byte* typePtr);
+	int  findTypeIdByPtr(byte* typePtr) const;
 	int  getDWARFTypeSize(const DIECursor& parent, byte* ptr);
 	void getDWARFArrayBounds(DIECursor cursor,
 		int& basetype, int& lowerBound, int& upperBound);
@@ -282,13 +283,18 @@ public:
 
 	double Dversion;
 
-	// DWARF
+	// DWARF fields.
+
 	int codeSegOff;
 
 	// Lookup table for type IDs based on the DWARF_InfoData::entryPtr
 	std::unordered_map<byte*, int> mapEntryPtrToTypeID;
+	
 	// Lookup table for entries based on the DWARF_InfoData::entryPtr
 	std::unordered_map<byte*, DWARF_InfoData*> mapEntryPtrToEntry;
+
+	// A multimap keyed on entry name. Since this is not unique, we use a multimap.
+	std::multimap<std::string, DWARF_InfoData*> mapEntryNameToEntries;
 
 	// Head of list of DWARF DIE nodes.
 	DWARF_InfoData* dwarfHead = nullptr;
