@@ -34,6 +34,11 @@ void DIECursor::setContext(PEImage* img_, DebugLevel debug_)
 	debug = debug_;
 }
 
+// Read one compilation unit from `img`'s .debug_info section, starting at
+// offset `*off`, updating it in the process to the start of the next one in the
+// section.
+// Returns a pointer to the first DIE, skipping past the CU header, or NULL
+// on failure.
 byte* DWARF_CompilationUnitInfo::read(DebugLevel debug, const PEImage& img, unsigned long *off)
 {
 	byte* ptr = img.debug_info.byteAt(*off);

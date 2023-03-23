@@ -180,24 +180,37 @@ struct DWARF_FileName
 	}
 };
 
+// In-memory representation of a DIE (Debugging Info Entry).
 struct DWARF_InfoData
 {
+	// Pointer into the mapped image section where this DIE is located.
 	byte* entryPtr;
+
+	// Code to find the abbrev entry for this DIE, or 0 if it a sentinel marking
+	// the end of a sibling chain.
 	int code;
+
+	// Pointer to the abbreviation table entry that corresponds to this DIE.
 	byte* abbrev;
 	int tag;
+
+	// Does this DIE have children?
 	int hasChild;
 
 	const char* name;
 	const char* linkage_name;
 	const char* dir;
 	unsigned long byte_size;
+
+	// Pointer to the sibling DIE in the mapped image.
 	byte* sibling;
 	unsigned long encoding;
 	unsigned long pclo;
 	unsigned long pchi;
 	unsigned long ranges; // -1u when attribute is not present
 	unsigned long pcentry;
+
+	// Pointer to the DW_AT_type DIE describing the type of this DIE.
 	byte* type;
 	byte* containing_type;
 	byte* specification;

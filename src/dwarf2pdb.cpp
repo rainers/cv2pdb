@@ -953,6 +953,7 @@ int CV2PDB::addDWARFFields(DWARF_InfoData& structid, DIECursor cursor, int baseo
 	return nfields;
 }
 
+// Add a class/struct/union to the database.
 int CV2PDB::addDWARFStructure(DWARF_InfoData& structid, DIECursor cursor)
 {
 	//printf("Adding struct %s, entryoff %d, abbrev %d\n", structid.name, structid.entryOff, structid.abbrev);
@@ -1359,6 +1360,8 @@ int CV2PDB::getDWARFTypeSize(const DIECursor& parent, byte* typePtr)
 	return 0;
 }
 
+// Scan the .debug_info section and allocate type IDs for each unique type and
+// create a mapping to look them up by their address.
 bool CV2PDB::mapTypes()
 {
 	int typeID = nextUserType;
@@ -1367,13 +1370,18 @@ bool CV2PDB::mapTypes()
 	if (debug & DbgBasic)
 		fprintf(stderr, "%s:%d: mapTypes()\n", __FUNCTION__, __LINE__);
 
+	// Scan each compilation unit in '.debug_info'.
 	while (off < img.debug_info.length)
 	{
 		DWARF_CompilationUnitInfo cu{};
+
+		// Read the next compilation unit from 'off' and update it to the next
+		// CU.
 		byte* ptr = cu.read(debug, img, &off);
 		if (!ptr)
 			continue;
 
+		// We only support regular full 'DW_UT_compile' compilation units.
 		if (cu.unit_type != DW_UT_compile) {
 			if (debug & DbgDwarfCompilationUnit)
 				fprintf(stderr, "%s:%d: skipping compilation unit offs=%x, unit_type=%d\n", __FUNCTION__, __LINE__,
@@ -1418,6 +1426,7 @@ bool CV2PDB::mapTypes()
 				case DW_TAG_mutable_type: // withdrawn
 				case DW_TAG_shared_type:
 				case DW_TAG_rvalue_reference_type:
+					// Reserve a typeID and store it in the map for quick lookup.
 					mapOffsetToType.insert(std::make_pair(id.entryPtr, typeID));
 					typeID++;
 			}
@@ -1444,9 +1453,14 @@ bool CV2PDB::createTypes()
 		fprintf(stderr, "%s:%d: createTypes()\n", __FUNCTION__, __LINE__);
 
 	unsigned long off = 0;
+
+	// Scan each compilation unit in '.debug_info'.
 	while (off < img.debug_info.length)
 	{
 		DWARF_CompilationUnitInfo cu{};
+
+		// Read the next compilation unit from 'off' and update it to the next
+		// CU, returning the pointer just beyond the header to the first DIE.
 		byte* ptr = cu.read(debug, img, &off);
 		if (!ptr)
 			continue;
