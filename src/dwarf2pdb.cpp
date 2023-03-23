@@ -1104,7 +1104,7 @@ int CV2PDB::addDWARFStructure(DWARF_InfoData& structid, DIECursor cursor)
 	char namebuf[kMaxNameLen] = {};
 	formatFullyQualifiedName(&structid, namebuf, sizeof namebuf);
 	int attr = fieldlistType ? 0 : kPropIncomplete;
-	int len = addAggregate(cvt, false, nfields, fieldlistType, attr, 0, 0, structid.byte_size, namebuf, nullptr);
+	int len = addAggregate(cvt, structid.tag == DW_TAG_class_type, nfields, fieldlistType, attr, 0, 0, structid.byte_size, namebuf, nullptr);
 	cbUserTypes += len;
 
 	//ensureUDT()?
@@ -1323,10 +1323,10 @@ int CV2PDB::addDWARFEnum(DWARF_InfoData& enumid, DIECursor cursor)
 	/* Enumerated types are described in CodeView with two components:
 
 	   1. A LF_ENUM leaf, representing the type itself. We put this one in the
-	      userTypes buffer.
+		  userTypes buffer.
 
 	   2. One or several LF_FIELDLIST records, to contain the list of
-	      enumerators (name and value) associated to the enum type
+		  enumerators (name and value) associated to the enum type
 		  (LF_ENUMERATE leaves). As type records cannot be larger 2**16 bytes,
 		  we need to create multiple records when there are too many
 		  enumerators. The first record contains the first LF_ENUMERATE leaves,
@@ -1372,7 +1372,7 @@ int CV2PDB::addDWARFEnum(DWARF_InfoData& enumid, DIECursor cursor)
 			int len = addFieldEnumerate(dfieldtype, id.name, id.const_value);
 
 			/* If adding this enumerate leaves no room for a LF_INDEX leaf,
-		       create a new LF_FIELDLIST record now. */
+			   create a new LF_FIELDLIST record now. */
 			if (fieldlistLength + len + sizeof(dfieldtype->index_v2) > 0xffff)
 			{
 				/* Append the LF_INDEX leaf. */
@@ -1425,15 +1425,46 @@ int CV2PDB::addDWARFEnum(DWARF_InfoData& enumid, DIECursor cursor)
 
 	/* Now the LF_FIELDLIST is ready, create the LF_ENUM type record itself. */
 	checkUserTypeAlloc();
-	int basetype = (enumid.type != 0)
-				   ? getTypeByDWARFPtr(enumid.type)
-				   : getDWARFBasicType(enumid.encoding, enumid.byte_size);
+	const DWARF_InfoData* entry = findEntryByPtr(enumid.entryPtr);
+	int prop = 0;
+	if (entry && entry->parent) {
+		int tag = entry->parent->tag;
+		if (tag == DW_TAG_class_type ||
+			tag == DW_TAG_structure_type ||
+			tag == DW_TAG_union_type)
+		{
+			prop |= kPropIsNested;
+		}
+	}
+
+	// NOTE: WinDbg/VS Dbg expects enum types to be base types, not indirect
+	// refs/UDTs.
+	// 
+	// Compute the best base/underlying type to use.
+	int encoding = DW_ATE_signed;  // default to int
+	const DWARF_InfoData* typeEntry = findEntryByPtr(enumid.type);
+	const DWARF_InfoData* t = typeEntry;
+
+	// Follow all the parent types to get to the base UDT.
+	while (t) {
+		t = findEntryByPtr(t->type);
+		if (t) typeEntry = t;
+	}
+
+	if (typeEntry) {
+		encoding = typeEntry->encoding;
+		assert(typeEntry->byte_size == enumid.byte_size);
+	}
+
+	const int basetype = getDWARFBasicType(encoding, enumid.byte_size);
+
 	dtype = (codeview_type*)(userTypes + cbUserTypes);
-	const char* name = (enumid.name ? enumid.name : "__noname");
-	cbUserTypes += addEnum(dtype, count, firstFieldlistType, 0, basetype, name);
+	char namebuf[kMaxNameLen] = {};
+	formatFullyQualifiedName(&enumid, namebuf, sizeof namebuf);
+	cbUserTypes += addEnum(dtype, count, firstFieldlistType, prop, basetype, namebuf);
 	int enumType = nextUserType++;
 
-	addUdtSymbol(enumType, name);
+	addUdtSymbol(enumType, namebuf);
 	return enumType;
 }
 
