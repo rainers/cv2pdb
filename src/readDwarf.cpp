@@ -414,9 +414,12 @@ void mergeSpecification(DWARF_InfoData& id, const CV2PDB& context)
 LOCCursor::LOCCursor(const DIECursor& parent, unsigned long off)
 	: parent(parent)
 {
+	// Default the base address to the compilation unit (DWARF v4 2.6.2)
 	base = parent.cu->base_address;
 	isLocLists = (parent.cu->version >= 5);
 
+	// DWARF v4 uses .debug_loc, DWARF v5 uses .debug_loclists with a different
+	// schema.
 	const PESection& sec = isLocLists ? parent.img->debug_loclists : parent.img->debug_loc;
 	ptr = sec.byteAt(off);
 	end = sec.endByte();
@@ -426,6 +429,8 @@ bool LOCCursor::readNext(LOCEntry& entry)
 {
 	if (isLocLists)
 	{
+		// DWARF v5 location list parsing.
+
 		if (parent.debug & DbgDwarfLocLists)
 			fprintf(stderr, "%s:%d: loclists off=%x DIEoff=%x:\n", __FUNCTION__, __LINE__,
 					parent.img->debug_loclists.sectOff(ptr), parent.entryOff);
@@ -488,6 +493,8 @@ bool LOCCursor::readNext(LOCEntry& entry)
 	}
 	else
 	{
+		// The logic here is goverened by DWARF4 section 2.6.2.
+
 		if (ptr >= end)
 			return false;
 
@@ -495,10 +502,28 @@ bool LOCCursor::readNext(LOCEntry& entry)
 			fprintf(stderr, "%s:%d: loclist off=%x DIEoff=%x:\n", __FUNCTION__, __LINE__,
 					parent.img->debug_loc.sectOff(ptr), parent.entryOff);
 
+		// Extract the begin and end offset
+		// TODO: Why is this truncating to 32 bit?
 		entry.beg_offset = (unsigned long) parent.RDAddr(ptr);
 		entry.end_offset = (unsigned long) parent.RDAddr(ptr);
-		if (!entry.beg_offset && !entry.end_offset)
+
+		// Check for a base-address-selection entry.
+		if (entry.beg_offset == -1U) {
+			// This is a base address selection entry and thus has no location
+			// description.
+			// Update the base address with this entry's value.
+			base = entry.end_offset;
+
+			// Continue the scan, but don't try to decode further since there
+			// are no location description records following this type of entry.
+			return true;
+		}
+
+		// Check for end-of-list entry. (Both offsets 0)
+		if (!entry.beg_offset && !entry.end_offset) {
+			// Terminate the scan.
 			return false;
+		}
 
 		DWARF_Attribute attr;
 		attr.type = Block;

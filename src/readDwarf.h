@@ -470,9 +470,15 @@ struct Location
 class LOCEntry
 {
 public:
-	unsigned long beg_offset;
-	unsigned long end_offset;
+	// TODO: investigate making these 64bit (or vary). Also consider renaming
+	// to Value0 and Value1 since their meanings varies depending on entry type.
+	unsigned long beg_offset; // or -1U for base address selection entries
+	unsigned long end_offset; // or the base address in base address selection entries
+
+	// DWARF v5 only. See DW_LLE_default_location.
 	bool isDefault;
+
+	// Location description.
 	Location loc;
 
 	void addBase(uint32_t base)
@@ -482,16 +488,24 @@ public:
 	}
 };
 
-// Location list cursor
+// Location list cursor (see DWARF v4 and v5 Section 2.6).
 class LOCCursor
 {
 public:
 	LOCCursor(const DIECursor& parent, unsigned long off);
 
 	const DIECursor& parent;
+
+	// The base address for subsequent loc list entries read in a given list.
+	// Default to the CU base in the absense of any base address selection entries.
+	//
+	// TODO: So far we only assign to this but never actually use it.
 	uint32_t base;
+
 	byte* end;
 	byte* ptr;
+
+	// Is this image using the new debug_loclists section in DWARF v5?
 	bool isLocLists;
 
 	bool readNext(LOCEntry& entry);
