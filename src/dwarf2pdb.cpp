@@ -2143,7 +2143,7 @@ bool CV2PDB::addDWARFPublics()
 	mspdb::Mod* mod = globalMod();
 
 	int type = 0;
-	int rc = mod->AddPublic2("public_all", img.text.secNo + 1, 0, BASE_DWARF_TYPE);
+	int rc = mod->AddPublic2("public_all", img.text.secNo + 1, 0, BASE_USER_TYPE);
 	if (rc <= 0)
 		return setError("cannot add public");
 	return true;

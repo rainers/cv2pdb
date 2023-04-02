@@ -245,10 +245,9 @@ public:
 	int allocDwarfTypes;
 
 	static constexpr int BASE_USER_TYPE = 0x1000;
-	static constexpr int BASE_DWARF_TYPE = 0x1000;
 
 	int nextUserType = BASE_USER_TYPE;
-	int nextDwarfType = BASE_DWARF_TYPE;
+	int nextDwarfType = BASE_USER_TYPE;
 	int objectType;
 
 	int emptyFieldListType;
