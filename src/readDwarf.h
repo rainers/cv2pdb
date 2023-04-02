@@ -547,9 +547,6 @@ typedef std::unordered_map<std::pair<unsigned, unsigned>, byte*> abbrevMap_t;
 // as either an absolute value, a register, or a register-relative address.
 Location decodeLocation(const DWARF_Attribute& attr, const Location* frameBase = 0, int at = 0);
 
-void mergeAbstractOrigin(DWARF_InfoData& id, const CV2PDB& context);
-void mergeSpecification(DWARF_InfoData& id, const CV2PDB& context);
-
 // Debug Information Entry Cursor
 class DIECursor
 {

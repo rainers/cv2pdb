@@ -363,54 +363,6 @@ Location decodeLocation(const DWARF_Attribute& attr, const Location* frameBase, 
 	return stack[0];
 }
 
-// Find the source of an inlined function by following its 'abstract_origin' 
-// attribute references and recursively merge it into 'id'.
-// TODO: this description isn't quite right. See section 3.3.8.1 in DWARF 4 spec.
-void mergeAbstractOrigin(DWARF_InfoData& id, const CV2PDB& context)
-{
-	DWARF_InfoData* abstractOrigin = context.findEntryByPtr(id.abstract_origin);
-	if (!abstractOrigin) {
-		// Could not find abstract origin. Why not?
-		assert(false);
-		return;
-	}
-
-	// assert seems invalid, combination DW_TAG_member and DW_TAG_variable found
-	// in the wild.
-	//
-	// assert(id.tag == idspec.tag);
-
-	if (abstractOrigin->abstract_origin)
-		mergeAbstractOrigin(*abstractOrigin, context);
-	if (abstractOrigin->specification)
-		mergeSpecification(*abstractOrigin, context);
-	id.merge(*abstractOrigin);
-}
-
-// Find the declaration entry for a definition by following its 'specification'
-// attribute references and merge it into 'id'.
-void mergeSpecification(DWARF_InfoData& id, const CV2PDB& context)
-{
-	DWARF_InfoData* idspec = context.findEntryByPtr(id.specification);
-	if (!idspec) {
-		// Could not find decl for this definition. Why not?
-		assert(false);
-		return;
-	}
-
-	// assert seems invalid, combination DW_TAG_member and DW_TAG_variable found
-	// in the wild.
-	//
-	// assert(id.tag == idspec.tag);
-
-	if (idspec->abstract_origin)
-		mergeAbstractOrigin(*idspec, context);
-	if (idspec->specification) {
-		mergeSpecification(*idspec, context);
-	}
-	id.merge(*idspec);
-}
-
 LOCCursor::LOCCursor(const DIECursor& parent, unsigned long off)
 	: parent(parent)
 {
