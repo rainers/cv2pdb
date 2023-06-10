@@ -695,6 +695,147 @@ void CV2PDB::appendLexicalBlock(DWARF_InfoData& id, unsigned int proclo)
 	cbUdtSymbols += len;
 }
 
+// Helper to format a fully qualified proc name like 'some_ns::Foo::Foo' since
+// for a Foo constructor in a Foo class in a namespace called "some_ns".
+// PDBs require fully qualified names in their symbols.
+// TODO: better error handling for out of space.
+void CV2PDB::formatFullyQualifiedName(const DWARF_InfoData* node, char* buf, size_t cbBuf) const {
+	if (node->specification) {
+		// If the proc has a "specification", i.e. a declaration, use it instead
+		// of the definition, as it has a proper hierarchy connected to it
+		// which will give us a proper fully-qualified name like Foo::Foo
+		// instead of just Foo.
+		const DWARF_InfoData* entry = findEntryByPtr(node->specification);
+		if (entry) {
+			node = entry;
+		}
+	} else {
+		// Find the node's entry in the DWARF tree. We can't use 'node' as is because
+		// it is a local copy without linkage into the tree, as it comes from
+		// the 2nd pass scan after the tree is already built.
+		const DWARF_InfoData* entry = findEntryByPtr(node->entryPtr);
+		assert(entry);  // how can it not exist? Bug in tree construction.
+		node = entry;
+	}
+	DWARF_InfoData* parent = node->parent;
+	std::vector<const DWARF_InfoData*> segments;
+	segments.push_back(node);
+
+	// Accumulate all the valid parent scopes so that we can reverse them for
+	// formatting.
+	while (parent) {
+		switch (parent->tag) {
+		// TODO: are there any other kinds of valid parents?
+		case DW_TAG_class_type:
+		case DW_TAG_structure_type:
+		case DW_TAG_namespace:			
+			segments.push_back(parent);
+			break;
+		default:
+			break;
+		}
+		parent = parent->parent;
+	}
+
+	int remain = cbBuf;
+	char* p = buf;
+
+	// Format the parents in reverse order with :: operator in between.
+	for (int i = segments.size() - 1; i >= 0; --i) {
+		const char* name = segments[i]->name;
+		char nameBuf[64] = {};
+		int nameLen = 0;
+		if (!segments[i]->name) {
+			// This segment has no name. This could be because it is part of
+			// an anonymous class, which often happens for lambda expressions.
+			// Generate a unique anonymous name for it.
+			nameLen = sprintf_s(nameBuf, "[anon_%x]", segments[i]->entryOff);
+			if (nameLen < 0) {
+				// Formatting failed. Try a default name.
+				assert(false);  // crash in debug builds.
+				name = "[anon]";
+			}
+			name = nameBuf;
+		} else {
+			nameLen = strlen(name);
+		}
+		if (remain < nameLen) {
+			fprintf(stderr, "unable to fit full symbol name: %s\n", node->name);
+			return;
+		}
+
+		memcpy(p, name, nameLen);
+
+		p += nameLen;
+		remain -= nameLen;
+
+		if (i > 0) {
+			// Append :: separator
+			if (remain < 2) {
+				fprintf(stderr, "unable to fit full symbol name (:: separator): %s\n", node->name);
+				return;
+			}
+			*p++ = ':';
+			*p++ = ':';
+			remain -= 2;
+		}
+	}
+	
+	if (remain > 0) {
+		*p = 0;  // NUL terminate.
+	}
+}
+
+void mergeSpecification(DWARF_InfoData& id, const CV2PDB& context);
+
+// Find the source of an inlined function by following its 'abstract_origin' 
+// attribute references and recursively merge it into 'id'.
+// TODO: this description isn't quite right. See section 3.3.8.1 in DWARF 4 spec.
+void mergeAbstractOrigin(DWARF_InfoData& id, const CV2PDB& context)
+{
+	DWARF_InfoData* abstractOrigin = context.findEntryByPtr(id.abstract_origin);
+	if (!abstractOrigin) {
+		// Could not find abstract origin. Why not?
+		assert(false);
+		return;
+	}
+
+	// assert seems invalid, combination DW_TAG_member and DW_TAG_variable found
+	// in the wild.
+	//
+	// assert(id.tag == idspec.tag);
+
+	if (abstractOrigin->abstract_origin)
+		mergeAbstractOrigin(*abstractOrigin, context);
+	if (abstractOrigin->specification)
+		mergeSpecification(*abstractOrigin, context);
+	id.merge(*abstractOrigin);
+}
+
+// Find the declaration entry for a definition by following its 'specification'
+// attribute references and merge it into 'id'.
+void mergeSpecification(DWARF_InfoData& id, const CV2PDB& context)
+{
+	DWARF_InfoData* idspec = context.findEntryByPtr(id.specification);
+	if (!idspec) {
+		// Could not find decl for this definition. Why not?
+		assert(false);
+		return;
+	}
+
+	// assert seems invalid, combination DW_TAG_member and DW_TAG_variable found
+	// in the wild.
+	//
+	// assert(id.tag == idspec.tag);
+
+	if (idspec->abstract_origin)
+		mergeAbstractOrigin(*idspec, context);
+	if (idspec->specification) {
+		mergeSpecification(*idspec, context);
+	}
+	id.merge(*idspec);
+}
+
 bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, const std::vector<RangeEntry> &ranges, DIECursor cursor)
 {
 	unsigned int pclo = ranges.front().pclo - codeSegOff;
@@ -723,8 +864,9 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, const std::vector<RangeEntry> 
 	cvs->proc_v2.flags    = 0;
 
 //    printf("GlobalPROC %s\n", procid.name);
-
-	len = cstrcpy_v (v3, (BYTE*) &cvs->proc_v2.p_name, procid.name);
+	char namebuf[kMaxNameLen] = {};
+	formatFullyQualifiedName(&procid, namebuf, sizeof namebuf);
+	len = cstrcpy_v (v3, (BYTE*) &cvs->proc_v2.p_name, namebuf);
 	len += (BYTE*) &cvs->proc_v2.p_name - (BYTE*) cvs;
 	for (; len & (align-1); len++)
 		udtSymbols[cbUdtSymbols + len] = 0xf4 - (len & 3);
@@ -762,8 +904,13 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, const std::vector<RangeEntry> 
 		DWARF_InfoData id;
 		int off = 8;
 
+		// Save off the cursor to the start of the proc.
 		DIECursor prev = cursor;
-		while (cursor.readNext(id, true))
+
+		// First, collect all the formal parameters of the proc.
+		// Don't worry about storing these in the tree as we're not going to need
+		// to generate fully-qualified names like we would for functions/classes.
+		while (cursor.readNext(&id, true /* stopAtNull */))
 		{
 			if (id.tag == DW_TAG_formal_parameter && id.name)
 			{
@@ -778,7 +925,11 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, const std::vector<RangeEntry> 
 		}
 		appendEndArg();
 
+		//  Now, collect all the lexical blocks and their stack variables.
 		std::vector<DIECursor> lexicalBlocks;
+
+		// Start from the proc base, and push all nested lexical blocks as you
+		// encounter them.
 		lexicalBlocks.push_back(prev);
 
 		while (!lexicalBlocks.empty())
@@ -786,7 +937,7 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, const std::vector<RangeEntry> 
 			cursor = lexicalBlocks.back();
 			lexicalBlocks.pop_back();
 
-			while (cursor.readNext(id))
+			while (cursor.readNext(&id))
 			{
 				if (id.tag == DW_TAG_lexical_block)
 				{
@@ -813,15 +964,23 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, const std::vector<RangeEntry> 
 					{
 						appendLexicalBlock(id, pclo + codeSegOff);
 						DIECursor next = cursor;
+
+						// Compute the sibling node of this lexical block.
 						next.gotoSibling();
 						assert(lexicalBlocks.empty() || next.ptr <= lexicalBlocks.back().ptr);
+
+						// Append the next lexical block to the list of blocks
+						// to scan later.
 						lexicalBlocks.push_back(next);
+
+						// But for now, scan down the current lexical block.
 						cursor = cursor.getSubtreeCursor();
 						continue;
 					}
 				}
 				else if (id.tag == DW_TAG_variable)
 				{
+					// Found a local variable.
 					if (id.name && (id.location.type == ExprLoc || id.location.type == Block))
 					{
 						Location loc = id.location.type == SecOffset ? findBestFBLoc(cursor, id.location.sec_offset)
@@ -864,14 +1023,15 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, const std::vector<RangeEntry> 
 	return true;
 }
 
-int CV2PDB::addDWARFFields(DWARF_InfoData& structid, DIECursor cursor, int baseoff, int flStart)
+// Only looks at DW_TAG_member and DW_TAG_inheritance
+int CV2PDB::addDWARFFields(DWARF_InfoData& structid, DIECursor& cursor, int baseoff, int flStart)
 {
 	bool isunion = structid.tag == DW_TAG_union_type;
 	int nfields = 0;
 
-	// cursor points to the first member
+	// cursor points to the first member of the class/struct/union.
 	DWARF_InfoData id;
-	while (cursor.readNext(id, true))
+	while (cursor.readNext(&id, true /* stopAtNull */))
 	{
 		if (cbDwarfTypes - flStart > 0x10000 - kMaxNameLen - 100)
 			break; // no more space in field list, TODO: add continuation record, see addDWARFEnum
@@ -905,12 +1065,12 @@ int CV2PDB::addDWARFFields(DWARF_InfoData& structid, DIECursor cursor, int baseo
 					// if it doesn't have a name, and it's a struct or union, embed it directly
 					DIECursor membercursor(cursor, id.type);
 					DWARF_InfoData memberid;
-					if (membercursor.readNext(memberid))
+					if (membercursor.readNext(&memberid))
 					{
 						if (memberid.abstract_origin)
-							mergeAbstractOrigin(memberid, cursor);
+							mergeAbstractOrigin(memberid, *this);
 						if (memberid.specification)
-							mergeSpecification(memberid, cursor);
+							mergeSpecification(memberid, *this);
 
 						int cvtype = -1;
 						switch (memberid.tag)
@@ -953,6 +1113,7 @@ int CV2PDB::addDWARFFields(DWARF_InfoData& structid, DIECursor cursor, int baseo
 	return nfields;
 }
 
+// Add a class/struct/union to the database.
 int CV2PDB::addDWARFStructure(DWARF_InfoData& structid, DIECursor cursor)
 {
 	//printf("Adding struct %s, entryoff %d, abbrev %d\n", structid.name, structid.entryOff, structid.abbrev);
@@ -990,25 +1151,29 @@ int CV2PDB::addDWARFStructure(DWARF_InfoData& structid, DIECursor cursor)
 	checkUserTypeAlloc(kMaxNameLen + 100);
 	codeview_type* cvt = (codeview_type*) (userTypes + cbUserTypes);
 
-	const char* name = (structid.name ? structid.name : "__noname");
+	char namebuf[kMaxNameLen] = {};
+	formatFullyQualifiedName(&structid, namebuf, sizeof namebuf);
 	int attr = fieldlistType ? 0 : kPropIncomplete;
-	int len = addAggregate(cvt, false, nfields, fieldlistType, attr, 0, 0, structid.byte_size, name, nullptr);
+	int len = addAggregate(cvt, structid.tag == DW_TAG_class_type, nfields, fieldlistType, attr, 0, 0, structid.byte_size, namebuf, nullptr);
 	cbUserTypes += len;
 
 	//ensureUDT()?
 	int cvtype = nextUserType++;
-	addUdtSymbol(cvtype, name);
+	addUdtSymbol(cvtype, namebuf);
 	return cvtype;
 }
 
-void CV2PDB::getDWARFArrayBounds(DWARF_InfoData& arrayid, DIECursor cursor, int& basetype, int& lowerBound, int& upperBound)
+// Compute the array bounds of the DIE at the given 'cursor'.
+void CV2PDB::getDWARFArrayBounds(DIECursor cursor, int& basetype, int& lowerBound, int& upperBound)
 {
 	DWARF_InfoData id;
 
 	// TODO: handle multi-dimensional arrays
 	if (cursor.cu)
 	{
-		while (cursor.readNext(id, true))
+		// Don't insert these elements into the DB. We're just using it for
+		// array bounds calculation.
+		while (cursor.readNext(&id, true /* stopAtNull */))
 		{
 			if (id.tag == DW_TAG_subrange_type)
 			{
@@ -1041,6 +1206,7 @@ void CV2PDB::getDWARFSubrangeInfo(DWARF_InfoData& subrangeid, const DIECursor& p
 	upperBound = subrangeid.upper_bound;
 }
 
+// Compute a type ID for a basic DWARF type.
 int CV2PDB::getDWARFBasicType(int encoding, int byte_size)
 {
 	int type = 0, mode = 0, size = 0;
@@ -1103,10 +1269,13 @@ int CV2PDB::getDWARFBasicType(int encoding, int byte_size)
 	return translateType(t);
 }
 
-int CV2PDB::addDWARFArray(DWARF_InfoData& arrayid, DIECursor cursor)
+// TODO: Array wanted to be scanned twice due to DW_TAG_subrange_type being looked at
+// in the caller. See if it can be handled in a single place for clarity, simplicity & efficiency.
+// Goal: don't rescan the same DIE twice.
+int CV2PDB::addDWARFArray(DWARF_InfoData& arrayid, const DIECursor& cursor)
 {
 	int basetype, upperBound, lowerBound;
-	getDWARFArrayBounds(arrayid, cursor, basetype, lowerBound, upperBound);
+	getDWARFArrayBounds(cursor, basetype, lowerBound, upperBound);
 
 	checkUserTypeAlloc(kMaxNameLen + 100);
 	codeview_type* cvt = (codeview_type*) (userTypes + cbUserTypes);
@@ -1204,10 +1373,10 @@ int CV2PDB::addDWARFEnum(DWARF_InfoData& enumid, DIECursor cursor)
 	/* Enumerated types are described in CodeView with two components:
 
 	   1. A LF_ENUM leaf, representing the type itself. We put this one in the
-	      userTypes buffer.
+		  userTypes buffer.
 
 	   2. One or several LF_FIELDLIST records, to contain the list of
-	      enumerators (name and value) associated to the enum type
+		  enumerators (name and value) associated to the enum type
 		  (LF_ENUMERATE leaves). As type records cannot be larger 2**16 bytes,
 		  we need to create multiple records when there are too many
 		  enumerators. The first record contains the first LF_ENUMERATE leaves,
@@ -1242,7 +1411,7 @@ int CV2PDB::addDWARFEnum(DWARF_InfoData& enumid, DIECursor cursor)
 
 	/* Now fill this field list with the enumerators we find in DWARF. */
 	DWARF_InfoData id;
-	while (cursor.readNext(id, true))
+	while (cursor.readNext(&id, true /* stopAtNull */))
 	{
 		if (id.tag == DW_TAG_enumerator && id.has_const_value)
 		{
@@ -1253,7 +1422,7 @@ int CV2PDB::addDWARFEnum(DWARF_InfoData& enumid, DIECursor cursor)
 			int len = addFieldEnumerate(dfieldtype, id.name, id.const_value);
 
 			/* If adding this enumerate leaves no room for a LF_INDEX leaf,
-		       create a new LF_FIELDLIST record now. */
+			   create a new LF_FIELDLIST record now. */
 			if (fieldlistLength + len + sizeof(dfieldtype->index_v2) > 0xffff)
 			{
 				/* Append the LF_INDEX leaf. */
@@ -1306,34 +1475,148 @@ int CV2PDB::addDWARFEnum(DWARF_InfoData& enumid, DIECursor cursor)
 
 	/* Now the LF_FIELDLIST is ready, create the LF_ENUM type record itself. */
 	checkUserTypeAlloc();
-	int basetype = (enumid.type != 0)
-				   ? getTypeByDWARFPtr(enumid.type)
-				   : getDWARFBasicType(enumid.encoding, enumid.byte_size);
+	const DWARF_InfoData* entry = findEntryByPtr(enumid.entryPtr);
+	int prop = 0;
+	if (entry && entry->parent) {
+		int tag = entry->parent->tag;
+		if (tag == DW_TAG_class_type ||
+			tag == DW_TAG_structure_type ||
+			tag == DW_TAG_union_type)
+		{
+			prop |= kPropIsNested;
+		}
+	}
+
+	// NOTE: WinDbg/VS Dbg expects enum types to be base types, not indirect
+	// refs/UDTs.
+	// 
+	// Compute the best base/underlying type to use.
+	int encoding = DW_ATE_signed;  // default to int
+	const DWARF_InfoData* typeEntry = findEntryByPtr(enumid.type);
+	const DWARF_InfoData* t = typeEntry;
+
+	// Follow all the parent types to get to the base UDT.
+	while (t) {
+		t = findEntryByPtr(t->type);
+		if (t) typeEntry = t;
+	}
+
+	if (typeEntry) {
+		encoding = typeEntry->encoding;
+		assert(typeEntry->byte_size == enumid.byte_size);
+	}
+
+	const int basetype = getDWARFBasicType(encoding, enumid.byte_size);
+
 	dtype = (codeview_type*)(userTypes + cbUserTypes);
-	const char* name = (enumid.name ? enumid.name : "__noname");
-	cbUserTypes += addEnum(dtype, count, firstFieldlistType, 0, basetype, name);
+	char namebuf[kMaxNameLen] = {};
+	formatFullyQualifiedName(&enumid, namebuf, sizeof namebuf);
+	cbUserTypes += addEnum(dtype, count, firstFieldlistType, prop, basetype, namebuf);
 	int enumType = nextUserType++;
 
-	addUdtSymbol(enumType, name);
+	addUdtSymbol(enumType, namebuf);
 	return enumType;
 }
 
-int CV2PDB::getTypeByDWARFPtr(byte* ptr)
+// Try to find or compute the "best" CV TypeID for a given DIE found by following
+// a DW_AT_type attribute or its closest counterpart.
+int CV2PDB::getTypeByDWARFPtr(byte* typePtr)
 {
-	if (ptr == nullptr)
-		return 0x03; // void
-	std::unordered_map<byte*, int>::iterator it = mapOffsetToType.find(ptr);
-	if (it == mapOffsetToType.end())
-		return 0x03; // void
-	return it->second;
+	if (typePtr == nullptr)
+		return T_NOTYPE;
+
+	// First just attempt to find the type entry directly.
+	int ret = findTypeIdByPtr(typePtr);
+	if (!ret) {
+		// TypeID was not found in the map. This may be due to struct
+		// decl / definition consolidation. I.e. we don't emit the struct decl
+		// because they show up as "empty" structs (devoid of members).
+		// Try to match this against the logically equivalent "definition"
+		// type.
+		DWARF_InfoData* entry = findEntryByPtr(typePtr);
+		assert(entry); // how can the entry not exist in the map?
+
+		// Skip anonymous structures or similar.
+		if (!entry || !entry->name) {
+			return T_NOTYPE;
+		}
+
+		// See if there exists another "logically equivalent" entry in the tree.
+		// 
+		// First, find all entries with the same (local) name as this type.
+		auto range = mapEntryNameToEntries.equal_range(entry->name);
+		for (auto it = range.first; it != range.second; ++it) {
+			DWARF_InfoData* candidate = it->second;
+
+			// Skip self.
+			if (candidate == entry) {
+				continue;
+			}
+
+			// Skip declarations (as when they are of structs, they don't help.
+			// We want definitions only as they define the fields in DWARF.)
+			if (candidate->isDecl) {
+				continue;
+			}
+			
+			// Filter nodes based on the matching tag.
+			if (candidate->tag != entry->tag) {
+				continue;
+			}
+
+			// Found a matching tag for this element. Walk up the tree and check
+			// if all parent tags and names match also. If they do, we found an
+			// "equivalent" node to 'typePtr' one that wasn't added to the
+			// typeID registry (because it was likely a decl that we filtered out)
+			DWARF_InfoData* candidateParent = candidate->parent;
+			DWARF_InfoData* entryParent = entry->parent;
+
+			bool equivalentHierarchy = true;
+			while (candidateParent && entryParent) {
+				if (candidateParent->tag != entryParent->tag) {
+					// Tag mismatch.
+					equivalentHierarchy = false;
+					break;
+				}
+
+				// Skip CUs as of course they have different names. We only
+				// care about namespaces, other containing structs, classes, etc.
+				// Entries have the same tag. Checking one is sufficient.
+				if (entryParent->tag != DW_TAG_compile_unit) {
+
+					if (strcmp(candidateParent->name, entryParent->name)) {
+						// Name mismatch.
+						equivalentHierarchy = false;
+						break;
+					}
+				}
+
+				candidateParent = candidateParent->parent;
+				entryParent = entryParent->parent;
+			}
+
+			if (equivalentHierarchy) {
+				// Try another lookup with this new candidate.
+				ret = findTypeIdByPtr(candidate->entryPtr);
+				assert(ret);  // how can it now be in the map?
+			} else {
+				fprintf(stderr, "warn: could not find equivalent entry for typePtr %p\n", typePtr);
+			}
+		}
+	}
+	return ret;
 }
 
+// Get the logical size of a DWARF type, starting from 'typePtr' and recursing
+// if necessary. E.g. for arrays.
 int CV2PDB::getDWARFTypeSize(const DIECursor& parent, byte* typePtr)
 {
 	DWARF_InfoData id;
 	DIECursor cursor(parent, typePtr);
 
-	if (!cursor.readNext(id))
+	// Don't allocate this into the tree since we're just interested
+	// in computing a type.
+	if (!cursor.readNext(&id))
 		return 0;
 
 	if(id.byte_size > 0)
@@ -1348,7 +1631,7 @@ int CV2PDB::getDWARFTypeSize(const DIECursor& parent, byte* typePtr)
 		case DW_TAG_array_type:
 		{
 			int basetype, upperBound, lowerBound;
-			getDWARFArrayBounds(id, cursor, basetype, lowerBound, upperBound);
+			getDWARFArrayBounds(cursor, basetype, lowerBound, upperBound);
 			return (upperBound - lowerBound + 1) * getDWARFTypeSize(cursor, id.type);
 		}
 		default:
@@ -1359,6 +1642,10 @@ int CV2PDB::getDWARFTypeSize(const DIECursor& parent, byte* typePtr)
 	return 0;
 }
 
+// Scan the .debug_info section and allocate type IDs for each unique type and
+// create a mapping to look them up by their address.
+// This is the first pass scan that builds up the DWARF tree. The second pass (createTypes)
+// emits the actual PDB symbols.
 bool CV2PDB::mapTypes()
 {
 	int typeID = nextUserType;
@@ -1367,13 +1654,21 @@ bool CV2PDB::mapTypes()
 	if (debug & DbgBasic)
 		fprintf(stderr, "%s:%d: mapTypes()\n", __FUNCTION__, __LINE__);
 
+	// Maintain the first node of each CU to ensure all of them get linked.
+	DWARF_InfoData* firstNode = nullptr;
+
+	// Scan each compilation unit in '.debug_info'.
 	while (off < img.debug_info.length)
 	{
 		DWARF_CompilationUnitInfo cu{};
+
+		// Read the next compilation unit from 'off' and update it to the next
+		// CU.
 		byte* ptr = cu.read(debug, img, &off);
 		if (!ptr)
 			continue;
 
+		// We only support regular full 'DW_UT_compile' compilation units.
 		if (cu.unit_type != DW_UT_compile) {
 			if (debug & DbgDwarfCompilationUnit)
 				fprintf(stderr, "%s:%d: skipping compilation unit offs=%x, unit_type=%d\n", __FUNCTION__, __LINE__,
@@ -1383,28 +1678,57 @@ bool CV2PDB::mapTypes()
 		}
 
 		DIECursor cursor(&cu, ptr);
-		DWARF_InfoData id;
-		while (cursor.readNext(id))
+
+		// Set up link to ensure this CU links to the prior one.
+		cursor.prevNode = firstNode;
+
+		DWARF_InfoData* node = nullptr;
+		bool setFirstNode = false;
+		// Start scanning this CU from the beginning and *build a tree of DIE nodes*.
+		while ((node = cursor.readNext(nullptr)) != nullptr)
 		{
+			DWARF_InfoData& id = *node;
+
+			// Initialize the head of the DWARF DIE list the first time.
+			if (!dwarfHead) {
+				dwarfHead = node;
+			}
+
+			if (!setFirstNode) {
+				firstNode = node;
+				setFirstNode = true;
+			}
+
 			if (debug & DbgDwarfTagRead)
 				fprintf(stderr, "%s:%d: 0x%08x, level = %d, id.code = %d, id.tag = %d\n", __FUNCTION__, __LINE__,
 						cursor.entryOff, cursor.level, id.code, id.tag);
 
+			// Insert the node into the entryPtr-based index.
+			mapEntryPtrToEntry[node->entryPtr] = node;
+
+			// Insert named nodes into the name-based index.
+			if (node->name) {
+				mapEntryNameToEntries.insert({ node->name, node });
+			}
+
 			switch (id.tag)
 			{
+				case DW_TAG_structure_type:
+				case DW_TAG_class_type:
+				case DW_TAG_union_type:
+					// skip generating a typeID for declaration flavor of
+					// class/struct/union since we don't emit the PDB symbol
+					// for them. See related code in CV2PDB::createTypes().
+					if (id.isDecl) continue; 
 				case DW_TAG_base_type:
 				case DW_TAG_typedef:
 				case DW_TAG_pointer_type:
 				case DW_TAG_subroutine_type:
 				case DW_TAG_array_type:
 				case DW_TAG_const_type:
-				case DW_TAG_structure_type:
 				case DW_TAG_reference_type:
-
-				case DW_TAG_class_type:
 				case DW_TAG_enumeration_type:
 				case DW_TAG_string_type:
-				case DW_TAG_union_type:
 				case DW_TAG_ptr_to_member_type:
 				case DW_TAG_set_type:
 				case DW_TAG_subrange_type:
@@ -1418,20 +1742,22 @@ bool CV2PDB::mapTypes()
 				case DW_TAG_mutable_type: // withdrawn
 				case DW_TAG_shared_type:
 				case DW_TAG_rvalue_reference_type:
-					mapOffsetToType.insert(std::make_pair(id.entryPtr, typeID));
+					// Reserve a typeID and store it in the map for quick lookup.
+					mapEntryPtrToTypeID.insert(std::make_pair(id.entryPtr, typeID));
 					typeID++;
 			}
 		}
 	}
 
 	if (debug & DbgBasic)
-		fprintf(stderr, "%s:%d: mapped %zd types\n", __FUNCTION__, __LINE__, mapOffsetToType.size());
+		fprintf(stderr, "%s:%d: mapped %zd types\n", __FUNCTION__, __LINE__, mapEntryPtrToTypeID.size());
 
 	nextDwarfType = typeID;
-	assert(nextDwarfType == nextUserType + mapOffsetToType.size());
+	assert(nextDwarfType == nextUserType + mapEntryPtrToTypeID.size());
 	return true;
 }
 
+// Walks the .debug_info section and builds a DIE tree.
 bool CV2PDB::createTypes()
 {
 	img.createSymbolCache();
@@ -1444,9 +1770,14 @@ bool CV2PDB::createTypes()
 		fprintf(stderr, "%s:%d: createTypes()\n", __FUNCTION__, __LINE__);
 
 	unsigned long off = 0;
+
+	// Scan each compilation unit in '.debug_info'.
 	while (off < img.debug_info.length)
 	{
 		DWARF_CompilationUnitInfo cu{};
+
+		// Read the next compilation unit from 'off' and update it to the next
+		// CU, returning the pointer just beyond the header to the first DIE.
 		byte* ptr = cu.read(debug, img, &off);
 		if (!ptr)
 			continue;
@@ -1460,17 +1791,24 @@ bool CV2PDB::createTypes()
 		}
 
 		DIECursor cursor(&cu, ptr);
+
+		DWARF_InfoData* node = nullptr;
+		bool setFirstNode = false;
 		DWARF_InfoData id;
-		while (cursor.readNext(id))
+
+		// Scan the DIEs in this CU, reusing the elements.
+		while (cursor.readNext(&id))
 		{
 			if (debug & DbgDwarfTagRead)
 				fprintf(stderr, "%s:%d: 0x%08x, level = %d, id.code = %d, id.tag = %d\n", __FUNCTION__, __LINE__,
 						cursor.entryOff, cursor.level, id.code, id.tag);
 
+			// Merge in related entries. This relies on the DWARF tree having been built
+			// in the first pass (mapTypes).
 			if (id.abstract_origin)
-				mergeAbstractOrigin(id, cursor);
+				mergeAbstractOrigin(id, *this);
 			if (id.specification)
-				mergeSpecification(id, cursor);
+				mergeSpecification(id, *this);
 
 			int cvtype = -1;
 			switch (id.tag)
@@ -1501,14 +1839,23 @@ bool CV2PDB::createTypes()
 			case DW_TAG_class_type:
 			case DW_TAG_structure_type:
 			case DW_TAG_union_type:
-				cvtype = addDWARFStructure(id, cursor.getSubtreeCursor());
+				if (!id.isDecl) {
+					// Only export the non-declaration version of structs/classes.
+					// DWARF emits multiple copies of the same class, some of
+					// which are marked as declarations and lack members, resulting
+					// in an empty struct UDT in the PDB. Then when we encounter
+					// the non-declaration copy we emit it again, but now we
+					// end up with multiple copies of the same UDT in the PDB
+					// and the debugger gets confused.
+					cvtype = addDWARFStructure(id, cursor);
+				}
 				break;
 			case DW_TAG_array_type:
-				cvtype = addDWARFArray(id, cursor.getSubtreeCursor());
+				cvtype = addDWARFArray(id, cursor);
 				break;
 
 			case DW_TAG_enumeration_type:
-				cvtype = addDWARFEnum(id, cursor.getSubtreeCursor());
+				cvtype = addDWARFEnum(id, cursor);
 				break;
 
 			case DW_TAG_subroutine_type:
@@ -1542,7 +1889,17 @@ bool CV2PDB::createTypes()
 
 							mod->AddPublic2(id.name, img.text.secNo + 1, entry_point - codeSegOff, 0);
 						}
-						addDWARFProc(id, ranges, cursor.getSubtreeCursor());
+
+						// Only add the definition, not declaration, because
+						// MSVC toolset only produces a single symbol for
+						// each function and will get confused if there are
+						// 2 PDB symbols for the same routine.
+						//
+						// TODO: Add more type info to the routine. Today we
+						// expose it as "T_NOTYPE" when we could do better.
+						if (!id.isDecl) {
+							addDWARFProc(id, ranges, cursor);
+						}
 					}
 				}
 				break;
@@ -1649,16 +2006,40 @@ bool CV2PDB::createTypes()
 
 			if (cvtype >= 0)
 			{
-				assert(cvtype == typeID); typeID++;
-				assert(mapOffsetToType[id.entryPtr] == cvtype);
+				assert(cvtype == typeID); 
+				typeID++;
+
+				assert(mapEntryPtrToTypeID[id.entryPtr] == cvtype);
 				assert(typeID == nextUserType);
 			}
 		}
 	}
 
 	assert(typeID == nextUserType);
-	assert(typeID == firstUserType + mapOffsetToType.size());
+	assert(typeID == firstUserType + mapEntryPtrToTypeID.size());
 	return true;
+}
+
+void printIndent(int level) {
+	for (int i = 0; i < level; ++i) {
+		printf("  ");
+	}
+}
+
+void dumpTreeHelper(DWARF_InfoData* node, int level) {
+	for (DWARF_InfoData* n = node; n; n = n->next) {
+		const unsigned dieOffset = n->img->debug_info.sectOff(n->entryPtr);
+
+		printIndent(level);
+		printf("offset: %#x, name: \"%s\", tag: %#x, abbrev: %d\n", dieOffset, n->name, n->tag, n->code);
+
+		// Visit the children.
+		dumpTreeHelper(n->children, level + 1);
+	}
+}
+
+void CV2PDB::dumpDwarfTree() const {
+	dumpTreeHelper(dwarfHead, 0);	
 }
 
 bool CV2PDB::createDWARFModules()
@@ -1709,6 +2090,10 @@ bool CV2PDB::createDWARFModules()
 	if (!createTypes())
 		return false;
 
+	if (debug & DbgPrintDwarfTree) {
+		dumpDwarfTree();
+	}
+
 	/*
 	if(!iterateDWARFDebugInfo(kOpMapTypes))
 		return false;
@@ -1758,10 +2143,34 @@ bool CV2PDB::addDWARFPublics()
 	mspdb::Mod* mod = globalMod();
 
 	int type = 0;
-	int rc = mod->AddPublic2("public_all", img.text.secNo + 1, 0, 0x1000);
+	int rc = mod->AddPublic2("public_all", img.text.secNo + 1, 0, BASE_USER_TYPE);
 	if (rc <= 0)
 		return setError("cannot add public");
 	return true;
+}
+
+// Try to lookup a DWARF_InfoData in the constructed DWARF tree given its
+// "entryPtr". I.e. its memory-mapped location in the loaded PE image buffer.
+DWARF_InfoData* CV2PDB::findEntryByPtr(byte* entryPtr) const
+{
+	auto it = mapEntryPtrToEntry.find(entryPtr);
+	if (it == mapEntryPtrToEntry.end()) {
+		// Could not find decl for this definition.
+		return nullptr;
+	} 
+	return it->second;
+}
+
+// Try to lookup a TypeID in the set of registered types by a
+// "typePtr". I.e. its memory-mapped location in the loaded PE image buffer.
+int CV2PDB::findTypeIdByPtr(byte* typePtr) const
+{
+	auto it = mapEntryPtrToTypeID.find(typePtr);
+	if (it == mapEntryPtrToTypeID.end()) {
+		// Could not find type for this definition.
+		return T_NOTYPE;
+	}
+	return it->second;
 }
 
 bool CV2PDB::writeDWARFImage(const TCHAR* opath)

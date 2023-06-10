@@ -375,6 +375,7 @@ bool PEImage::_initFromCVDebugDir(IMAGE_DEBUG_DIRECTORY* ddir)
 }
 
 ///////////////////////////////////////////////////////////////////////
+// Used for PE (EXE/DLL) files.
 bool PEImage::initDWARFPtr(bool initDbgDir)
 {
 	dos = DPV<IMAGE_DOS_HEADER> (0);
@@ -410,6 +411,7 @@ bool PEImage::initDWARFPtr(bool initDbgDir)
 	return true;
 }
 
+// Used for COFF objects.
 bool PEImage::initDWARFObject()
 {
 	IMAGE_FILE_HEADER* hdr = DPV<IMAGE_FILE_HEADER> (0);
@@ -466,8 +468,11 @@ void PEImage::initSec(PESection& peSec, int secNo) const
 	peSec.secNo = secNo;
 }
 
+// Initialize all the DWARF sections present in this PE or COFF file.
+// Common to both object and image modules.
 void PEImage::initDWARFSegments()
 {
+	// Scan all the PE sections in this image.
 	for(int s = 0; s < nsec; s++)
 	{
 		const char* name = (const char*) sec[s].Name;
@@ -477,6 +482,7 @@ void PEImage::initDWARFSegments()
 			name = strtable + off;
 		}
 
+		// Is 'name' one of the DWARF sections?
 		for (const SectionDescriptor *sec_desc : sec_descriptors) {
 			if (!strcmp(name, sec_desc->name)) {
 				PESection& peSec = this->*(sec_desc->pSec);

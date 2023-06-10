@@ -1,14 +1,12 @@
 #include "readDwarf.h"
 #include <assert.h>
 #include <array>
+#include <memory> // unique_ptr
 
 #include "PEImage.h"
+#include "cv2pdb.h"
 #include "dwarf.h"
 #include "mspdb.h"
-extern "C" {
-	#include "mscvpdb.h"
-}
-
 
 // declare hasher for pair<T1,T2>
 namespace std
@@ -34,6 +32,11 @@ void DIECursor::setContext(PEImage* img_, DebugLevel debug_)
 	debug = debug_;
 }
 
+// Read one compilation unit from `img`'s .debug_info section, starting at
+// offset `*off`, updating it in the process to the start of the next one in the
+// section.
+// Returns a pointer to the first DIE, skipping past the CU header, or NULL
+// on failure.
 byte* DWARF_CompilationUnitInfo::read(DebugLevel debug, const PEImage& img, unsigned long *off)
 {
 	byte* ptr = img.debug_info.byteAt(*off);
@@ -360,40 +363,15 @@ Location decodeLocation(const DWARF_Attribute& attr, const Location* frameBase, 
 	return stack[0];
 }
 
-void mergeAbstractOrigin(DWARF_InfoData& id, const DIECursor& parent)
-{
-	DIECursor specCursor(parent, id.abstract_origin);
-	DWARF_InfoData idspec;
-	specCursor.readNext(idspec);
-	// assert seems invalid, combination DW_TAG_member and DW_TAG_variable found in the wild
-	// assert(id.tag == idspec.tag);
-	if (idspec.abstract_origin)
-		mergeAbstractOrigin(idspec, parent);
-	if (idspec.specification)
-		mergeSpecification(idspec, parent);
-	id.merge(idspec);
-}
-
-void mergeSpecification(DWARF_InfoData& id, const DIECursor& parent)
-{
-	DIECursor specCursor(parent, id.specification);
-	DWARF_InfoData idspec;
-	specCursor.readNext(idspec);
-	//assert seems invalid, combination DW_TAG_member and DW_TAG_variable found in the wild
-	//assert(id.tag == idspec.tag);
-	if (idspec.abstract_origin)
-		mergeAbstractOrigin(idspec, parent);
-	if (idspec.specification)
-		mergeSpecification(idspec, parent);
-	id.merge(idspec);
-}
-
 LOCCursor::LOCCursor(const DIECursor& parent, unsigned long off)
 	: parent(parent)
 {
+	// Default the base address to the compilation unit (DWARF v4 2.6.2)
 	base = parent.cu->base_address;
 	isLocLists = (parent.cu->version >= 5);
 
+	// DWARF v4 uses .debug_loc, DWARF v5 uses .debug_loclists with a different
+	// schema.
 	const PESection& sec = isLocLists ? parent.img->debug_loclists : parent.img->debug_loc;
 	ptr = sec.byteAt(off);
 	end = sec.endByte();
@@ -403,6 +381,8 @@ bool LOCCursor::readNext(LOCEntry& entry)
 {
 	if (isLocLists)
 	{
+		// DWARF v5 location list parsing.
+
 		if (parent.debug & DbgDwarfLocLists)
 			fprintf(stderr, "%s:%d: loclists off=%x DIEoff=%x:\n", __FUNCTION__, __LINE__,
 					parent.img->debug_loclists.sectOff(ptr), parent.entryOff);
@@ -465,6 +445,8 @@ bool LOCCursor::readNext(LOCEntry& entry)
 	}
 	else
 	{
+		// The logic here is goverened by DWARF4 section 2.6.2.
+
 		if (ptr >= end)
 			return false;
 
@@ -472,10 +454,28 @@ bool LOCCursor::readNext(LOCEntry& entry)
 			fprintf(stderr, "%s:%d: loclist off=%x DIEoff=%x:\n", __FUNCTION__, __LINE__,
 					parent.img->debug_loc.sectOff(ptr), parent.entryOff);
 
+		// Extract the begin and end offset
+		// TODO: Why is this truncating to 32 bit?
 		entry.beg_offset = (unsigned long) parent.RDAddr(ptr);
 		entry.end_offset = (unsigned long) parent.RDAddr(ptr);
-		if (!entry.beg_offset && !entry.end_offset)
+
+		// Check for a base-address-selection entry.
+		if (entry.beg_offset == -1U) {
+			// This is a base address selection entry and thus has no location
+			// description.
+			// Update the base address with this entry's value.
+			base = entry.end_offset;
+
+			// Continue the scan, but don't try to decode further since there
+			// are no location description records following this type of entry.
+			return true;
+		}
+
+		// Check for end-of-list entry. (Both offsets 0)
+		if (!entry.beg_offset && !entry.end_offset) {
+			// Terminate the scan.
 			return false;
+		}
 
 		DWARF_Attribute attr;
 		attr.type = Block;
@@ -579,7 +579,7 @@ DIECursor::DIECursor(DWARF_CompilationUnitInfo* cu_, byte* ptr_)
 	cu = cu_;
 	ptr = ptr_;
 	level = 0;
-	hasChild = false;
+	prevHasChild = false;
 	sibling = 0;
 }
 
@@ -589,40 +589,41 @@ DIECursor::DIECursor(const DIECursor& parent, byte* ptr_)
 	ptr = ptr_;
 }
 
+// Advance the cursor to the next sibling of the current node, using the fast
+// path when possible.
 void DIECursor::gotoSibling()
 {
 	if (sibling)
 	{
-		// use sibling pointer, if available
+		// Fast path: use sibling pointer, if available.
 		ptr = sibling;
-		hasChild = false;
+		prevHasChild = false;
 	}
-	else if (hasChild)
+	else if (prevHasChild)
 	{
-		int currLevel = level;
+		// Slow path. Skip over child nodes until we get back to the current
+		// level.
+		const int currLevel = level;
 		level = currLevel + 1;
-		hasChild = false;
+		prevHasChild = false;
 
+		// Don't store these in the tree since this is just used for skipping over
+		// last swaths of nodes.
 		DWARF_InfoData dummy;
-		// read untill we pop back to the level we were at
-		while (level > currLevel)
-			readNext(dummy, true);
-	}
-}
 
-bool DIECursor::readSibling(DWARF_InfoData& id)
-{
-    gotoSibling();
-	return readNext(id, true);
+		// read until we pop back to the level we were at
+		while (level > currLevel)
+			readNext(&dummy, true /* stopAtNull */);
+	}
 }
 
 DIECursor DIECursor::getSubtreeCursor()
 {
-	if (hasChild)
+	if (prevHasChild)
 	{
 		DIECursor subtree = *this;
 		subtree.level = 0;
-		subtree.hasChild = false;
+		subtree.prevHasChild = false;
 		return subtree;
 	}
 	else // Return invalid cursor
@@ -691,31 +692,80 @@ static byte* getPointerInSection(const PEImage &img, const SectionDescriptor &se
 	return peSec.byteAt(offset);
 }
 
-bool DIECursor::readNext(DWARF_InfoData& id, bool stopAtNull)
+// Scan the next DIE from the current CU.
+// TODO: Allocate a new element each time.
+DWARF_InfoData* DIECursor::readNext(DWARF_InfoData* entry, bool stopAtNull)
 {
-	id.clear();
+	std::unique_ptr<DWARF_InfoData> node;
 
-	if (hasChild)
+	// Controls whether we should bother establishing links between nodes.
+	// If 'entry' is provided, we are just going to be using it instead
+	// of allocating our own nodes. The callers typically reuse the same
+	// node over and over in this case, so don't bother tracking the links.
+	// Furthermore, since we clear the input node in this case, we can't rely
+	// on it from call to call.
+	// TODO: Rethink how to more cleanly express the alloc vs reuse modes of
+	// operation.
+	bool establishLinks = false;
+
+	// If an entry was passed in, use it. Else allocate one.
+	if (!entry) {
+		establishLinks = true;
+		node = std::make_unique<DWARF_InfoData>();
+		entry = node.get();
+	} else {
+		// If an entry was provided, make sure we clear it.
+		entry->clear();
+	}
+
+	entry->img = img;
+	
+	if (prevHasChild) {
+		// Prior element had a child, thus this element is its first child.
 		++level;
 
+		if (establishLinks) {
+			// Establish the first child.
+			prevParent->children = entry;
+		}
+	}
+
+	// Set up a convenience alias.
+	DWARF_InfoData& id = *entry;
+
+	// Find the first valid DIE.
 	for (;;)
 	{
 		if (level == -1)
-			return false; // we were already at the end of the subtree
+			return nullptr; // we were already at the end of the subtree
 
 		if (ptr >= cu->end_ptr)
-			return false; // root of the tree does not have a null terminator, but we know the length
+			return nullptr; // root of the tree does not have a null terminator, but we know the length
 
 		id.entryPtr = ptr;
-		entryOff = img->debug_info.sectOff(ptr);
+		entryOff = id.entryOff = img->debug_info.sectOff(ptr);
 		id.code = LEB128(ptr);
+
+		// If the previously scanned node claimed to have a child, this must be a valid DIE.
+		assert(!prevHasChild || id.code);
+
+		// Check if we need to terminate the sibling chain.
 		if (id.code == 0)
 		{
-			--level; // pop up one level
+			// Done with this level.
+			if (establishLinks) {
+				// Continue linking siblings from the parent node.
+				prevNode = prevParent;
+
+				// Unwind the parent one level up.
+				prevParent = prevParent->parent;
+			}
+
+			--level;
 			if (stopAtNull)
 			{
-				hasChild = false;
-				return false;
+				prevHasChild = false;
+				return nullptr;
 			}
 			continue; // read the next DIE
 		}
@@ -728,17 +778,42 @@ bool DIECursor::readNext(DWARF_InfoData& id, bool stopAtNull)
 		fprintf(stderr, "ERROR: %s:%d: unknown abbrev: num=%d off=%x\n", __FUNCTION__, __LINE__,
 				id.code, entryOff);
 		assert(abbrev);
-		return false;
+		return nullptr;
 	}
 
 	id.abbrev = abbrev;
 	id.tag = LEB128(abbrev);
 	id.hasChild = *abbrev++;
 
+	if (establishLinks) {
+		// If there was a previous node, link it to this one, thus continuing the chain.
+		if (prevNode) {
+			prevNode->next = entry;
+		}
+
+		// Establish parent of current node. If 'prevParent' is NULL, that is fine.
+		// It just means this node is a top-level node.
+		entry->parent = prevParent;
+
+		if (id.hasChild) {
+			// This node has children! Establish it as the new parent for future nodes.		
+			prevParent = entry;
+
+			// Clear the last DIE because the next scanned node will form the *start*
+			// of a new linked list comprising the children of the current node.
+			prevNode = nullptr;
+		}
+		else {
+			// Ensure the next node appends itself to this one.
+			prevNode = entry;
+		}
+	}
+
 	if (debug & DbgDwarfAttrRead)
 		fprintf(stderr, "%s:%d: offs=%x level=%d tag=%d abbrev=%d\n", __FUNCTION__, __LINE__,
 				entryOff, level, id.tag, id.code);
 
+	// Read all the attribute data for this DIE.
 	int attr, form;
 	for (;;)
 	{
@@ -804,7 +879,7 @@ bool DIECursor::readNext(DWARF_InfoData& id, bool stopAtNull)
 			case DW_FORM_sec_offset:     a.type = SecOffset; a.sec_offset = RDref(ptr); break;
 			case DW_FORM_loclistx:       a.type = SecOffset; a.sec_offset = resolveIndirectSecPtr(LEB128(ptr), sec_desc_debug_loclists, cu->loclist_base); break;
 			case DW_FORM_rnglistx:       a.type = SecOffset; a.sec_offset = resolveIndirectSecPtr(LEB128(ptr), sec_desc_debug_rnglists, cu->rnglist_base); break;
-			default: assert(false && "Unsupported DWARF attribute form"); return false;
+			default: assert(false && "Unsupported DWARF attribute form"); return nullptr;
 		}
 
 		switch (attr)
@@ -847,6 +922,7 @@ bool DIECursor::readNext(DWARF_InfoData& id, bool stopAtNull)
 			case DW_AT_type:      assert(a.type == Ref); id.type = a.ref; break;
 			case DW_AT_inline:    assert(a.type == Const); id.inlined = a.cons; break;
 			case DW_AT_external:  assert(a.type == Flag); id.external = a.flag; break;
+			case DW_AT_declaration: assert(a.type == Flag); id.isDecl = a.flag; break;
 			case DW_AT_upper_bound:
 				assert(a.type == Const || a.type == Ref || a.type == ExprLoc || a.type == Block);
 				if (a.type == Const) // TODO: other types not supported yet
@@ -907,10 +983,12 @@ bool DIECursor::readNext(DWARF_InfoData& id, bool stopAtNull)
 		}
 	}
 
-	hasChild = id.hasChild != 0;
+	prevHasChild = id.hasChild != 0;
 	sibling = id.sibling;
 
-	return true;
+	// Transfer ownership of 'node' to caller, if we allocated one.
+	node.release();
+	return entry;
 }
 
 byte* DIECursor::getDWARFAbbrev(unsigned off, unsigned findcode)

@@ -178,11 +178,16 @@ private:
 
     template<typename SYM> const char* t_findSectionSymbolName(int s) const;
 
+	// File handle to PE image.
 	int fd;
+
+	// Pointer to in-memory buffer containing loaded PE image.
 	void* dump_base;
+
+	// Size of `dump_base` in bytes.
 	int dump_total_len;
 
-	// codeview
+	// codeview fields
 	IMAGE_DOS_HEADER *dos;
 	IMAGE_NT_HEADERS32* hdr32;
 	IMAGE_NT_HEADERS64* hdr64;
@@ -200,7 +205,8 @@ private:
 	std::unordered_map<std::string, SymbolInfo> symbolCache;
 
 public:
-	//dwarf
+	// dwarf fields
+	// List of DWARF section descriptors.
 #define EXPANDSEC(name) PESection name;
 	SECTION_LIST()
 #undef EXPANDSEC
