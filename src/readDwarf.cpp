@@ -713,10 +713,9 @@ DWARF_InfoData* DIECursor::readNext(DWARF_InfoData* entry, bool stopAtNull)
 		establishLinks = true;
 		node = std::make_unique<DWARF_InfoData>();
 		entry = node.get();
-	} else {
-		// If an entry was provided, make sure we clear it.
-		entry->clear();
 	}
+	// Even if an entry was provided, make sure we clear it.
+	entry->clear();
 
 	entry->img = img;
 	

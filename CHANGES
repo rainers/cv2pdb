@@ -321,3 +321,10 @@ unreleased Version 0.22
 
   * support DW_FORM_data1 and DW_FORM_data2 in DW_LNCT_directory_index
   * fix emitting bad debug info if struct description exceeds 64 kB, clipped for now
+
+2023-06-10 Version 0.53
+
+  * DWARF: fully-qualified name generation for procs, structs, enums and classes.
+    Thanks to alexbudfb
+
+  
