@@ -17,7 +17,7 @@ jobs:
       matrix:
         BUILD_PLATFORM: [x64, ARM64]
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - name: Add MSBuild to PATH
         uses: microsoft/setup-msbuild@v2
       - name: Build cv2pdb
