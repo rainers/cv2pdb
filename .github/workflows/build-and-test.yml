@@ -19,7 +19,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: Add MSBuild to PATH
-        uses: microsoft/setup-msbuild@v1.0.2
+        uses: microsoft/setup-msbuild@v2
       - name: Build cv2pdb
         working-directory: ${{env.GITHUB_WORKSPACE}}
         run: msbuild /m /p:PlatformToolset=${{env.BUILD_PLATFORM_TOOLSET}} /p:Platform=${{matrix.BUILD_PLATFORM}} /p:Configuration=${{env.BUILD_CONFIGURATION}} ${{env.SOLUTION_FILE_PATH}}
