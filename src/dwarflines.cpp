@@ -240,7 +240,7 @@ bool interpretDWARFLines(const PEImage& img, mspdb::Mod* mod, DebugLevel debug_)
 		if (hdr->opcode_base > 0)
 		{
 			opcode_lengths[0] = 0;
-			for(int o = 1; o < hdr->opcode_base && p < end; o++)
+			for(byte o = 1; o < hdr->opcode_base && p < end; o++)
 				opcode_lengths[o] = LEB128(p);
 		}
 
@@ -284,7 +284,7 @@ bool interpretDWARFLines(const PEImage& img, mspdb::Mod* mod, DebugLevel debug_)
 			}
 
 			unsigned int directories_count = LEB128(p);
-			for (int o = 0; o < directories_count; o++)
+			for (unsigned int o = 0; o < directories_count; o++)
 			{
 				for (const auto &typeForm : directory_entry_format)
 				{
@@ -341,7 +341,7 @@ bool interpretDWARFLines(const PEImage& img, mspdb::Mod* mod, DebugLevel debug_)
 			}
 
 			unsigned int file_names_count = LEB128(p);
-			for (int o = 0; o < file_names_count; o++)
+			for (unsigned int o = 0; o < file_names_count; o++)
 			{
 				DWARF_FileName fname;
 
@@ -365,7 +365,7 @@ bool interpretDWARFLines(const PEImage& img, mspdb::Mod* mod, DebugLevel debug_)
 							default:
 								fprintf(stderr, "%s:%d: ERROR: invalid form=%d for path lineHdrOffs=%x\n", __FUNCTION__, __LINE__,
 										typeForm.form, off);
-								assert(false, "invalid path form");
+								assert(false && "invalid path form");
 								return false;
 							}
 							break;
