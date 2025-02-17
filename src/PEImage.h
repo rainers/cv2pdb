@@ -87,6 +87,7 @@ struct PESection
 	EXPANDSEC(debug_loclists) \
 	EXPANDSEC(debug_ranges) \
 	EXPANDSEC(debug_rnglists) \
+	EXPANDSEC(gnu_debuglink) \
 	EXPANDSEC(reloc) \
 	EXPANDSEC(text)
 
@@ -143,11 +144,12 @@ public:
 	bool initCVPtr(bool initDbgDir);
 	bool initDbgPtr(bool initDbgDir);
 	bool initDWARFPtr(bool initDbgDir);
-    bool initDWARFObject();
-    void initDWARFSegments();
+	bool initDWARFObject();
+	void initDWARFSegments();
 	bool relocateDebugLineInfo(unsigned int img_base);
 
 	bool hasDWARF() const { return debug_line.isPresent(); }
+	bool hasDebugLink() const { return gnu_debuglink.isPresent(); }
 	bool isX64() const { return x64; }
 	bool isDBG() const { return dbgfile; }
 
@@ -166,17 +168,19 @@ public:
 	const char* findSectionSymbolName(int s) const;
 	const IMAGE_SECTION_HEADER& getSection(int s) const { return sec[s]; }
 	unsigned long long getImageBase() const { return IMGHDR(OptionalHeader.ImageBase); }
-    int getRelocationInLineSegment(unsigned int offset) const;
-    int getRelocationInSegment(int segment, unsigned int offset) const;
+	int getRelocationInLineSegment(unsigned int offset) const;
+	int getRelocationInSegment(int segment, unsigned int offset) const;
 
-    int dumpDebugLineInfoCOFF();
-    int dumpDebugLineInfoOMF();
-	void createSymbolCache();
+	int dumpDebugLineInfoCOFF() const;
+	int dumpDebugLineInfoOMF() const;
+	void createSymbolCache() const;
+
+	const char* getStrTable() const { return strtable; };
 
 private:
 	bool _initFromCVDebugDir(IMAGE_DEBUG_DIRECTORY* ddir);
 
-    template<typename SYM> const char* t_findSectionSymbolName(int s) const;
+	template<typename SYM> const char* t_findSectionSymbolName(int s) const;
 
 	// File handle to PE image.
 	int fd;
@@ -202,7 +206,7 @@ private:
 	bool x64;     // targets 64-bit machine
 	bool bigobj;
 	bool dbgfile; // is DBG file
-	std::unordered_map<std::string, SymbolInfo> symbolCache;
+	mutable std::unordered_map<std::string, SymbolInfo> symbolCache;
 
 public:
 	// dwarf fields

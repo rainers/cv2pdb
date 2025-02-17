@@ -186,7 +186,7 @@ struct DWARF_FileName
 struct DWARF_InfoData
 {
 	// The PEImage for this entry.
-	PEImage* img = nullptr;
+	const PEImage* img = nullptr;
 
 	// Pointer into the memory-mapped image section where this DIE is located.
 	byte* entryPtr;
@@ -570,7 +570,7 @@ public:
 	// The mapped address of the sibling of the last scanned node, if any.
 	byte* sibling = nullptr;
 
-	static PEImage *img;
+	static const PEImage *img;
 	static abbrevMap_t abbrevMap;
 	static DebugLevel debug;
 
@@ -578,7 +578,7 @@ public:
 
 public:
 
-	static void setContext(PEImage* img_, DebugLevel debug_);
+	static void setContext(const PEImage* img_, DebugLevel debug_);
 
 	// Create a new DIECursor
 	DIECursor(DWARF_CompilationUnitInfo* cu_, byte* ptr);

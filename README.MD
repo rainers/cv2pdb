@@ -76,7 +76,7 @@ Description:
 cv2pdb.exe is a command line tool which outputs its usage information
 if run without arguments:
 
-    usage: cv2pdb [-D<version>|-C|-n|-e|-s<C>|-p<embedded-pdb>] <exe-file> [new-exe-file] [pdb-file]
+    usage: cv2pdb [-D<version>|-C|-n|-e|-s<C>|-p<embedded-pdb>|-l<debug-link>] <exe-file> [new-exe-file] [pdb-file]
 
 With the `-D` option, you can specify the version of the DMD compiler
 you are using. Unfortunately, this information is not embedded into
@@ -137,6 +137,15 @@ to change the path or file reference that is embedded into the converted binary.
 to replace the absolute path of the PDB file with any other file name irrespective of the
 actually generated PDB file and without making the file reference absolute.
 
+If the debug information is located in a separate file, use the `-l` option to specify
+a link to the file with the debug information. If the image has the `.gnu_debuglink` section,
+the link will be retrieved from the section and the `-l` option is not required.
+The debug information file will be loaded from the same directory where the image file is located.
+If there is no file there, it will be loaded from `.debug` subdirectory.
+
+Example:
+
+    cv2pdb -ldebuggee.debug debuggee.exe
 
 Changes
 -------

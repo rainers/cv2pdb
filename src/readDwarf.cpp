@@ -21,11 +21,11 @@ struct hash<std::pair<T1, T2>>
 };
 }
 
-PEImage* DIECursor::img;
+const PEImage* DIECursor::img;
 abbrevMap_t DIECursor::abbrevMap;
 DebugLevel DIECursor::debug;
 
-void DIECursor::setContext(PEImage* img_, DebugLevel debug_)
+void DIECursor::setContext(const PEImage* img_, DebugLevel debug_)
 {
 	img = img_;
 	abbrevMap.clear();
