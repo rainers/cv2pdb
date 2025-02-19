@@ -896,7 +896,7 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, const std::vector<RangeEntry> 
 	if (frameBase.is_abs()) // pointer into location list in .debug_loc? assume CFA
 		frameBase = findBestFBLoc(cursor, frameBase.off);
 
-    Location cfa = findBestCFA(img, cfi_index, procid.pclo, procid.pchi);
+    Location cfa = findBestCFA(*imgDbg, cfi_index, procid.pclo, procid.pchi);
 
 	if (cursor.cu)
 	{
@@ -1302,7 +1302,7 @@ bool CV2PDB::addDWARFTypes()
 	checkUdtSymbolAlloc(100);
 
 	int prefix = 4;
-	DWORD* ddata = new DWORD [img.debug_info.length/4]; // large enough
+	DWORD* ddata = new DWORD [imgDbg->debug_info.length/4]; // large enough
 	unsigned char *data = (unsigned char*) (ddata + prefix);
 	unsigned int off = 0;
 	unsigned int len;
@@ -1348,7 +1348,7 @@ bool CV2PDB::addDWARFTypes()
 
 bool CV2PDB::addDWARFSectionContrib(mspdb::Mod* mod, unsigned long pclo, unsigned long pchi)
 {
-	int segIndex = img.findSection(pclo);
+	int segIndex = imgDbg->findSection(pclo);
 	if(segIndex >= 0)
 	{
 		int segFlags = 0x60101020; // 0x40401040, 0x60500020; // TODO
@@ -1658,13 +1658,13 @@ bool CV2PDB::mapTypes()
 	DWARF_InfoData* firstNode = nullptr;
 
 	// Scan each compilation unit in '.debug_info'.
-	while (off < img.debug_info.length)
+	while (off < imgDbg->debug_info.length)
 	{
 		DWARF_CompilationUnitInfo cu{};
 
 		// Read the next compilation unit from 'off' and update it to the next
 		// CU.
-		byte* ptr = cu.read(debug, img, &off);
+		byte* ptr = cu.read(debug, *imgDbg, &off);
 		if (!ptr)
 			continue;
 
@@ -1761,6 +1761,8 @@ bool CV2PDB::mapTypes()
 bool CV2PDB::createTypes()
 {
 	img.createSymbolCache();
+	if (&img != imgDbg)
+		imgDbg->createSymbolCache();
 	mspdb::Mod* mod = globalMod();
 	int firstUserType = nextUserType;
 	int typeID = nextUserType;
@@ -1772,13 +1774,13 @@ bool CV2PDB::createTypes()
 	unsigned long off = 0;
 
 	// Scan each compilation unit in '.debug_info'.
-	while (off < img.debug_info.length)
+	while (off < imgDbg->debug_info.length)
 	{
 		DWARF_CompilationUnitInfo cu{};
 
 		// Read the next compilation unit from 'off' and update it to the next
 		// CU, returning the pointer just beyond the header to the first DIE.
-		byte* ptr = cu.read(debug, img, &off);
+		byte* ptr = cu.read(debug, *imgDbg, &off);
 		if (!ptr)
 			continue;
 
@@ -1928,7 +1930,7 @@ bool CV2PDB::createTypes()
 #if !FULL_CONTRIB
 				if (id.dir && id.name)
 				{
-					if (id.ranges > 0 && id.ranges < img.debug_ranges.length)
+					if (id.ranges > 0 && id.ranges < imgDbg->debug_ranges.length)
 					{
 						RangeEntry range;
 						RangeCursor rangeCursor(cursor, id.ranges);
@@ -1963,11 +1965,11 @@ bool CV2PDB::createTypes()
 					bool dllimport = false;
 					if (id.location.type == Invalid && id.external && id.linkage_name)
 					{
-						seg = img.findSymbol(id.linkage_name, segOff, dllimport);
+						seg = imgDbg->findSymbol(id.linkage_name, segOff, dllimport);
 					}
 					else if (id.location.type == Invalid && id.external)
 					{
-						seg = img.findSymbol(id.name, segOff, dllimport);
+						seg = imgDbg->findSymbol(id.name, segOff, dllimport);
 					}
 					else
 					{
@@ -1975,9 +1977,9 @@ bool CV2PDB::createTypes()
 						if (loc.is_abs())
 						{
 							segOff = loc.off;
-							seg = img.findSection(segOff);
+							seg = imgDbg->findSection(segOff);
 							if (seg >= 0)
-								segOff -= img.getImageBase() + img.getSection(seg).VirtualAddress;
+								segOff -= imgDbg->getImageBase() + imgDbg->getSection(seg).VirtualAddress;
 						}
 					}
 					if (seg >= 0)
@@ -2044,25 +2046,47 @@ void CV2PDB::dumpDwarfTree() const {
 
 bool CV2PDB::createDWARFModules()
 {
-	if(!img.debug_info.isPresent())
+	if(!imgDbg->debug_info.isPresent())
 		return setError("no .debug_info section found");
 
 	codeSegOff = img.getImageBase() + img.getSection(img.text.secNo).VirtualAddress;
 
 	mspdb::Mod* mod = globalMod();
-	for (int s = 0; s < img.countSections(); s++)
+	int s = 0;
+	for (; s < img.countSections(); s++)
 	{
 		const IMAGE_SECTION_HEADER& sec = img.getSection(s);
 		int rc = dbi->AddSec(s + 1, 0x10d, 0, sec.Misc.VirtualSize);
 		if (rc <= 0)
 			return setError("cannot add section");
 	}
+	if (&img != imgDbg)
+	{
+		for (int ds = 0; ds < imgDbg->countSections(); ds++)
+		{
+			const IMAGE_SECTION_HEADER& sec = imgDbg->getSection(ds);
+
+			const char* name = (const char*)sec.Name;
+			if (name[0] == '/')
+			{
+				int off = strtol(name + 1, 0, 10);
+				name = imgDbg->getStrTable() + off;
+			}
+
+			// Is 'name' one of the debug sections?
+			if (!strncmp(name, ".debug_", 7)) {
+				int rc = dbi->AddSec(s++, 0x10d, 0, sec.Misc.VirtualSize);
+				if (rc <= 0)
+					return setError("cannot add section");
+			}
+		}
+	}
 
 #define FULL_CONTRIB 1
 #if FULL_CONTRIB
 	// we use a single global module, so we can simply add the whole text segment
 	int segFlags = 0x60101020; // 0x40401040, 0x60500020; // TODO
-	int s = img.text.secNo;
+	s = img.text.secNo;
 	int pclo = 0; // img.getImageBase() + img.getSection(s).VirtualAddress;
 	int pchi = pclo + img.getSection(s).Misc.VirtualSize;
 	int rc = mod->AddSecContrib(s + 1, pclo, pchi - pclo, segFlags);
@@ -2082,7 +2106,7 @@ bool CV2PDB::createDWARFModules()
 		appendComplex(0x52, 0x42, 12, "creal");
 	}
 
-	DIECursor::setContext(&img, debug);
+	DIECursor::setContext(imgDbg, debug);
 
 	countEntries = 0;
 	if (!mapTypes())
@@ -2129,13 +2153,13 @@ bool CV2PDB::createDWARFModules()
 
 bool CV2PDB::addDWARFLines()
 {
-	if(!img.debug_line.isPresent())
+	if(!imgDbg->debug_line.isPresent())
 		return setError("no .debug_line section found");
 
-    if (!interpretDWARFLines(img, globalMod(), debug))
+	if (!interpretDWARFLines(*imgDbg, globalMod(), debug))
 		return setError("cannot add line number info to module");
 
-    return true;
+	return true;
 }
 
 bool CV2PDB::addDWARFPublics()
@@ -2187,9 +2211,9 @@ bool CV2PDB::writeDWARFImage(const TCHAR* opath)
 
 void CV2PDB::build_cfi_index()
 {
-	if (!img.debug_frame.isPresent())
+	if (!imgDbg->debug_frame.isPresent())
 		return;
-	cfi_index = new CFIIndex(img);
+	cfi_index = new CFIIndex(*imgDbg);
 }
 
 CFIIndex::CFIIndex(const PEImage& img)

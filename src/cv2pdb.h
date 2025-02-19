@@ -29,7 +29,7 @@ class CFIIndex;
 class CV2PDB : public LastError
 {
 public:
-	CV2PDB(PEImage& image, DebugLevel debug);
+	CV2PDB(PEImage& image, PEImage* imageDWARF, DebugLevel debug);
 	~CV2PDB();
 
 	bool cleanup(bool commit);
@@ -200,6 +200,8 @@ public:
 	BYTE* libraries;
 
 	PEImage& img;
+	// imgDbg - debug information, points to debug information in 'img' or a separate image
+	const PEImage* imgDbg;
 	CFIIndex* cfi_index;
 
 	mspdb::PDB* pdb;

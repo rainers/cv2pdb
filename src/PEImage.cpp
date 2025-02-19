@@ -584,7 +584,7 @@ struct LineInfoPair
     int line;
 };
 
-int PEImage::dumpDebugLineInfoCOFF()
+int PEImage::dumpDebugLineInfoCOFF() const
 {
     char* f3section = 0;
     char* f4section = 0;
@@ -658,7 +658,7 @@ unsigned _getIndex(const BYTE* &p)
     return *p++;
 }
 
-int PEImage::dumpDebugLineInfoOMF()
+int PEImage::dumpDebugLineInfoOMF() const
 {
     std::vector<const unsigned char*> lnames;
     std::vector<const unsigned char*> llnames;
@@ -768,7 +768,7 @@ const char* PEImage::findSectionSymbolName(int s) const
         return t_findSectionSymbolName<IMAGE_SYMBOL> (s);
 }
 
-void PEImage::createSymbolCache()
+void PEImage::createSymbolCache() const
 {
 	int sizeof_sym = bigobj ? sizeof(IMAGE_SYMBOL_EX) : IMAGE_SIZEOF_SYMBOL;
 	for (int i = 0; i < nsym; ++i)

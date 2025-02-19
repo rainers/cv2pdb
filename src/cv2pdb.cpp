@@ -17,8 +17,8 @@
 
 static const int typePrefix = 4;
 
-CV2PDB::CV2PDB(PEImage& image, DebugLevel debug_)
-: img(image), pdb(0), dbi(0), tpi(0), ipi(0), libraries(0), rsds(0), rsdsLen(0), modules(0), globmod(0)
+CV2PDB::CV2PDB(PEImage& image, PEImage* imageDWARF, DebugLevel debug_)
+: img(image), imgDbg(imageDWARF ? imageDWARF : &image), pdb(0), dbi(0), tpi(0), ipi(0), libraries(0), rsds(0), rsdsLen(0), modules(0), globmod(0)
 , segMap(0), segMapDesc(0), segFrame2Index(0), globalTypeHeader(0)
 , globalTypes(0), cbGlobalTypes(0), allocGlobalTypes(0)
 , userTypes(0), cbUserTypes(0), allocUserTypes(0)
@@ -46,7 +46,7 @@ CV2PDB::CV2PDB(PEImage& image, DebugLevel debug_)
 	useGlobalMod = true;
 	thisIsNotRef = true;
 	v3 = true;
-	countEntries = img.countCVEntries();
+	countEntries = imgDbg->countCVEntries();
 	build_cfi_index();
 }
 
@@ -68,12 +68,12 @@ bool CV2PDB::cleanup(bool commit)
 	if (dbi)
 		dbi->SetMachineType(img.isX64 () ? IMAGE_FILE_MACHINE_AMD64 : IMAGE_FILE_MACHINE_I386);
 
-	if (dbi)
-		dbi->Close();
-	if (tpi)
-		tpi->Close();
 	if (ipi)
 		ipi->Close();
+	if (tpi)
+		tpi->Close();
+	if (dbi)
+		dbi->Close();
 	if (pdb)
 		pdb->Commit();
 	if (pdb)
@@ -164,7 +164,7 @@ bool CV2PDB::openPDB(const TCHAR* pdbname, const TCHAR* pdbref)
 	printf("PDB::QueryPdbImplementationVersion() = %d\n", pdb->QueryPdbImplementationVersion());
 #endif
 
-	rsdsLen = 24 + strlen(pdbnameA) + 1; // sizeof(OMFSignatureRSDS) without name
+	rsdsLen = offsetof(OMFSignatureRSDS, name) + strlen(pdbnameA) + 1;
 	rsds = (OMFSignatureRSDS *) new char[rsdsLen];
 	memcpy (rsds->Signature, "RSDS", 4);
 	pdb->QuerySignature2(&rsds->guid);
@@ -180,18 +180,18 @@ bool CV2PDB::openPDB(const TCHAR* pdbname, const TCHAR* pdbref)
 	printf("DBI::QueryImplementationVersion() = %d\n", dbi->QueryImplementationVersion());
 #endif
 
-	rc = pdb->OpenTpi("", &tpi);
+	// The default is "r" mode.  We need "rw" mode so TPI gets created if it does not exist
+	rc = pdb->OpenTpi("rw", &tpi);
 	if (rc <= 0 || !tpi)
 		return setError("cannot create TPI");
 
-#if 0
 	if (mspdb::vsVersion >= 14)
 	{
-		rc = pdb->OpenIpi("", &ipi);
+		// The default is "r" mode.  We need "rw" mode so IPI gets created if it does not exist
+		rc = pdb->OpenIpi("rw", &ipi);
 		if (rc <= 0 || !ipi)
 			return setError("cannot create IPI");
 	}
-#endif
 
 #if PRINT_INTERFACEVERSON
 	printf("TPI::QueryInterfaceVersion() = %d\n", tpi->QueryInterfaceVersion());
@@ -216,18 +216,18 @@ bool CV2PDB::setError(const char* msg)
 bool CV2PDB::createModules()
 {
 	// assumes libraries and segMap initialized
-	countEntries = img.countCVEntries();
+	countEntries = imgDbg->countCVEntries();
 	modules = new mspdb::Mod* [countEntries];
 	memset (modules, 0, countEntries * sizeof(*modules));
 
 	for (int m = 0; m < countEntries; m++)
 	{
-		OMFDirEntry* entry = img.getCVEntry(m);
+		OMFDirEntry* entry = imgDbg->getCVEntry(m);
 		if (entry->SubSection == sstModule)
 		{
-			OMFModule* module   = img.CVP<OMFModule>(entry->lfo);
-			OMFSegDesc* segDesc = img.CVP<OMFSegDesc>(entry->lfo + sizeof(OMFModule));
-			BYTE* pname         = img.CVP<BYTE>(entry->lfo + sizeof(OMFModule) + sizeof(OMFSegDesc) * module->cSeg);
+			OMFModule* module   = imgDbg->CVP<OMFModule>(entry->lfo);
+			OMFSegDesc* segDesc = imgDbg->CVP<OMFSegDesc>(entry->lfo + sizeof(OMFModule));
+			BYTE* pname         = imgDbg->CVP<BYTE>(entry->lfo + sizeof(OMFModule) + sizeof(OMFSegDesc) * module->cSeg);
 			char *name = p2c(pname);
 			const BYTE* plib = getLibrary (module->iLib);
 			const char* lib = (!plib || !*plib ? name : p2c(plib, 1));
@@ -292,8 +292,8 @@ bool CV2PDB::initLibraries()
 {
 	libraries = 0;
 	for (int m = 0; m < countEntries; m++)
-		if (img.getCVEntry(m)->SubSection == sstLibraries)
-			libraries = img.CVP<BYTE> (img.getCVEntry(m)->lfo);
+		if (imgDbg->getCVEntry(m)->SubSection == sstLibraries)
+			libraries = imgDbg->CVP<BYTE> (imgDbg->getCVEntry(m)->lfo);
 
 	return true;
 }
@@ -312,12 +312,12 @@ bool CV2PDB::initSegMap()
 {
 	for (int m = 0; m < countEntries; m++)
 	{
-		OMFDirEntry* entry = img.getCVEntry(m);
+		OMFDirEntry* entry = imgDbg->getCVEntry(m);
 		switch(entry->SubSection)
 		{
 		case sstSegMap:
-			segMap = img.CVP<OMFSegMap>(entry->lfo);
-			segMapDesc = img.CVP<OMFSegMapDesc>(entry->lfo + sizeof(OMFSegMap));
+			segMap = imgDbg->CVP<OMFSegMap>(entry->lfo);
+			segMapDesc = imgDbg->CVP<OMFSegMapDesc>(entry->lfo + sizeof(OMFSegMap));
 			int maxframe = -1;
 			for (int s = 0; s < segMap->cSeg; s++)
 			{
@@ -2146,12 +2146,12 @@ bool CV2PDB::initGlobalTypes()
 	int object_derived_type = 0;
 	for (int m = 0; m < countEntries; m++)
 	{
-		OMFDirEntry* entry = img.getCVEntry(m);
+		OMFDirEntry* entry = imgDbg->getCVEntry(m);
 		if(entry->SubSection == sstGlobalTypes)
 		{
-			globalTypeHeader = img.CVP<OMFGlobalTypes>(entry->lfo);
-			DWORD* offset = img.CVP<DWORD>(entry->lfo + sizeof(OMFGlobalTypes));
-			BYTE* typeData = img.CVP<BYTE>(entry->lfo + sizeof(OMFGlobalTypes) + 4*globalTypeHeader->cTypes);
+			globalTypeHeader = imgDbg->CVP<OMFGlobalTypes>(entry->lfo);
+			DWORD* offset = imgDbg->CVP<DWORD>(entry->lfo + sizeof(OMFGlobalTypes));
+			BYTE* typeData = imgDbg->CVP<BYTE>(entry->lfo + sizeof(OMFGlobalTypes) + 4*globalTypeHeader->cTypes);
 
 			if (globalTypes)
 				return setError("only one global type entry expected");
@@ -2628,7 +2628,7 @@ bool CV2PDB::addTypes()
 
 	for (int m = 0; m < countEntries; m++)
 	{
-		OMFDirEntry* entry = img.getCVEntry(m);
+		OMFDirEntry* entry = imgDbg->getCVEntry(m);
 		if(entry->SubSection == sstSrcModule)
 		{
 			mspdb::Mod* mod = modules[entry->iMod];
@@ -2679,25 +2679,25 @@ bool CV2PDB::createSrcLineBitmap()
 
 	for (int m = 0; m < countEntries; m++)
 	{
-		OMFDirEntry* entry = img.getCVEntry(m);
+		OMFDirEntry* entry = imgDbg->getCVEntry(m);
 		if(entry->SubSection == sstSrcModule)
 		{
 			// mark the beginning of each line
-			OMFSourceModule* sourceModule = img.CVP<OMFSourceModule>(entry->lfo);
-			int* segStartEnd = img.CVP<int>(entry->lfo + 4 + 4 * sourceModule->cFile);
-			short* seg = img.CVP<short>(entry->lfo + 4 + 4 * sourceModule->cFile + 8 * sourceModule->cSeg);
+			OMFSourceModule* sourceModule = imgDbg->CVP<OMFSourceModule>(entry->lfo);
+			int* segStartEnd = imgDbg->CVP<int>(entry->lfo + 4 + 4 * sourceModule->cFile);
+			short* seg = imgDbg->CVP<short>(entry->lfo + 4 + 4 * sourceModule->cFile + 8 * sourceModule->cSeg);
 
 			for (int f = 0; f < sourceModule->cFile; f++)
 			{
 				int cvoff = entry->lfo + sourceModule->baseSrcFile[f];
-				OMFSourceFile* sourceFile = img.CVP<OMFSourceFile> (cvoff);
-				int* lnSegStartEnd = img.CVP<int>(cvoff + 4 + 4 * sourceFile->cSeg);
+				OMFSourceFile* sourceFile = imgDbg->CVP<OMFSourceFile> (cvoff);
+				int* lnSegStartEnd = imgDbg->CVP<int>(cvoff + 4 + 4 * sourceFile->cSeg);
 
 				for (int s = 0; s < sourceFile->cSeg; s++)
 				{
 					int lnoff = entry->lfo + sourceFile->baseSrcLn[s];
-					OMFSourceLine* sourceLine = img.CVP<OMFSourceLine> (lnoff);
-					short* lineNo = img.CVP<short> (lnoff + 4 + 4 * sourceLine->cLnOff);
+					OMFSourceLine* sourceLine = imgDbg->CVP<OMFSourceLine> (lnoff);
+					short* lineNo = imgDbg->CVP<short> (lnoff + 4 + 4 * sourceLine->cLnOff);
 
 					int cnt = sourceLine->cLnOff;
 					int segIndex = segFrame2Index[sourceLine->Seg];
@@ -2715,8 +2715,8 @@ bool CV2PDB::createSrcLineBitmap()
 		if (entry->SubSection == sstModule)
 		{
 			// mark the beginning of each section
-			OMFModule* module   = img.CVP<OMFModule>(entry->lfo);
-			OMFSegDesc* segDesc = img.CVP<OMFSegDesc>(entry->lfo + sizeof(OMFModule));
+			OMFModule* module   = imgDbg->CVP<OMFModule>(entry->lfo);
+			OMFSegDesc* segDesc = imgDbg->CVP<OMFSegDesc>(entry->lfo + sizeof(OMFModule));
 
 			for (int s = 0; s < module->cSeg; s++)
 			{
@@ -2758,30 +2758,30 @@ bool CV2PDB::addSrcLines()
 
 	for (int m = 0; m < countEntries; m++)
 	{
-		OMFDirEntry* entry = img.getCVEntry(m);
+		OMFDirEntry* entry = imgDbg->getCVEntry(m);
 		if(entry->SubSection == sstSrcModule)
 		{
 			mspdb::Mod* mod = useGlobalMod ? globalMod() : modules[entry->iMod];
 			if (!mod)
 				return setError("sstSrcModule for non-existing module");
 
-			OMFSourceModule* sourceModule = img.CVP<OMFSourceModule>(entry->lfo);
-			int* segStartEnd = img.CVP<int>(entry->lfo + 4 + 4 * sourceModule->cFile);
-			short* seg = img.CVP<short>(entry->lfo + 4 + 4 * sourceModule->cFile + 8 * sourceModule->cSeg);
+			OMFSourceModule* sourceModule = imgDbg->CVP<OMFSourceModule>(entry->lfo);
+			int* segStartEnd = imgDbg->CVP<int>(entry->lfo + 4 + 4 * sourceModule->cFile);
+			short* seg = imgDbg->CVP<short>(entry->lfo + 4 + 4 * sourceModule->cFile + 8 * sourceModule->cSeg);
 
 			for (int f = 0; f < sourceModule->cFile; f++)
 			{
 				int cvoff = entry->lfo + sourceModule->baseSrcFile[f];
-				OMFSourceFile* sourceFile = img.CVP<OMFSourceFile> (cvoff);
-				int* lnSegStartEnd = img.CVP<int>(cvoff + 4 + 4 * sourceFile->cSeg);
+				OMFSourceFile* sourceFile = imgDbg->CVP<OMFSourceFile> (cvoff);
+				int* lnSegStartEnd = imgDbg->CVP<int>(cvoff + 4 + 4 * sourceFile->cSeg);
 				BYTE* pname = (BYTE*)(lnSegStartEnd + 2 * sourceFile->cSeg);
 				char* name = p2c (pname);
 
 				for (int s = 0; s < sourceFile->cSeg; s++)
 				{
 					int lnoff = entry->lfo + sourceFile->baseSrcLn[s];
-					OMFSourceLine* sourceLine = img.CVP<OMFSourceLine> (lnoff);
-					unsigned short* lineNo = img.CVP<unsigned short> (lnoff + 4 + 4 * sourceLine->cLnOff);
+					OMFSourceLine* sourceLine = imgDbg->CVP<OMFSourceLine> (lnoff);
+					unsigned short* lineNo = imgDbg->CVP<unsigned short> (lnoff + 4 + 4 * sourceLine->cLnOff);
 
 					int seg = sourceLine->Seg;
 					int cnt = sourceLine->cLnOff;
@@ -2875,22 +2875,22 @@ bool CV2PDB::addSrcLines14()
 
 	for (int m = 0; m < countEntries; m++)
 	{
-		OMFDirEntry* entry = img.getCVEntry(m);
+		OMFDirEntry* entry = imgDbg->getCVEntry(m);
 		if(entry->SubSection == sstSrcModule)
 		{
 			mspdb::Mod* mod = useGlobalMod ? globalMod() : modules[entry->iMod];
 			if (!mod)
 				return setError("sstSrcModule for non-existing module");
 
-			OMFSourceModule* sourceModule = img.CVP<OMFSourceModule>(entry->lfo);
-			int* segStartEnd = img.CVP<int>(entry->lfo + 4 + 4 * sourceModule->cFile);
-			short* seg = img.CVP<short>(entry->lfo + 4 + 4 * sourceModule->cFile + 8 * sourceModule->cSeg);
+			OMFSourceModule* sourceModule = imgDbg->CVP<OMFSourceModule>(entry->lfo);
+			int* segStartEnd = imgDbg->CVP<int>(entry->lfo + 4 + 4 * sourceModule->cFile);
+			short* seg = imgDbg->CVP<short>(entry->lfo + 4 + 4 * sourceModule->cFile + 8 * sourceModule->cSeg);
 
 			for (int f = 0; f < sourceModule->cFile; f++)
 			{
 				int cvoff = entry->lfo + sourceModule->baseSrcFile[f];
-				OMFSourceFile* sourceFile = img.CVP<OMFSourceFile> (cvoff);
-				int* lnSegStartEnd = img.CVP<int>(cvoff + 4 + 4 * sourceFile->cSeg);
+				OMFSourceFile* sourceFile = imgDbg->CVP<OMFSourceFile> (cvoff);
+				int* lnSegStartEnd = imgDbg->CVP<int>(cvoff + 4 + 4 * sourceFile->cSeg);
 				BYTE* pname = (BYTE*)(lnSegStartEnd + 2 * sourceFile->cSeg);
 				char* name = p2c (pname);
 
@@ -2899,8 +2899,8 @@ bool CV2PDB::addSrcLines14()
 				for (int s = 0; s < sourceFile->cSeg; s++)
 				{
 					int lnoff = entry->lfo + sourceFile->baseSrcLn[s];
-					OMFSourceLine* sourceLine = img.CVP<OMFSourceLine> (lnoff);
-					unsigned short* lineNo = img.CVP<unsigned short> (lnoff + 4 + 4 * sourceLine->cLnOff);
+					OMFSourceLine* sourceLine = imgDbg->CVP<OMFSourceLine> (lnoff);
+					unsigned short* lineNo = imgDbg->CVP<unsigned short> (lnoff + 4 + 4 * sourceLine->cLnOff);
 
 					int seg = sourceLine->Seg;
 					int cnt = sourceLine->cLnOff;
@@ -2970,15 +2970,15 @@ bool CV2PDB::addPublics()
 {
 	for (int m = 0; m < countEntries; m++)
 	{
-		OMFDirEntry* entry = img.getCVEntry(m);
+		OMFDirEntry* entry = imgDbg->getCVEntry(m);
 		if(entry->SubSection == sstGlobalPub)
 		{
 			mspdb::Mod* mod = 0;
 			if (entry->iMod < countEntries)
 				mod = useGlobalMod ? globalMod() : modules[entry->iMod];
 
-			OMFSymHash* header = img.CVP<OMFSymHash>(entry->lfo);
-			BYTE* symbols = img.CVP<BYTE>(entry->lfo + sizeof(OMFSymHash));
+			OMFSymHash* header = imgDbg->CVP<OMFSymHash>(entry->lfo);
+			BYTE* symbols = imgDbg->CVP<BYTE>(entry->lfo + sizeof(OMFSymHash));
 			int length;
 			for (unsigned int i = 0; i < header->cbSymbol; i += length)
 			{
@@ -3019,17 +3019,17 @@ bool CV2PDB::initGlobalSymbols()
 		fprintf(stderr, "%s:%d, countEntries: %d\n", __FUNCTION__, __LINE__, (int)countEntries);
 	for (int m = 0; m < countEntries; m++)
 	{
-		OMFDirEntry* entry = img.getCVEntry(m);
+		OMFDirEntry* entry = imgDbg->getCVEntry(m);
 		if (entry->SubSection == sstGlobalSym)
 		{
-			BYTE* symbols = img.CVP<BYTE>(entry->lfo);
+			BYTE* symbols = imgDbg->CVP<BYTE>(entry->lfo);
 			OMFSymHash* header = (OMFSymHash*) symbols;
 			globalSymbols = symbols + sizeof(OMFSymHash);
 			cbGlobalSymbols = header->cbSymbol;
 		}
 		if (entry->SubSection == sstStaticSym)
 		{
-			BYTE* symbols = img.CVP<BYTE>(entry->lfo);
+			BYTE* symbols = imgDbg->CVP<BYTE>(entry->lfo);
 			OMFSymHash* header = (OMFSymHash*) symbols;
 			staticSymbols = symbols + sizeof(OMFSymHash);
 			cbStaticSymbols = header->cbSymbol;
@@ -3432,14 +3432,14 @@ bool CV2PDB::addSymbols()
 	DWORD* data = 0;
 	int databytes = 0;
 	if (useGlobalMod)
-		data = new DWORD[2 * img.getCVSize() + 1000]; // enough for all symbols
+		data = new DWORD[2 * imgDbg->getCVSize() + 1000]; // enough for all symbols
 
 	bool addGlobals = true;
 	for (int m = 0; m < countEntries; m++)
 	{
-		OMFDirEntry* entry = img.getCVEntry(m);
+		OMFDirEntry* entry = imgDbg->getCVEntry(m);
 		mspdb::Mod* mod = 0;
-		BYTE* symbols = img.CVP<BYTE>(entry->lfo);
+		BYTE* symbols = imgDbg->CVP<BYTE>(entry->lfo);
 
 		switch(entry->SubSection)
 		{
