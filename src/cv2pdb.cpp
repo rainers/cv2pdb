@@ -66,7 +66,7 @@ bool CV2PDB::cleanup(bool commit)
 		globmod->Close();
 
 	if (dbi)
-		dbi->SetMachineType(img.isX64 () ? IMAGE_FILE_MACHINE_AMD64 : IMAGE_FILE_MACHINE_I386);
+		dbi->SetMachineType(img.machineType());
 
 	if (ipi)
 		ipi->Close();

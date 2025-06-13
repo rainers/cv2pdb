@@ -152,6 +152,7 @@ public:
 	bool hasDebugLink() const { return gnu_debuglink.isPresent(); }
 	bool isX64() const { return x64; }
 	bool isDBG() const { return dbgfile; }
+	WORD machineType() const { return machine; }
 
 	int countCVEntries() const;
 	OMFDirEntry* getCVEntry(int i) const;
@@ -204,6 +205,7 @@ private:
 	const char* symtable;
 	const char* strtable;
 	bool x64;     // targets 64-bit machine
+	WORD machine;
 	bool bigobj;
 	bool dbgfile; // is DBG file
 	mutable std::unordered_map<std::string, SymbolInfo> symbolCache;
