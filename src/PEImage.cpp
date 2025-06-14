@@ -84,19 +84,19 @@ bool PEImage::readAll(const TCHAR* iname)
 ///////////////////////////////////////////////////////////////////////
 bool PEImage::loadExe(const TCHAR* iname)
 {
-    if (!readAll(iname))
-        return false;
+	if (!readAll(iname))
+		return false;
 
-    return initCVPtr(true) || initDbgPtr(true) || initDWARFPtr(true);
+	return initCVPtr(true) || initDbgPtr(true) || initDWARFPtr(true);
 }
 
 ///////////////////////////////////////////////////////////////////////
 bool PEImage::loadObj(const TCHAR* iname)
 {
-    if (!readAll(iname))
-        return false;
+	if (!readAll(iname))
+		return false;
 
-    return initDWARFObject();
+	return initDWARFObject();
 }
 
 ///////////////////////////////////////////////////////////////////////
@@ -140,7 +140,7 @@ bool PEImage::replaceDebugSection (const void* data, int datalen, bool initCV)
 	// assume there is place for another section because of section alignment
 	int s;
 	DWORD lastVirtualAddress = 0;
-    int firstDWARFsection = -1;
+	int firstDWARFsection = -1;
 	int cntSections = countSections();
 	for(s = 0; s < cntSections; s++)
 	{
@@ -167,12 +167,12 @@ bool PEImage::replaceDebugSection (const void* data, int datalen, bool initCV)
 		}
 		lastVirtualAddress = sec[s].VirtualAddress + sec[s].Misc.VirtualSize;
 	}
-    if (firstDWARFsection > 0)
-    {
-        s = firstDWARFsection;
+	if (firstDWARFsection > 0)
+	{
+		s = firstDWARFsection;
 		dump_total_len = sec[s].PointerToRawData;
 		lastVirtualAddress = sec[s-1].VirtualAddress + sec[s-1].Misc.VirtualSize;
-    }
+	}
 	int align = IMGHDR(OptionalHeader.FileAlignment);
 	int align_len = xdatalen;
 	int fill = 0;
@@ -262,12 +262,13 @@ bool PEImage::initCVPtr(bool initDbgDir)
 	hdr64 = DPV<IMAGE_NT_HEADERS64> (dos->e_lfanew);
 	if(!hdr32)
 		return setError("no optional header found");
-	if(hdr32->FileHeader.Machine == IMAGE_FILE_MACHINE_AMD64 ||
-	   hdr32->FileHeader.Machine == IMAGE_FILE_MACHINE_IA64)
+
+	machine = hdr32->FileHeader.Machine;
+	x64 = hdr32->OptionalHeader.Magic == IMAGE_NT_OPTIONAL_HDR64_MAGIC;
+	if (x64)
 		hdr32 = 0;
 	else
 		hdr64 = 0;
-	x64 = hdr64 != nullptr;
 
 	if(IMGHDR(Signature) != IMAGE_NT_SIGNATURE)
 		return setError("optional header does not have PE signature");
@@ -275,10 +276,10 @@ bool PEImage::initCVPtr(bool initDbgDir)
 		return setError("optional header too small");
 
 	sec = hdr32 ? IMAGE_FIRST_SECTION(hdr32) : IMAGE_FIRST_SECTION(hdr64);
-    nsec = IMGHDR(FileHeader.NumberOfSections);
+	nsec = IMGHDR(FileHeader.NumberOfSections);
 
-    symtable = DPV<char>(IMGHDR(FileHeader.PointerToSymbolTable));
-    nsym = IMGHDR(FileHeader.NumberOfSymbols);
+	symtable = DPV<char>(IMGHDR(FileHeader.PointerToSymbolTable));
+	nsym = IMGHDR(FileHeader.NumberOfSymbols);
 	strtable = symtable + nsym * IMAGE_SIZEOF_SYMBOL;
 
 	if(IMGHDR(OptionalHeader.NumberOfRvaAndSizes) <= IMAGE_DIRECTORY_ENTRY_DEBUG)
@@ -326,7 +327,8 @@ bool PEImage::initDbgPtr(bool initDbgDir)
 	if(dbg->DebugDirectorySize <= IMAGE_DIRECTORY_ENTRY_DEBUG)
 		return setError("too few entries in data directory");
 
-	x64 = dbg->Machine == IMAGE_FILE_MACHINE_AMD64 || dbg->Machine == IMAGE_FILE_MACHINE_IA64;
+	machine = dbg->Machine;
+	x64 = dbg->Machine == IMAGE_FILE_MACHINE_AMD64 || dbg->Machine == IMAGE_FILE_MACHINE_IA64 || dbg->Machine == IMAGE_FILE_MACHINE_ARM64;
 	dbgfile = true;
 	dbgDir = 0;
 	dirHeader = 0;
@@ -388,12 +390,13 @@ bool PEImage::initDWARFPtr(bool initDbgDir)
 	hdr64 = DPV<IMAGE_NT_HEADERS64> (dos->e_lfanew);
 	if(!hdr32)
 		return setError("no optional header found");
-	if(hdr32->FileHeader.Machine == IMAGE_FILE_MACHINE_AMD64 ||
-	   hdr32->FileHeader.Machine == IMAGE_FILE_MACHINE_IA64)
+
+	machine = hdr32->FileHeader.Machine;
+	x64 = hdr32->OptionalHeader.Magic == IMAGE_NT_OPTIONAL_HDR64_MAGIC;
+	if (x64)
 		hdr32 = 0;
 	else
 		hdr64 = 0;
-	x64 = hdr64 != nullptr;
 
 	if(IMGHDR(Signature) != IMAGE_NT_SIGNATURE)
 		return setError("optional header does not have PE signature");
@@ -403,7 +406,7 @@ bool PEImage::initDWARFPtr(bool initDbgDir)
 	dbgDir = 0;
 	sec = hdr32 ? IMAGE_FIRST_SECTION(hdr32) : IMAGE_FIRST_SECTION(hdr64);
 	symtable = DPV<char>(IMGHDR(FileHeader.PointerToSymbolTable));
-    nsym = IMGHDR(FileHeader.NumberOfSymbols);
+	nsym = IMGHDR(FileHeader.NumberOfSymbols);
 	strtable = symtable + nsym * IMAGE_SIZEOF_SYMBOL;
 	initDWARFSegments();
 
@@ -420,43 +423,43 @@ bool PEImage::initDWARFObject()
 
 	if (hdr->Machine == IMAGE_FILE_MACHINE_UNKNOWN && hdr->NumberOfSections == 0xFFFF)
 	{
-        static CLSID bigObjClSID = { 0xD1BAA1C7, 0xBAEE, 0x4ba9, { 0xAF, 0x20, 0xFA, 0xF6, 0x6A, 0xA4, 0xDC, 0xB8 } };
+		static CLSID bigObjClSID = { 0xD1BAA1C7, 0xBAEE, 0x4ba9, { 0xAF, 0x20, 0xFA, 0xF6, 0x6A, 0xA4, 0xDC, 0xB8 } };
 		ANON_OBJECT_HEADER_BIGOBJ* bighdr = DPV<ANON_OBJECT_HEADER_BIGOBJ> (0);
 		if (!bighdr || bighdr->Version < 2 || bighdr->ClassID != bigObjClSID)
 			return setError("invalid big object file COFF header");
 		sec = (IMAGE_SECTION_HEADER*)((char*)(bighdr + 1) + bighdr->SizeOfData);
-        nsec = bighdr->NumberOfSections;
-        bigobj = true;
-        symtable = DPV<char>(bighdr->PointerToSymbolTable);
-        nsym = bighdr->NumberOfSymbols;
-	    strtable = symtable + nsym * sizeof(IMAGE_SYMBOL_EX);
+		nsec = bighdr->NumberOfSections;
+		bigobj = true;
+		symtable = DPV<char>(bighdr->PointerToSymbolTable);
+		nsym = bighdr->NumberOfSymbols;
+		strtable = symtable + nsym * sizeof(IMAGE_SYMBOL_EX);
 	}
-    else if (hdr->Machine != IMAGE_FILE_MACHINE_UNKNOWN)
-    {
-        sec = (IMAGE_SECTION_HEADER*)(hdr + 1);
-        nsec = hdr->NumberOfSections;
-        bigobj = false;
-        hdr32 = (IMAGE_NT_HEADERS32*)((char*)hdr - 4); // skip back over signature
-	    symtable = DPV<char>(IMGHDR(FileHeader.PointerToSymbolTable));
-        nsym = IMGHDR(FileHeader.NumberOfSymbols);
-	    strtable = symtable + nsym * IMAGE_SIZEOF_SYMBOL;
-    }
-    else
-	    return setError("Unknown object file format");
+	else if (hdr->Machine != IMAGE_FILE_MACHINE_UNKNOWN)
+	{
+		sec = (IMAGE_SECTION_HEADER*)(hdr + 1);
+		nsec = hdr->NumberOfSections;
+		bigobj = false;
+		hdr32 = (IMAGE_NT_HEADERS32*)((char*)hdr - 4); // skip back over signature
+		symtable = DPV<char>(IMGHDR(FileHeader.PointerToSymbolTable));
+		nsym = IMGHDR(FileHeader.NumberOfSymbols);
+		strtable = symtable + nsym * IMAGE_SIZEOF_SYMBOL;
+	}
+	else
+		return setError("Unknown object file format");
 
-    if (!symtable || !strtable)
-	    return setError("Unknown object file format");
+	if (!symtable || !strtable)
+		return setError("Unknown object file format");
 
-    initDWARFSegments();
-    setError(0);
-    return true;
+	initDWARFSegments();
+	setError(0);
+	return true;
 }
 
 static DWORD sizeInImage(const IMAGE_SECTION_HEADER& sec)
 {
-    if (sec.Misc.VirtualSize == 0)
-        return sec.SizeOfRawData; // for object files
-    return sec.SizeOfRawData < sec.Misc.VirtualSize ? sec.SizeOfRawData : sec.Misc.VirtualSize;
+	if (sec.Misc.VirtualSize == 0)
+		return sec.SizeOfRawData; // for object files
+	return sec.SizeOfRawData < sec.Misc.VirtualSize ? sec.SizeOfRawData : sec.Misc.VirtualSize;
 }
 
 void PEImage::initSec(PESection& peSec, int secNo) const
@@ -528,113 +531,113 @@ bool PEImage::relocateDebugLineInfo(unsigned int img_base)
 
 int PEImage::getRelocationInLineSegment(unsigned int offset) const
 {
-    return getRelocationInSegment(debug_line.secNo, offset);
+	return getRelocationInSegment(debug_line.secNo, offset);
 }
 
 int PEImage::getRelocationInSegment(int segment, unsigned int offset) const
 {
-    if (segment < 0)
-        return -1;
+	if (segment < 0)
+		return -1;
 
-    int cnt = sec[segment].NumberOfRelocations;
-    IMAGE_RELOCATION* rel = DPV<IMAGE_RELOCATION>(sec[segment].PointerToRelocations, cnt * sizeof(IMAGE_RELOCATION));
-    if (!rel)
-        return -1;
+	int cnt = sec[segment].NumberOfRelocations;
+	IMAGE_RELOCATION* rel = DPV<IMAGE_RELOCATION>(sec[segment].PointerToRelocations, cnt * sizeof(IMAGE_RELOCATION));
+	if (!rel)
+		return -1;
 
-    for (int i = 0; i < cnt; i++)
-        if (rel[i].VirtualAddress == offset)
-        {
-            if (bigobj)
-            {
-                IMAGE_SYMBOL_EX* sym = (IMAGE_SYMBOL_EX*)(symtable + rel[i].SymbolTableIndex * sizeof(IMAGE_SYMBOL_EX));
-                if (!sym)
-                    return -1;
-                return sym->SectionNumber;
-            }
-            else
-            {
-                IMAGE_SYMBOL* sym = (IMAGE_SYMBOL*)(symtable + rel[i].SymbolTableIndex * IMAGE_SIZEOF_SYMBOL);
-                if (!sym)
-                    return -1;
-                return sym->SectionNumber;
-            }
-        }
+	for (int i = 0; i < cnt; i++)
+		if (rel[i].VirtualAddress == offset)
+		{
+			if (bigobj)
+			{
+				IMAGE_SYMBOL_EX* sym = (IMAGE_SYMBOL_EX*)(symtable + rel[i].SymbolTableIndex * sizeof(IMAGE_SYMBOL_EX));
+				if (!sym)
+					return -1;
+				return sym->SectionNumber;
+			}
+			else
+			{
+				IMAGE_SYMBOL* sym = (IMAGE_SYMBOL*)(symtable + rel[i].SymbolTableIndex * IMAGE_SIZEOF_SYMBOL);
+				if (!sym)
+					return -1;
+				return sym->SectionNumber;
+			}
+		}
 
-    return -1;
+	return -1;
 }
 
 ///////////////////////////////////////////////////////////////////////
 struct LineInfoDataHeader
 {
-    int relocoff;
-    short segment;
-    short flags;
-    int size;
+	int relocoff;
+	short segment;
+	short flags;
+	int size;
 };
 struct LineInfoData
 {
-    int nameIndex;
-    int numLines;
-    int lineInfoSize;
+	int nameIndex;
+	int numLines;
+	int lineInfoSize;
 };
 
 struct LineInfoPair
 {
-    int offset;
-    int line;
+	int offset;
+	int line;
 };
 
 int PEImage::dumpDebugLineInfoCOFF() const
 {
-    char* f3section = 0;
-    char* f4section = 0;
+	char* f3section = 0;
+	char* f4section = 0;
 	for(int s = 0; s < nsec; s++)
-    {
-        if (strncmp((char*)sec[s].Name, ".debug$S", 8) == 0)
-        {
-            DWORD* base = DPV<DWORD>(sec[s].PointerToRawData, sec[s].SizeOfRawData);
-            if (!base || *base != 4)
-                continue;
-            DWORD* end = base + sec[s].SizeOfRawData / 4;
-            int lineInfoTotalSize = 0;
-            int lineInfoAccumulatedSize = 0;
-            for (DWORD* p = base + 1; p < end; p += (p[1] + 3) / 4 + 2)
-            {
-                if (!f4section && p[0] == 0xf4)
-                    f4section = (char*)p + 8;
-                if (!f3section && p[0] == 0xf3)
-                    f3section = (char*)p + 8;
-                if (p[0] != 0xf2)
-                    continue;
+	{
+		if (strncmp((char*)sec[s].Name, ".debug$S", 8) == 0)
+		{
+			DWORD* base = DPV<DWORD>(sec[s].PointerToRawData, sec[s].SizeOfRawData);
+			if (!base || *base != 4)
+				continue;
+			DWORD* end = base + sec[s].SizeOfRawData / 4;
+			int lineInfoTotalSize = 0;
+			int lineInfoAccumulatedSize = 0;
+			for (DWORD* p = base + 1; p < end; p += (p[1] + 3) / 4 + 2)
+			{
+				if (!f4section && p[0] == 0xf4)
+					f4section = (char*)p + 8;
+				if (!f3section && p[0] == 0xf3)
+					f3section = (char*)p + 8;
+				if (p[0] != 0xf2)
+					continue;
 
-                lineInfoTotalSize = p[1];
-                lineInfoAccumulatedSize = sizeof(LineInfoDataHeader);
+				lineInfoTotalSize = p[1];
+				lineInfoAccumulatedSize = sizeof(LineInfoDataHeader);
 
-                LineInfoDataHeader* pLineInfoDataHeader = (LineInfoDataHeader*) (p + 2);
-                int section = getRelocationInSegment(s, (char*)pLineInfoDataHeader - (char*)base);
-                const char* secname = findSectionSymbolName(section);
-                printf("Sym: %s\n", secname ? secname : "<none>");
+				LineInfoDataHeader* pLineInfoDataHeader = (LineInfoDataHeader*) (p + 2);
+				int section = getRelocationInSegment(s, (char*)pLineInfoDataHeader - (char*)base);
+				const char* secname = findSectionSymbolName(section);
+				printf("Sym: %s\n", secname ? secname : "<none>");
 
-                DWORD* pLID = p + 2 + (sizeof(LineInfoDataHeader) / 4);
-                while (lineInfoAccumulatedSize < lineInfoTotalSize && pLID < end)
-                {
-                    LineInfoData* pLineInfoData = (LineInfoData*) (pLID);
+				DWORD* pLID = p + 2 + (sizeof(LineInfoDataHeader) / 4);
+				while (lineInfoAccumulatedSize < lineInfoTotalSize && pLID < end)
+				{
+					LineInfoData* pLineInfoData = (LineInfoData*) (pLID);
 
-                    int* f3off = f4section ? (int*)(f4section + pLineInfoData->nameIndex) : 0;
-                    const char* fname = f3off ? f3section + *f3off : "unknown";
-                    printf("File: %s\n", fname);
+					int* f3off = f4section ? (int*)(f4section + pLineInfoData->nameIndex) : 0;
+					const char* fname = f3off ? f3section + *f3off : "unknown";
+					printf("File: %s\n", fname);
 
-                    LineInfoPair* lineInfoPairs = (LineInfoPair*) (pLineInfoData + 1);
-                    for (int i = 0; i < pLineInfoData->numLines; ++i)
-                        printf("\tOff 0x%x: Line %d\n", lineInfoPairs[i].offset, lineInfoPairs[i].line & 0x7fffffff);
+					LineInfoPair* lineInfoPairs = (LineInfoPair*) (pLineInfoData + 1);
+					for (int i = 0; i < pLineInfoData->numLines; ++i)
+						printf("\tOff 0x%x: Line %d\n", lineInfoPairs[i].offset, lineInfoPairs[i].line & 0x7fffffff);
 
-                    pLID += (pLineInfoData->lineInfoSize / 4);
-                    lineInfoAccumulatedSize += pLineInfoData->lineInfoSize;
-                }
-            }
-        }
-    }
-    return 0;
+					pLID += (pLineInfoData->lineInfoSize / 4);
+					lineInfoAccumulatedSize += pLineInfoData->lineInfoSize;
+				}
+			}
+		}
+	}
+	return 0;
 }
 
 int _pstrlen(const BYTE* &p)
@@ -650,80 +653,80 @@ int _pstrlen(const BYTE* &p)
 
 unsigned _getIndex(const BYTE* &p)
 {
-    if (*p & 0x80)
-    {
-        p += 2;
-        return ((p[-2] << 8) | p[-1]) & 0x7fff;
-    }
-    return *p++;
+	if (*p & 0x80)
+	{
+		p += 2;
+		return ((p[-2] << 8) | p[-1]) & 0x7fff;
+	}
+	return *p++;
 }
 
 int PEImage::dumpDebugLineInfoOMF() const
 {
-    std::vector<const unsigned char*> lnames;
-    std::vector<const unsigned char*> llnames;
-    const unsigned char* fname = 0;
-    unsigned char* base = (unsigned char*) dump_base;
-    if (*base != 0x80) // assume THEADR record
-        return -1;
-    unsigned char* end = base + dump_total_len;
-    for(unsigned char* p = base; p < end; p += *(unsigned short*)(p + 1) + 3)
-    {
-        switch(*p)
-        {
-        case 0x80: // THEADR
-            fname = p + 3; // pascal string
-            break;
-        case 0x96: // LNAMES
-        {
-            int len = *(unsigned short*)(p + 1);
-            for(const unsigned char* q = p + 3; q < p + len + 2; q += _pstrlen (q)) // defined behaviour?
-                lnames.push_back(q);
-            break;
-        }
-        case 0xCA: // LLNAMES
-        {
-            int len = *(unsigned short*)(p + 1);
-            for(const unsigned char* q = p + 3; q < p + len + 2; q += _pstrlen (q)) // defined behaviour?
-                llnames.push_back(q);
-            break;
-        }
-        case 0x95: // LINNUM
-        {
-            const unsigned char* q = p + 3;
-            int basegrp = _getIndex(q);
-            int baseseg = _getIndex(q);
-            unsigned num = (p + *(unsigned short*)(p + 1) + 2 - q) / 6;
-            const unsigned char* fn = fname;
-            int flen = fn ? _pstrlen(fn) : 0;
-            printf("File: %.*s, BaseSegment %d\n", flen, fn, baseseg);
-            for (int i = 0; i < num; i++)
-                printf("\tOff 0x%x: Line %d\n", *(int*)(q + 2 + 6 * i), *(unsigned short*)(p + 6 * i));
-            break;
-        }
-        case 0xc5: // LINSYM
-        {
-            const unsigned char* q = p + 3;
-            unsigned flags = *q++;
-            unsigned pubname = _getIndex(q);
-            unsigned num = (p + *(unsigned short*)(p + 1) + 2 - q) / 6;
-            if (num == 0)
-                break;
-            const unsigned char* fn = fname;
-            int flen = fn ? _pstrlen(fn) : 0;
-            const unsigned char* sn = (pubname == 0 || pubname > lnames.size() ? 0 : lnames[pubname-1]);
-            int slen = sn ? _pstrlen(sn) : 0;
-            printf("Sym: %.*s\n", slen, sn);
-            printf("File: %.*s\n", flen, fn);
-            for (unsigned i = 0; i < num; i++)
-                printf("\tOff 0x%x: Line %d\n", *(int*)(q + 2 + 6 * i), *(unsigned short*)(q + 6 * i));
-            break;
-        }
-        default:
-            break;
-        }
-    }
-    return 0;
+	std::vector<const unsigned char*> lnames;
+	std::vector<const unsigned char*> llnames;
+	const unsigned char* fname = 0;
+	unsigned char* base = (unsigned char*) dump_base;
+	if (*base != 0x80) // assume THEADR record
+		return -1;
+	unsigned char* end = base + dump_total_len;
+	for(unsigned char* p = base; p < end; p += *(unsigned short*)(p + 1) + 3)
+	{
+		switch(*p)
+		{
+		case 0x80: // THEADR
+			fname = p + 3; // pascal string
+			break;
+		case 0x96: // LNAMES
+		{
+			int len = *(unsigned short*)(p + 1);
+			for(const unsigned char* q = p + 3; q < p + len + 2; q += _pstrlen (q)) // defined behaviour?
+				lnames.push_back(q);
+			break;
+		}
+		case 0xCA: // LLNAMES
+		{
+			int len = *(unsigned short*)(p + 1);
+			for(const unsigned char* q = p + 3; q < p + len + 2; q += _pstrlen (q)) // defined behaviour?
+				llnames.push_back(q);
+			break;
+		}
+		case 0x95: // LINNUM
+		{
+			const unsigned char* q = p + 3;
+			int basegrp = _getIndex(q);
+			int baseseg = _getIndex(q);
+			unsigned num = (p + *(unsigned short*)(p + 1) + 2 - q) / 6;
+			const unsigned char* fn = fname;
+			int flen = fn ? _pstrlen(fn) : 0;
+			printf("File: %.*s, BaseSegment %d\n", flen, fn, baseseg);
+			for (int i = 0; i < num; i++)
+				printf("\tOff 0x%x: Line %d\n", *(int*)(q + 2 + 6 * i), *(unsigned short*)(p + 6 * i));
+			break;
+		}
+		case 0xc5: // LINSYM
+		{
+			const unsigned char* q = p + 3;
+			unsigned flags = *q++;
+			unsigned pubname = _getIndex(q);
+			unsigned num = (p + *(unsigned short*)(p + 1) + 2 - q) / 6;
+			if (num == 0)
+				break;
+			const unsigned char* fn = fname;
+			int flen = fn ? _pstrlen(fn) : 0;
+			const unsigned char* sn = (pubname == 0 || pubname > lnames.size() ? 0 : lnames[pubname-1]);
+			int slen = sn ? _pstrlen(sn) : 0;
+			printf("Sym: %.*s\n", slen, sn);
+			printf("File: %.*s\n", flen, fn);
+			for (unsigned i = 0; i < num; i++)
+				printf("\tOff 0x%x: Line %d\n", *(int*)(q + 2 + 6 * i), *(unsigned short*)(q + 6 * i));
+			break;
+		}
+		default:
+			break;
+		}
+	}
+	return 0;
 }
 
 ///////////////////////////////////////////////////////////////////////
@@ -743,29 +746,29 @@ const char* PEImage::t_findSectionSymbolName(int s) const
 	for(int i = 0; i < nsym; i += 1 + sym->NumberOfAuxSymbols)
 	{
 		sym = (SYM*) symtable + i;
-        if (sym->SectionNumber == s && sym->StorageClass == IMAGE_SYM_CLASS_EXTERNAL)
-        {
-            static char sname[10] = { 0 };
+		if (sym->SectionNumber == s && sym->StorageClass == IMAGE_SYM_CLASS_EXTERNAL)
+		{
+			static char sname[10] = { 0 };
 
-		    if (sym->N.Name.Short == 0)
-                return strtable + sym->N.Name.Long;
-            return strncpy (sname, (char*)sym->N.ShortName, 8);
-        }
+			if (sym->N.Name.Short == 0)
+				return strtable + sym->N.Name.Long;
+			return strncpy (sname, (char*)sym->N.ShortName, 8);
+		}
 	}
-    return 0;
+	return 0;
 }
 
 const char* PEImage::findSectionSymbolName(int s) const
 {
-    if (s < 0 || s >= nsec)
-        return 0;
-    if (!(sec[s].Characteristics & IMAGE_SCN_LNK_COMDAT))
-        return 0;
+	if (s < 0 || s >= nsec)
+		return 0;
+	if (!(sec[s].Characteristics & IMAGE_SCN_LNK_COMDAT))
+		return 0;
 
-    if (bigobj)
-        return t_findSectionSymbolName<IMAGE_SYMBOL_EX> (s);
-    else
-        return t_findSectionSymbolName<IMAGE_SYMBOL> (s);
+	if (bigobj)
+		return t_findSectionSymbolName<IMAGE_SYMBOL_EX> (s);
+	else
+		return t_findSectionSymbolName<IMAGE_SYMBOL> (s);
 }
 
 void PEImage::createSymbolCache() const
