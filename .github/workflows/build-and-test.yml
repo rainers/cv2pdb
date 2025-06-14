@@ -8,7 +8,7 @@ env:
 
   # Configuration type to build.
   BUILD_CONFIGURATION: Release
-  BUILD_PLATFORM_TOOLSET: v142
+  BUILD_PLATFORM_TOOLSET: v143
 
 jobs:
   build:
