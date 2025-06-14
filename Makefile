@@ -84,7 +84,7 @@ $(BIN): $(SRC) $(ADD) $(TEST) VERSION
 
 ###############################
 cv2pdb_exe:
-    devenv /Project "cv2pdb"  /Build "Release|Win32" src\cv2pdb_vs12.sln
+	devenv /Project "cv2pdb"  /Build "Release|Win32" src\cv2pdb_vs12.sln
 
 test: cv2pdb_exe
 	cd ..\test && nmake test
