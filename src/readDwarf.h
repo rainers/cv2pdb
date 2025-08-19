@@ -406,6 +406,7 @@ struct DWARF_LineState
 	unsigned long last_addr;
 	std::vector<mspdb::LineInfoEntry> lineInfo;
 	unsigned int lineInfo_file;
+	unsigned int lineInfo_low_line;
 
 	DWARF_LineState()
 	{

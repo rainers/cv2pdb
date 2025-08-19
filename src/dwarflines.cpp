@@ -41,13 +41,13 @@ static int cmpAdr(const void* s1, const void* s2)
 }
 
 
-bool printLines(char const *fname, unsigned short sec, char const *secname,
+bool printLines(char const *fname, unsigned short sec, char const *secname, unsigned int low_line,
                 mspdb::LineInfoEntry* pLineInfo, long numLineInfo)
 {
     printf("Sym: %s\n", secname ? secname : "<none>");
     printf("File: %s\n", fname);
     for (int i = 0; i < numLineInfo; i++)
-        printf("\tOff 0x%x: Line %d\n", pLineInfo[i].offset, pLineInfo[i].line);
+        printf("\tOff 0x%x: Line %d\n", pLineInfo[i].offset, pLineInfo[i].line + low_line);
     return true;
 }
 
@@ -90,7 +90,7 @@ bool _flushDWARFLines(const PEImage& img, mspdb::Mod* mod, DWARF_LineState& stat
 
     if (!mod)
     {
-        printLines(fname.c_str(), segIndex, img.findSectionSymbolName(segIndex),
+        printLines(fname.c_str(), segIndex, img.findSectionSymbolName(segIndex), state.lineInfo_low_line,
                    state.lineInfo.data(), state.lineInfo.size());
 		state.lineInfo.resize(0);
 		return true;
@@ -100,12 +100,11 @@ bool _flushDWARFLines(const PEImage& img, mspdb::Mod* mod, DWARF_LineState& stat
 
 	int rc = 1;
 	unsigned int low_offset = state.lineInfo[0].offset;
-	unsigned short low_line = state.lineInfo[0].line;
+	unsigned int low_line = state.lineInfo_low_line;
 
 	for (size_t ln = 0; ln < state.lineInfo.size(); ++ln)
 	{
 		auto& line_entry = state.lineInfo[ln];
-		line_entry.line -= low_line;
 		line_entry.offset -= low_offset;
 	}
 
@@ -151,23 +150,26 @@ bool addLineInfo(const PEImage& img, mspdb::Mod* mod, DWARF_LineState& state)
 		return true;
 	mspdb::LineInfoEntry entry;
 	entry.offset = state.address - state.seg_offset;
-	entry.line = state.line;
 	if (!state.lineInfo.empty())
 	{
-		auto first_entry = state.lineInfo.front();
 		auto last_entry = state.lineInfo.back();
 		// We can handle out-of-order line numbers, but we can't handle out-of-order addresses
-		if (entry.line < first_entry.line || entry.offset < last_entry.offset || state.lineInfo_file != state.file)
+		if (state.line < state.lineInfo_low_line || state.line > state.lineInfo_low_line + 0xffff ||
+			entry.offset < last_entry.offset || state.lineInfo_file != state.file)
 		{
 			if (!_flushDWARFLines(img, mod, state))
 				return false;
 		}
-		else if (entry.line == last_entry.line && entry.offset == last_entry.offset)
+		else if (state.line == last_entry.line + state.lineInfo_low_line &&
+		         entry.offset == last_entry.offset)
 		{
 			// There's no need to add duplicate entries
 			return true;
 		}
 	}
+	if (state.lineInfo.empty())
+		state.lineInfo_low_line = state.line;
+	entry.line = state.line - state.lineInfo_low_line;
 	state.lineInfo.push_back(entry);
 	state.lineInfo_file = state.file;
 	return true;
