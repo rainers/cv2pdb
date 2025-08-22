@@ -518,6 +518,17 @@ public:
 				reg = LEB128(ptr); // restore register to initial state
 				break;
 
+				/* GNU extensions. */
+			case DW_CFA_GNU_window_save:
+				break; // used only by SPARC and AArch64
+			case DW_CFA_GNU_args_size:
+				LEB128(ptr); // ignore
+				break;
+			case DW_CFA_GNU_negative_offset_extended:
+				reg = LEB128(ptr);
+				off = -LEB128(ptr) * entry.data_alignment_factor;
+				break;
+
 			case DW_CFA_remember_state:
 			case DW_CFA_restore_state:
 			case DW_CFA_nop:
@@ -584,6 +595,14 @@ Location findBestFBLoc(const DIECursor& parent, unsigned long fblocoff)
 	return longest;
 }
 
+unsigned int alignLength(BYTE* data, unsigned int len)
+{
+	const unsigned int sym_align = 4;
+	for (; len & (sym_align - 1); len++)
+		data[len] = 0xf0 + sym_align - (len & (sym_align - 1));
+	return len;
+}
+
 void CV2PDB::appendStackVar(const char* name, int type, Location& loc, Location& cfa)
 {
 	unsigned int len;
@@ -625,8 +644,7 @@ void CV2PDB::appendStackVar(const char* name, int type, Location& loc, Location&
 		len = cstrcpy_v(true, (BYTE*)cvs->regrel_v3.name, name);
 		len += (BYTE*)&cvs->regrel_v3.name - (BYTE*)cvs;
 	}
-	for (; len & (align-1); len++)
-		udtSymbols[cbUdtSymbols + len] = 0xf4 - (len & 3);
+	len = alignLength(udtSymbols + cbUdtSymbols, len);
 	cvs->stack_v2.len = len - 2;
 	cbUdtSymbols += len;
 }
@@ -634,7 +652,6 @@ void CV2PDB::appendStackVar(const char* name, int type, Location& loc, Location&
 void CV2PDB::appendGlobalVar(const char* name, int type, int seg, int offset)
 {
 	unsigned int len;
-	unsigned int align = 4;
 
 	for(char* cname = (char*) name; *cname; cname++)
 		if (*cname == '.')
@@ -649,8 +666,7 @@ void CV2PDB::appendGlobalVar(const char* name, int type, int seg, int offset)
 	cvs->data_v2.segment = seg;
 	len = cstrcpy_v (v3, (BYTE*) &cvs->data_v2.p_name, name);
 	len += (BYTE*) &cvs->data_v2.p_name - (BYTE*) cvs;
-	for (; len & (align-1); len++)
-		udtSymbols[cbUdtSymbols + len] = 0xf4 - (len & 3);
+	len = alignLength(udtSymbols + cbUdtSymbols, len);
 	cvs->data_v2.len = len - 2;
 	cbUdtSymbols += len;
 }
@@ -689,8 +705,7 @@ void CV2PDB::appendLexicalBlock(DWARF_InfoData& id, unsigned int proclo)
 	dsym->block_v3.segment = img.text.secNo + 1;
 	dsym->block_v3.name[0] = 0;
 	int len = sizeof(dsym->block_v3);
-	for (; len & 3; len++)
-		udtSymbols[cbUdtSymbols + len] = 0xf4 - (len & 3);
+	len = alignLength(udtSymbols + cbUdtSymbols, len);
 	dsym->block_v3.len = len - 2;
 	cbUdtSymbols += len;
 }
@@ -868,8 +883,7 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, const std::vector<RangeEntry> 
 	formatFullyQualifiedName(&procid, namebuf, sizeof namebuf);
 	len = cstrcpy_v (v3, (BYTE*) &cvs->proc_v2.p_name, namebuf);
 	len += (BYTE*) &cvs->proc_v2.p_name - (BYTE*) cvs;
-	for (; len & (align-1); len++)
-		udtSymbols[cbUdtSymbols + len] = 0xf4 - (len & 3);
+	len = alignLength(udtSymbols + cbUdtSymbols, len);
 	cvs->proc_v2.len = len - 2;
 	cbUdtSymbols += len;
 
@@ -882,8 +896,7 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, const std::vector<RangeEntry> 
 	cvs->funcinfo_32.info = 0x4200;
 	cvs->funcinfo_32.unknown2 = 0x11;
 	len = sizeof(cvs->funcinfo_32);
-	for (; len & (align-1); len++)
-		udtSymbols[cbUdtSymbols + len] = 0xf4 - (len & 3);
+	len = alignLength(udtSymbols + cbUdtSymbols, len);
 	cvs->funcinfo_32.len = len - 2;
 	cbUdtSymbols += len;
 #endif
@@ -1024,7 +1037,7 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, const std::vector<RangeEntry> 
 }
 
 // Only looks at DW_TAG_member and DW_TAG_inheritance
-int CV2PDB::addDWARFFields(DWARF_InfoData& structid, DIECursor& cursor, int baseoff, int flStart)
+int CV2PDB::addDWARFFields(DWARF_InfoData& structid, DIECursor& cursor, int baseoff, int flStart, bool& hasBackRef)
 {
 	bool isunion = structid.tag == DW_TAG_union_type;
 	int nfields = 0;
@@ -1057,6 +1070,13 @@ int CV2PDB::addDWARFFields(DWARF_InfoData& structid, DIECursor& cursor, int base
 				{
 					checkDWARFTypeAlloc(kMaxNameLen + 100);
 					codeview_fieldtype* dfieldtype = (codeview_fieldtype*)(dwarfTypes + cbDwarfTypes);
+					const DWARF_InfoData* entry = findEntryByPtr(id.type);
+					if (entry && entry->tag == DW_TAG_pointer_type)
+					{
+						const DWARF_InfoData* ptrEntry = findEntryByPtr(entry->type);
+						if (ptrEntry && ptrEntry->abbrev == structid.abbrev)
+							hasBackRef = true;
+					}
 					cbDwarfTypes += addFieldMember(dfieldtype, 0, baseoff + off, getTypeByDWARFPtr(id.type), id.name);
 					nfields++;
 				}
@@ -1078,7 +1098,7 @@ int CV2PDB::addDWARFFields(DWARF_InfoData& structid, DIECursor& cursor, int base
 						case DW_TAG_class_type:
 						case DW_TAG_structure_type:
 						case DW_TAG_union_type:
-							nfields += addDWARFFields(memberid, membercursor, baseoff + off, flStart);
+							nfields += addDWARFFields(memberid, membercursor, baseoff + off, flStart, hasBackRef);
 							break;
 						}
 					}
@@ -1103,8 +1123,7 @@ int CV2PDB::addDWARFFields(DWARF_InfoData& structid, DIECursor& cursor, int base
 				bc->bclass_v2.type = getTypeByDWARFPtr(id.type);
 				bc->bclass_v2.attribute = 3; // public
 				cbDwarfTypes += sizeof(bc->bclass_v2);
-				for (; cbDwarfTypes & 3; cbDwarfTypes++)
-					dwarfTypes[cbDwarfTypes] = 0xf4 - (cbDwarfTypes & 3);
+				cbDwarfTypes = alignLength(dwarfTypes, cbDwarfTypes);
 				nfields++;
 			}
 		}
@@ -1120,6 +1139,7 @@ int CV2PDB::addDWARFStructure(DWARF_InfoData& structid, DIECursor cursor)
 
 	int fieldlistType = 0;
 	int nfields = 0;
+	bool hasBackRef = false;
 	if (cursor.cu)
 	{
 		checkDWARFTypeAlloc(100);
@@ -1137,29 +1157,41 @@ int CV2PDB::addDWARFStructure(DWARF_InfoData& structid, DIECursor cursor)
 			bc->bclass_v2.type = getTypeByDWARFPtr(cu, structid.containing_type);
 			bc->bclass_v2.attribute = 3; // public
 			cbDwarfTypes += sizeof(bc->bclass_v2);
-			for (; cbDwarfTypes & 3; cbDwarfTypes++)
-				dwarfTypes[cbDwarfTypes] = 0xf4 - (cbDwarfTypes & 3);
+			cbDwarfTypes = alignLength(dwarfTypes, cbDwarfTypes);
 			nfields++;
 		}
 #endif
-		nfields += addDWARFFields(structid, cursor, 0, flbegin);
+		nfields += addDWARFFields(structid, cursor, 0, flbegin, hasBackRef);
 		fl = (codeview_reftype*) (dwarfTypes + flbegin);
 		fl->fieldlist.len = cbDwarfTypes - flbegin - 2;
 		fieldlistType = nextDwarfType++;
 	}
 
-	checkUserTypeAlloc(kMaxNameLen + 100);
-	codeview_type* cvt = (codeview_type*) (userTypes + cbUserTypes);
-
 	char namebuf[kMaxNameLen] = {};
 	formatFullyQualifiedName(&structid, namebuf, sizeof namebuf);
+
+	int udttype = nextUserType;
+	if (hasBackRef && fieldlistType)
+	{
+		// with back references, make the original struct incomplete and
+		// put the full definition into the DWARF chunk
+		checkDWARFTypeAlloc(kMaxNameLen + 100);
+		codeview_type* dwarf = (codeview_type*)(dwarfTypes + cbDwarfTypes);
+		int len = addAggregate(dwarf, structid.tag == DW_TAG_class_type, nfields, fieldlistType, 0, 0, 0, structid.byte_size, namebuf, nullptr);
+		cbDwarfTypes += len;
+		udttype = nextDwarfType++;
+		fieldlistType = 0;
+		nfields = 0;
+	}
+	checkUserTypeAlloc(kMaxNameLen + 100);
+	codeview_type* cvt = (codeview_type*)(userTypes + cbUserTypes);
 	int attr = fieldlistType ? 0 : kPropIncomplete;
 	int len = addAggregate(cvt, structid.tag == DW_TAG_class_type, nfields, fieldlistType, attr, 0, 0, structid.byte_size, namebuf, nullptr);
 	cbUserTypes += len;
+	int cvtype = nextUserType++;
 
 	//ensureUDT()?
-	int cvtype = nextUserType++;
-	addUdtSymbol(cvtype, namebuf);
+	addUdtSymbol(udttype, namebuf);
 	return cvtype;
 }
 
@@ -1287,8 +1319,7 @@ int CV2PDB::addDWARFArray(DWARF_InfoData& arrayid, const DIECursor& cursor)
 	int size = (upperBound - lowerBound + 1) * getDWARFTypeSize(cursor, arrayid.type);
 	len += write_numeric_leaf(size, &cvt->array_v2.arrlen);
 	((BYTE*)cvt)[len++] = 0; // empty name
-	for (; len & 3; len++)
-		userTypes[cbUserTypes + len] = 0xf4 - (len & 3);
+	len = alignLength(userTypes + cbUserTypes, len);
 	cvt->array_v2.len = len - 2;
 
 	cbUserTypes += len;
@@ -1297,7 +1328,7 @@ int CV2PDB::addDWARFArray(DWARF_InfoData& arrayid, const DIECursor& cursor)
 	return cvtype;
 }
 
-bool CV2PDB::addDWARFTypes()
+bool CV2PDB::addDWARFSymbols()
 {
 	checkUdtSymbolAlloc(100);
 
@@ -1314,8 +1345,7 @@ bool CV2PDB::addDWARFTypes()
 	cvs->ssearch_v1.segment = img.text.secNo + 1;
 	cvs->ssearch_v1.offset = 0;
 	len = sizeof(cvs->ssearch_v1);
-	for (; len & (align-1); len++)
-		data[off + len] = 0xf4 - (len & 3);
+	len = alignLength(data + off, len);
 	cvs->ssearch_v1.len = len - 2;
 	off += len;
 
@@ -1327,8 +1357,7 @@ bool CV2PDB::addDWARFTypes()
 	cvs->compiland_v1.machine = img.isX64() ? 0xd0 : 6; //0x06: Pentium Pro/II, 0xd0: x64
 	len = sizeof(cvs->compiland_v1) - sizeof(cvs->compiland_v1.p_name);
 	len += c2p("cv2pdb", cvs->compiland_v1.p_name);
-	for (; len & (align-1); len++)
-		data[off + len] = 0xf4 - (len & 3);
+	len = alignLength(data + off, len);
 	cvs->compiland_v1.len = len - 2;
 	off += len;
 
@@ -1343,7 +1372,7 @@ bool CV2PDB::addDWARFTypes()
 	//////////////////////////
 	mspdb::Mod* mod = globalMod();
 	//return writeSymbols (mod, ddata, off, prefix, true);
-	return addSymbols (mod, data, off, true);
+	return addSymbols(mod, data, off, true);
 }
 
 bool CV2PDB::addDWARFSectionContrib(mspdb::Mod* mod, unsigned long pclo, unsigned long pchi)

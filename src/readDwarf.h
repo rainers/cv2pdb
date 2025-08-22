@@ -27,6 +27,7 @@ enum DebugLevel : unsigned {
 	DbgDwarfRangeLists = 0x1000,
 	DbgDwarfLines = 0x2000,
 	DbgPrintDwarfTree = 0x4000,
+	DbgPdbUDT = 0x8000,
 };
 
 DEFINE_ENUM_FLAG_OPERATORS(DebugLevel);

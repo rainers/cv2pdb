@@ -3360,13 +3360,15 @@ void CV2PDB::checkUdtSymbolAlloc(int size, int add)
 
 bool CV2PDB::addUdtSymbol(int type, const char* name)
 {
+	if (debug & DbgPdbUDT)
+		fprintf(stderr, "%s:%d: adding UDT %s -> type:0x%x\n", __FUNCTION__, __LINE__, name, type);
 	checkUdtSymbolAlloc(100 + kMaxNameLen);
 
 	// no need to convert to udt_v2/udt_v3, the debugger is fine with it.
 	codeview_symbol* sym = (codeview_symbol*) (udtSymbols + cbUdtSymbols);
 	sym->udt_v2.id = v3 ? S_UDT_V3 : S_UDT_V2;
 	sym->udt_v2.type = translateType(type);
-	int len = cstrcpy_v (v3, (BYTE*)&sym->udt_v2.p_name, name ? name : ""); // allow anonymous typedefs
+	int len = cstrcpy_v(v3, (BYTE*)&sym->udt_v2.p_name, name ? name : ""); // allow anonymous typedefs
 	sym->udt_v2.len = sizeof(sym->udt_v2) - sizeof(sym->udt_v2.p_name) + len - 2;
 	cbUdtSymbols += sym->udt_v2.len + 2;
 
@@ -3388,19 +3390,23 @@ bool CV2PDB::addSymbols(mspdb::Mod* mod, BYTE* symbols, int cb, bool addGlobals)
 
 bool CV2PDB::writeSymbols(mspdb::Mod* mod, DWORD* data, int databytes, int prefix, bool addGlobals)
 {
+	BYTE* bdata = (BYTE*)(data + prefix);
 	if (addGlobals && staticSymbols)
-		databytes = copySymbols(staticSymbols, cbStaticSymbols, (BYTE*) (data + prefix), databytes);
+		databytes = copySymbols(staticSymbols, cbStaticSymbols, bdata, databytes);
 	if (addGlobals && globalSymbols)
-		databytes = copySymbols(globalSymbols, cbGlobalSymbols, (BYTE*) (data + prefix), databytes);
+		databytes = copySymbols(globalSymbols, cbGlobalSymbols, bdata, databytes);
 	if (addGlobals && udtSymbols)
-		databytes = copySymbols(udtSymbols, cbUdtSymbols, (BYTE*) (data + prefix), databytes);
+		databytes = copySymbols(udtSymbols, cbUdtSymbols, bdata, databytes);
+
+	for (; databytes & 3; databytes++)
+		bdata[databytes] = 0xf4 - (databytes & 3);
 
 	data[0] = 4;
 	data[1] = 0xf1;
 	data[2] = databytes + 4 * (prefix - 3);
 	if (prefix > 3)
 		data[3] = 1;
-	int rc = mod->AddSymbols((BYTE*) data, ((databytes + 3) / 4 + prefix) * 4);
+	int rc = mod->AddSymbols((BYTE*) data, (databytes / 4 + prefix) * 4);
 	if (rc <= 0)
 		return setError(
 		    mspdb::vsVersion == 10 ? "cannot add symbols to module, probably msobj100.dll missing"

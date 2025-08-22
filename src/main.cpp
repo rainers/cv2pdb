@@ -302,7 +302,7 @@ int T_main(int argc, TCHAR* argv[])
 		if(!cv2pdb.createDWARFModules())
 			fatal(SARG ": %s", pdbname, cv2pdb.getLastError());
 
-		if(!cv2pdb.addDWARFTypes())
+		if(!cv2pdb.addDWARFSymbols())
 			fatal(SARG ": %s", pdbname, cv2pdb.getLastError());
 
 		if(!cv2pdb.addDWARFLines())

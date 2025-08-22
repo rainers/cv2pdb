@@ -327,4 +327,12 @@ unreleased Version 0.22
   * DWARF: fully-qualified name generation for procs, structs, enums and classes.
     Thanks to alexbudfb
 
-  
+2025-08-22 Version 0.54
+
+  * Allow the use of debugging symbols in a separate file. Thanks to michailf
+  * Fixed processing of ARM64 images. Thanks to michailf
+  * Fixed DWARF line number wrapping
+  * added parsing support for DW_CFA_GNU_args_size and
+    DW_CFA_GNU_negative_offset_extended
+  * Fixed failure to convert struct with field member with pointer type to
+    struct type itself

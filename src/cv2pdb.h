@@ -165,7 +165,7 @@ public:
 
 	// DWARF
 	bool createDWARFModules();
-	bool addDWARFTypes();
+	bool addDWARFSymbols();
 	bool addDWARFLines();
 	bool addDWARFPublics();
 	bool writeDWARFImage(const TCHAR* opath);
@@ -179,7 +179,7 @@ public:
 	void formatFullyQualifiedName(const DWARF_InfoData* node, char* buf, size_t cbBuf) const;
 
 	int  addDWARFStructure(DWARF_InfoData& id, DIECursor cursor);
-	int  addDWARFFields(DWARF_InfoData& structid, DIECursor& cursor, int off, int flStart);
+	int  addDWARFFields(DWARF_InfoData& structid, DIECursor& cursor, int off, int flStart, bool& hasBackRef);
 	int  addDWARFArray(DWARF_InfoData& arrayid, const DIECursor& cursor);
 	int  addDWARFBasicType(const char*name, int encoding, int byte_size);
 	int  addDWARFEnum(DWARF_InfoData& enumid, DIECursor cursor);
