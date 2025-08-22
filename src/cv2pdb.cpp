@@ -3398,15 +3398,12 @@ bool CV2PDB::writeSymbols(mspdb::Mod* mod, DWORD* data, int databytes, int prefi
 	if (addGlobals && udtSymbols)
 		databytes = copySymbols(udtSymbols, cbUdtSymbols, bdata, databytes);
 
-	for (; databytes & 3; databytes++)
-		bdata[databytes] = 0xf4 - (databytes & 3);
-
 	data[0] = 4;
 	data[1] = 0xf1;
 	data[2] = databytes + 4 * (prefix - 3);
 	if (prefix > 3)
 		data[3] = 1;
-	int rc = mod->AddSymbols((BYTE*) data, (databytes / 4 + prefix) * 4);
+	int rc = mod->AddSymbols((BYTE*) data, ((databytes + 3) / 4 + prefix) * 4);
 	if (rc <= 0)
 		return setError(
 		    mspdb::vsVersion == 10 ? "cannot add symbols to module, probably msobj100.dll missing"
