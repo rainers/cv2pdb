@@ -1574,7 +1574,7 @@ int CV2PDB::getTypeByDWARFPtr(byte* typePtr)
 		// 
 		// First, find all entries with the same (local) name as this type.
 		auto range = mapEntryNameToEntries.equal_range(entry->name);
-		for (auto it = range.first; it != range.second; ++it) {
+		for (auto it = range.first; !ret && it != range.second; ++it) {
 			DWARF_InfoData* candidate = it->second;
 
 			// Skip self.
@@ -1613,7 +1613,9 @@ int CV2PDB::getTypeByDWARFPtr(byte* typePtr)
 				// Entries have the same tag. Checking one is sufficient.
 				if (entryParent->tag != DW_TAG_compile_unit) {
 
-					if (strcmp(candidateParent->name, entryParent->name)) {
+					if (candidateParent->name != entryParent->name &&
+						(!candidateParent->name || !entryParent->name ||
+						strcmp(candidateParent->name, entryParent->name))) {
 						// Name mismatch.
 						equivalentHierarchy = false;
 						break;
@@ -1628,10 +1630,10 @@ int CV2PDB::getTypeByDWARFPtr(byte* typePtr)
 				// Try another lookup with this new candidate.
 				ret = findTypeIdByPtr(candidate->entryPtr);
 				assert(ret);  // how can it now be in the map?
-			} else {
-				fprintf(stderr, "warn: could not find equivalent entry for typePtr %p\n", typePtr);
 			}
 		}
+		if (!ret)
+			fprintf(stderr, "warn: could not find equivalent entry for typePtr %p (%s)\n", typePtr, entry->name);
 	}
 	return ret;
 }
