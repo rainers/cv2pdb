@@ -345,6 +345,9 @@ struct DWARF_LineNumberProgramHeader
 	//LEB128 standard_opcode_lengths[opcode_base];
 	// string include_directories[] // zero byte terminated
 	// DWARF_FileNames file_names[] // zero byte terminated
+
+	// File numbers are stored 1-based, but DWARF 5 numbers files starting at zero.
+	unsigned int fileNumberOffset() const { return version >= 5 ? 1 : 0; }
 };
 
 struct DWARF4_LineNumberProgramHeader
@@ -423,7 +426,8 @@ struct DWARF_LineState
         section = -1;
 		address = 0;
 		op_index = 0;
-		file = 1;
+		// The default file index is 1, so DWARF 5 defaults to the second entry.
+		file = 1 + (hdr ? hdr->fileNumberOffset() : 0);
 		line = 1;
 		column = 0;
 		is_stmt = hdr && hdr->default_is_stmt != 0;

@@ -479,12 +479,7 @@ bool interpretDWARFLines(const PEImage& img, mspdb::Mod* mod, DebugLevel debug_)
 					state.line += SLEB128(p);
 					break;
 				case DW_LNS_set_file:
-					state.file = LEB128(p);
-					// DWARF5 numbers all files starting at zero.  We will
-					// subtract one in _flushDWARFLines when indexing the files
-					// array.
-					if (hdr->version >= 5)
-						state.file += 1;
+					state.file = LEB128(p) + hdr->fileNumberOffset();
 					break;
 				case DW_LNS_set_column:
 					state.column = LEB128(p);
