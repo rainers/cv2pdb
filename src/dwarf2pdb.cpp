@@ -732,6 +732,19 @@ void CV2PDB::formatFullyQualifiedName(const DWARF_InfoData* node, char* buf, siz
 		assert(entry);  // how can it not exist? Bug in tree construction.
 		node = entry;
 	}
+	// An out-of-line instance of an inlined function has no name in the tree, so its name
+	// and scope are taken from the entry that its abstract_origin refers to.
+	while (!node->name && node->abstract_origin) {
+		const DWARF_InfoData* origin = findEntryByPtr(node->abstract_origin);
+		if (!origin)
+			break;
+		node = origin;
+		if (node->specification) {
+			const DWARF_InfoData* decl = findEntryByPtr(node->specification);
+			if (decl)
+				node = decl;
+		}
+	}
 	DWARF_InfoData* parent = node->parent;
 	std::vector<const DWARF_InfoData*> segments;
 	segments.push_back(node);
