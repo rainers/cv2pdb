@@ -659,7 +659,7 @@ uint32_t DIECursor::readIndirectAddr(uint32_t index) const
 		return 0;
 	}
 
-	byte* refAddr = cu->addr_base + index * refSize();
+	byte* refAddr = cu->addr_base + index * cu->address_size;
 	return RDAddr(refAddr);
 }
 
