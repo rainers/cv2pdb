@@ -813,6 +813,11 @@ DWARF_InfoData* DIECursor::readNext(DWARF_InfoData* entry, bool stopAtNull)
 				entryOff, level, id.tag, id.code);
 
 	// Read all the attribute data for this DIE.
+	// The base attributes of a DWARF 5 unit can follow the indexed attributes that need them,
+	// so a first pass skips the indexed forms to read the bases.
+	bool readBases = id.tag == DW_TAG_compile_unit && cu->version >= 5;
+	byte* attrPtr = ptr;
+	byte* attrAbbrev = abbrev;
 	int attr, form;
 	for (;;)
 	{
@@ -820,7 +825,14 @@ DWARF_InfoData* DIECursor::readNext(DWARF_InfoData* entry, bool stopAtNull)
 		form = LEB128(abbrev);
 
 		if (attr == 0 && form == 0)
-			break;
+		{
+			if (!readBases)
+				break;
+			readBases = false;
+			ptr = attrPtr;
+			abbrev = attrAbbrev;
+			continue;
+		}
 
 		if (debug & DbgDwarfAttrRead)
 			fprintf(stderr, "%s:%d: offs=%x, attr=%d, form=%d\n", __FUNCTION__, __LINE__,
@@ -831,6 +843,25 @@ DWARF_InfoData* DIECursor::readNext(DWARF_InfoData* entry, bool stopAtNull)
 			if (debug & DbgDwarfAttrRead)
 				fprintf(stderr, "%s:%d: attr=%d, form=%d\n", __FUNCTION__, __LINE__,
 						attr, form);
+		}
+
+		if (readBases)
+		{
+			switch (form)
+			{
+				case DW_FORM_addrx:
+				case DW_FORM_strx:
+				case DW_FORM_loclistx:
+				case DW_FORM_rnglistx:  LEB128(ptr); continue;
+				case DW_FORM_addrx1:
+				case DW_FORM_strx1:     ptr += 1; continue;
+				case DW_FORM_addrx2:
+				case DW_FORM_strx2:     ptr += 2; continue;
+				case DW_FORM_addrx3:
+				case DW_FORM_strx3:     ptr += 3; continue;
+				case DW_FORM_addrx4:
+				case DW_FORM_strx4:     ptr += 4; continue;
+			}
 		}
 
 		DWARF_Attribute a;
