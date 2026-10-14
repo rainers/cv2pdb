@@ -33,6 +33,30 @@ static void addTrailingSlash(std::string& dir)
 		dir += '\\';
 }
 
+// Line table header fields the converter does not use, such as DW_LNCT_MD5, are skipped by the size of their form.
+static bool skipLineHeaderForm(byte*& p, unsigned int form, bool dwarf64)
+{
+	switch (form)
+	{
+	case DW_FORM_data1:
+	case DW_FORM_strx1:     p += 1; return true;
+	case DW_FORM_data2:
+	case DW_FORM_strx2:     p += 2; return true;
+	case DW_FORM_strx3:     p += 3; return true;
+	case DW_FORM_data4:
+	case DW_FORM_strx4:     p += 4; return true;
+	case DW_FORM_data8:     p += 8; return true;
+	case DW_FORM_data16:    p += 16; return true;
+	case DW_FORM_udata:
+	case DW_FORM_strx:      LEB128(p); return true;
+	case DW_FORM_block:     { unsigned int len = LEB128(p); p += len; return true; }
+	case DW_FORM_string:    p += strlen((const char*)p) + 1; return true;
+	case DW_FORM_strp:
+	case DW_FORM_line_strp: p += dwarf64 ? 8 : 4; return true;
+	default:                return false;
+	}
+}
+
 static int cmpAdr(const void* s1, const void* s2)
 {
 	const mspdb::LineInfoEntry* e1 = (const mspdb::LineInfoEntry*) s1;
@@ -322,10 +346,9 @@ bool interpretDWARFLines(const PEImage& img, mspdb::Mod* mod, DebugLevel debug_)
 							addTrailingSlash(dir);
 							break;
 						}
-						case DW_LNCT_directory_index:
-						case DW_LNCT_timestamp:
-						case DW_LNCT_size:
 						default:
+							if (skipLineHeaderForm(p, typeForm.form, cu.isDWARF64()))
+								break;
 							fprintf(stderr, "%s:%d: ERROR: unexpected type=%d form=%d for directory path lineHdrOffs=%x\n", __FUNCTION__, __LINE__,
 										typeForm.type, typeForm.form, off);
 							return false;
@@ -392,9 +415,9 @@ bool interpretDWARFLines(const PEImage& img, mspdb::Mod* mod, DebugLevel debug_)
 								return false;
 							}
 							break;
-						case DW_LNCT_timestamp:
-						case DW_LNCT_size:
 						default:
+							if (skipLineHeaderForm(p, typeForm.form, cu.isDWARF64()))
+								break;
 							fprintf(stderr, "%s:%d: ERROR: unexpected type=%d form=%d for file path lineHdrOffs=%x\n", __FUNCTION__, __LINE__,
 										typeForm.type, typeForm.form, off);
 							return false;
