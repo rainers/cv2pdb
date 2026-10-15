@@ -39,6 +39,7 @@ PEImage::PEImage(const TCHAR* iname)
 , nsym(0)
 , symtable(0)
 , strtable(0)
+, strtablesize(0)
 , bigobj(false)
 , dbgfile(false)
 , x64(false)
@@ -282,6 +283,9 @@ bool PEImage::initCVPtr(bool initDbgDir)
 	symtable = DPV<char>(IMGHDR(FileHeader.PointerToSymbolTable));
 	nsym = IMGHDR(FileHeader.NumberOfSymbols);
 	strtable = symtable + nsym * IMAGE_SIZEOF_SYMBOL;
+	strtablesize = *(uint32_t*)strtable;
+	if (strtable - dump_base + strtablesize > dump_total_len)
+		return setError("invalid string table");
 
 	if(IMGHDR(OptionalHeader.NumberOfRvaAndSizes) <= IMAGE_DIRECTORY_ENTRY_DEBUG)
 		return setError("too few entries in data directory");
@@ -482,8 +486,11 @@ void PEImage::initDWARFSegments()
 		const char* name = (const char*) sec[s].Name;
 		if(name[0] == '/')
 		{
-			int off = strtol(name + 1, 0, 10);
-			name = strtable + off;
+			unsigned off = strtoul(name + 1, 0, 10);
+			if (off < strtablesize)
+				name = strtable + off;
+			else
+				setError("invalid string table offset in section name");
 		}
 
 		// Is 'name' one of the DWARF sections?
@@ -752,7 +759,12 @@ const char* PEImage::t_findSectionSymbolName(int s) const
 			static char sname[10] = { 0 };
 
 			if (sym->N.Name.Short == 0)
-				return strtable + sym->N.Name.Long;
+			{
+				if (sym->N.Name.Long < strtablesize)
+					return strtable + sym->N.Name.Long;
+				//setError("invalid string table offset in symbol name");
+				return 0;
+			}
 			return strncpy (sname, (char*)sym->N.ShortName, 8);
 		}
 	}
