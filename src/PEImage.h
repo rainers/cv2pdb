@@ -204,6 +204,7 @@ private:
 	int nsym;
 	const char* symtable;
 	const char* strtable;
+	uint32_t strtablesize;
 	bool x64;     // targets 64-bit machine
 	WORD machine;
 	bool bigobj;
