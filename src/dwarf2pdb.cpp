@@ -1020,6 +1020,7 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, const std::vector<RangeEntry> 
 		frameBase = findBestFBLoc(cursor, frameBase.off);
 
     Location cfa = findBestCFA(*imgDbg, cfi_index, procid.pclo, procid.pchi);
+	DWARFLocalWriter locals(*this, procid, cursor, ranges.front(), frameBase, cfa);
 
 	if (cursor.cu)
 	{
@@ -1039,7 +1040,9 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, const std::vector<RangeEntry> 
 				mergeAbstractOrigin(id, *this);
 			if (id.tag == DW_TAG_formal_parameter && id.name)
 			{
-				if (id.location.type == ExprLoc || id.location.type == Block || id.location.type == SecOffset)
+				if (locals.enabled())
+					locals.add(id, cursor, true);
+				else if (id.location.type == ExprLoc || id.location.type == Block || id.location.type == SecOffset)
 				{
 					Location loc = id.location.type == SecOffset ? findBestFBLoc(cursor, id.location.sec_offset)
 					                                             : decodeLocation(id.location, &frameBase);
@@ -1053,7 +1056,7 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, const std::vector<RangeEntry> 
 		}
 		appendEndArg();
 
-		appendScopeSymbols(prev.getSubtreeCursor(), 0, ~0ull, frameBase, cfa);
+		appendScopeSymbols(prev.getSubtreeCursor(), 0, ~0ull, frameBase, cfa, locals);
 		appendEnd();
 	}
 	else
@@ -1084,11 +1087,12 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, const std::vector<RangeEntry> 
 	return true;
 }
 
-// Appends the stack variables of a scope, then an S_BLOCK32 record for each piece that
+// Appends the variables of a scope, then an S_BLOCK32 record for each piece that
 // `splitSiblingBlocks` makes of the scope's lexical blocks in [lo, hi). When a block is split into
 // several pieces, each piece gets a copy of the block's variables and the parts of its nested
 // blocks that lie within that piece.
-void CV2PDB::appendScopeSymbols(DIECursor children, uint64_t lo, uint64_t hi, Location& frameBase, Location& cfa)
+void CV2PDB::appendScopeSymbols(DIECursor children, uint64_t lo, uint64_t hi, Location& frameBase, Location& cfa,
+                                DWARFLocalWriter& locals)
 {
 	std::vector<std::vector<RangeEntry>> blockRanges;
 	std::vector<DIECursor> blockChildren;
@@ -1106,7 +1110,9 @@ void CV2PDB::appendScopeSymbols(DIECursor children, uint64_t lo, uint64_t hi, Lo
 		{
 			if (id.abstract_origin)
 				mergeAbstractOrigin(id, *this);
-			if (id.name && (id.location.type == ExprLoc || id.location.type == Block))
+			if (id.name && locals.enabled())
+				locals.add(id, cursor, false);
+			else if (id.name && (id.location.type == ExprLoc || id.location.type == Block))
 			{
 				Location loc = id.location.type == SecOffset ? findBestFBLoc(cursor, id.location.sec_offset)
 				                                             : decodeLocation(id.location, &frameBase);
@@ -1120,7 +1126,7 @@ void CV2PDB::appendScopeSymbols(DIECursor children, uint64_t lo, uint64_t hi, Lo
 	for (const BlockPiece& piece : splitSiblingBlocks(blockRanges, lo, hi))
 	{
 		appendLexicalBlock(piece.pclo, piece.pchi);
-		appendScopeSymbols(blockChildren[piece.block], piece.pclo, piece.pchi, frameBase, cfa);
+		appendScopeSymbols(blockChildren[piece.block], piece.pclo, piece.pchi, frameBase, cfa, locals);
 		appendEnd();
 	}
 }

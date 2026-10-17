@@ -1,7 +1,9 @@
 #include "dwarflocals.h"
 
 #include "PEImage.h"
+#include "cv2pdb.h"
 #include "dwarf.h"
+#include "symutil.h"
 
 #include <algorithm>
 #include <limits>
@@ -430,4 +432,97 @@ void LocalRangeResolver::emitLocation(uint64_t lo, uint64_t hi, const Location& 
 		return;
 
 	out.push_back(DefRange{ (uint32_t)(lo - sectionBase), (uint32_t)(hi - sectionBase), def });
+}
+
+DWARFLocalWriter::DWARFLocalWriter(CV2PDB& cv, const DWARF_InfoData& proc, const DIECursor& procCursor,
+                                   const RangeEntry& procRange, const Location& frameBase, const Location& bestCFA)
+	: cv(cv),
+	  resolver(*cv.imgDbg, cv.cfi_index, procCursor, procRange.pclo, procRange.pchi, cv.codeSegOff, proc.frame_base,
+	           frameBase, bestCFA)
+{
+}
+
+bool DWARFLocalWriter::enabled() const
+{
+	return mspdb::vsVersion >= 12;
+}
+
+namespace
+{
+
+// Returns the size in bytes of the DWARF type at `typePtr`, or 0 when it is not known. The type is
+// looked up in the DIE tree because `CV2PDB::getDWARFTypeSize` reads it with the compilation unit of
+// `cursor`, which misreads a type in another unit, such as the types of a Go program.
+unsigned typeSizeOf(const CV2PDB& cv, const DIECursor& cursor, byte* typePtr)
+{
+	for (int depth = 0; typePtr && depth < 64; depth++)
+	{
+		const DWARF_InfoData* type = cv.findEntryByPtr(typePtr);
+		if (!type)
+			return 0;
+		if (type->byte_size > 0)
+			return type->byte_size;
+		switch (type->tag)
+		{
+		case DW_TAG_pointer_type: case DW_TAG_reference_type: case DW_TAG_rvalue_reference_type:
+		case DW_TAG_ptr_to_member_type:
+			return cursor.cu ? cursor.cu->address_size : 0;
+		case DW_TAG_array_type:
+			return 0;
+		}
+		typePtr = type->type;
+	}
+	return 0;
+}
+
+} // namespace
+
+void DWARFLocalWriter::add(const DWARF_InfoData& var, const DIECursor& cursor, bool isParam)
+{
+	if (!LocalRangeResolver::isLocationList(var.location, cursor))
+	{
+		if (var.location.type != ExprLoc && var.location.type != Block)
+			return;
+		std::vector<LocationPiece> pieces;
+		if (!splitPieces(var.location, cursor, pieces))
+			return;
+		// A piece at a fixed address belongs to a static variable. No S_DEFRANGE record describes a
+		// fixed address, so an S_LOCAL record would show a static variable as optimized away.
+		if (std::any_of(pieces.begin(), pieces.end(), [&cursor](const LocationPiece& piece) {
+			    return decodeLocation(piece.expr, nullptr, 0, &cursor).is_abs();
+		    }))
+			return;
+		if (pieces.size() == 1 && pieces[0].size == 0)
+		{
+			// The stand-in frame base decodes an expression that uses DW_OP_fbreg as register-relative,
+			// whatever the frame base of the function is.
+			Location anyFrameBase = { Location::InReg, 0, 0 };
+			Location loc = decodeLocation(var.location, &anyFrameBase);
+			if (!loc.is_inreg() && !loc.is_regrel())
+				return;
+		}
+	}
+
+	unsigned typeSize = typeSizeOf(cv, cursor, var.type);
+	std::vector<DefRange> ranges = resolver.resolve(var.location, cursor, typeSize);
+
+	bool whole = std::all_of(ranges.begin(), ranges.end(), [](const DefRange& r) {
+		return r.loc.kind != DefRangeLocation::SubfieldRegister && !r.loc.spilledMember;
+	});
+	// dbgeng was seen to read an x64 parameter whose type is not 1, 2, 4 or 8 bytes as a pointer to
+	// the value, as the MSVC x64 convention passes such a parameter by reference. Such a parameter is
+	// written as a local on every architecture, because a local has no calling convention for a
+	// debugger to apply.
+	bool param = isParam && whole && (typeSize == 1 || typeSize == 2 || typeSize == 4 || typeSize == 8);
+
+	char name[kMaxNameLen];
+	cstrcpy_v(true, (BYTE*)name, var.name);
+	std::vector<uint8_t> records;
+	DefRangeEncoder encoder((uint16_t)(cv.img.text.secNo + 1));
+	encoder.appendLocal(records, name, cv.getTypeByDWARFPtr(var.type), param, ranges.empty());
+	encoder.appendDefRanges(records, ranges);
+
+	cv.checkUdtSymbolAlloc((int)records.size());
+	memcpy(cv.udtSymbols + cv.cbUdtSymbols, records.data(), records.size());
+	cv.cbUdtSymbols += (int)records.size();
 }

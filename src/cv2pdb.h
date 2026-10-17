@@ -25,6 +25,7 @@ class PEImage;
 struct DWARF_InfoData;
 struct DWARF_CompilationUnit;
 class CFIIndex;
+class DWARFLocalWriter;
 
 class CV2PDB : public LastError
 {
@@ -177,7 +178,8 @@ public:
 
 	bool addDWARFSectionContrib(mspdb::Mod* mod, unsigned long pclo, unsigned long pchi);
 	bool addDWARFProc(DWARF_InfoData& id, const std::vector<RangeEntry> &ranges, DIECursor cursor);
-	void appendScopeSymbols(DIECursor children, uint64_t lo, uint64_t hi, Location& frameBase, Location& cfa);
+	void appendScopeSymbols(DIECursor children, uint64_t lo, uint64_t hi, Location& frameBase, Location& cfa,
+	                        DWARFLocalWriter& locals);
 	void formatFullyQualifiedName(const DWARF_InfoData* node, char* buf, size_t cbBuf) const;
 
 	int  addDWARFStructure(DWARF_InfoData& id, DIECursor cursor);
