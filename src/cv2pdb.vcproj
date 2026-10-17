@@ -228,6 +228,14 @@
 				>
 			</File>
 			<File
+				RelativePath=".\dwarflocals.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\dwarflocals.h"
+				>
+			</File>
+			<File
 				RelativePath=".\LastError.h"
 				>
 			</File>

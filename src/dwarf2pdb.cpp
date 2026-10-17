@@ -15,6 +15,7 @@
 #include "symutil.h"
 #include "cvutil.h"
 #include "blockpieces.h"
+#include "dwarflocals.h"
 
 #include "dwarf.h"
 
@@ -239,6 +240,17 @@ int dwarf_frame_pointer_reg(const PEImage& img)
 	if (img.isARM64())
 		return 29;
 	return img.isX64() ? 6 : 5;
+}
+
+int dwarfToCVRegister(const PEImage& img, int reg)
+{
+	if (img.isARM64())
+		return dwarf_to_arm64_reg(reg);
+	if (img.isX64())
+		return dwarf_to_amd64_reg(reg);
+	// `dwarf_to_x86_reg` does not follow the i386 System V numbering of the x87, SSE and segment
+	// registers.
+	return reg >= 0 && reg <= 7 ? dwarf_to_x86_reg(reg) : 0;
 }
 
 // Index for efficient lookups in Call Frame Information entries
@@ -621,6 +633,40 @@ Location findBestCFA(const PEImage& img, const CFIIndex* index, unsigned int pcl
 		return best;
 	}
 	return ebp;
+}
+
+std::vector<CFARow> getCFARows(const PEImage& img, const CFIIndex* index, uint64_t pclo, uint64_t pchi)
+{
+	std::vector<CFARow> rows;
+	if (!img.debug_frame.isPresent() || !index)
+		return rows;
+
+	CFIEntry entry;
+	CFICursor cursor(img);
+	cursor.ptr = index->lookup((unsigned int)pclo, (unsigned int)pchi);
+	if (!cursor.ptr || !cursor.readNext(entry))
+		return rows;
+
+	// `CFICursor` reads addresses as 32 bits, so each row address is rebuilt as the 64-bit address
+	// nearest to `pclo` that has the same low 32 bits.
+	auto address = [pclo](unsigned long long loc) { return pclo + (int32_t)((uint32_t)loc - (uint32_t)pclo); };
+	CFACursor cfa(img, entry, entry.initial_location);
+	while (cfa.processNext()) {}
+	cfa.setInstructions(entry.instructions, entry.instructions_length);
+	unsigned long long row_start = cfa.loc;
+	unsigned long long fde_end = (unsigned long long) entry.initial_location + entry.address_range;
+	for (bool more = true; more; )
+	{
+		Location row = cfa.cfa;
+		more = cfa.processNext();
+		unsigned long long row_end = more ? cfa.loc : fde_end;
+		if (row_end > row_start)
+		{
+			rows.push_back(CFARow{ address(row_start), address(row_end), row });
+			row_start = row_end;
+		}
+	}
+	return rows;
 }
 
 Location findBestFBLoc(const DIECursor& parent, unsigned long fblocoff)
