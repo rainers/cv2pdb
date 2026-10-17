@@ -151,6 +151,7 @@ public:
 	bool hasDWARF() const { return debug_line.isPresent(); }
 	bool hasDebugLink() const { return gnu_debuglink.isPresent(); }
 	bool isX64() const { return x64; }
+	bool isARM64() const { return machine == IMAGE_FILE_MACHINE_ARM64; }
 	bool isDBG() const { return dbgfile; }
 	WORD machineType() const { return machine; }
 
