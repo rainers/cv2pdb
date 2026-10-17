@@ -93,7 +93,7 @@ static Location mkInReg(unsigned reg)
 	return l;
 }
 
-static Location mkAbs(int off)
+static Location mkAbs(int64_t off)
 {
 	Location l;
 	l.type = Location::Abs;
@@ -102,7 +102,7 @@ static Location mkAbs(int off)
 	return l;
 }
 
-static Location mkRegRel(int reg, int off)
+static Location mkRegRel(int reg, int64_t off)
 {
 	Location l;
 	l.type = Location::RegRel;
@@ -371,9 +371,9 @@ Location decodeLocation(const DWARF_Attribute& attr, const Location* frameBase, 
 			case DW_OP_rot:   if (stackDepth < 3) return invalid; { Location tmp = stack[stackDepth - 1]; stack[stackDepth - 1] = stack[stackDepth - 2]; stack[stackDepth - 2] = stack[stackDepth - 3]; stack[stackDepth - 3] = tmp; } break;
 
 			case DW_OP_addr:
-				if (end - p < 4)
+				if (!cursor || end - p < (cursor->cu->address_size == 4 ? 4 : 8))
 					return invalid;
-				stack[stackDepth++] = mkAbs(RD4(p)); // TODO: 64-bit
+				stack[stackDepth++] = mkAbs(cursor->RDAddr(p));
 				break;
 
 			case DW_OP_skip:

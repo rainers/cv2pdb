@@ -464,7 +464,7 @@ struct Location
 
 	Type type;
 	int reg;
-	int off;
+	int64_t off;
 
 	bool is_invalid() const { return type == Invalid; }
 	bool is_inreg() const { return type == InReg; }
@@ -549,8 +549,9 @@ typedef std::unordered_map<std::pair<unsigned, unsigned>, byte*> abbrevMap_t;
 // Attempts to partially evaluate DWARF location expressions.
 // The only supported expressions are those, whose result may be represented
 // as either an absolute value, a register, or a register-relative address.
-// DW_OP_addrx and DW_OP_constx read the .debug_addr table of the unit that
-// `cursor` reads; without a cursor, they yield an invalid location.
+// DW_OP_addr reads an address of the size used by the unit that `cursor` reads.
+// DW_OP_addrx and DW_OP_constx read that unit's .debug_addr table.
+// Without a cursor, all three yield an invalid location.
 Location decodeLocation(const DWARF_Attribute& attr, const Location* frameBase = 0, int at = 0,
                         const DIECursor* cursor = 0);
 
