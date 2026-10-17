@@ -359,7 +359,8 @@ Location decodeLocation(const DWARF_Attribute& attr, const Location* frameBase, 
 		}
 	}
 
-	assert(stackDepth > 0);
+	if (stackDepth <= 0)
+		return invalid;
 	return stack[0];
 }
 
