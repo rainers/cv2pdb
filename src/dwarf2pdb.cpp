@@ -1991,7 +1991,7 @@ bool CV2PDB::createTypes()
 					else
 					{
 						if (debug & DbgPdbContrib)
-							fprintf(stderr, "%s:%d: Adding a section contrib: %x-%x\n", __FUNCTION__, __LINE__,
+							fprintf(stderr, "%s:%d: Adding a section contrib: %I64x-%I64x\n", __FUNCTION__, __LINE__,
 									id.pclo, id.pchi);
 
 						if (!addDWARFSectionContrib(mod, id.pclo, id.pchi))

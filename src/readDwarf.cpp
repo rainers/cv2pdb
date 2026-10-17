@@ -725,7 +725,7 @@ const char* DIECursor::resolveIndirectString(uint32_t index) const
 	return (const char*)img->debug_str.byteAt(RDref(refAddr));
 }
 
-uint32_t DIECursor::readIndirectAddr(uint32_t index) const
+uint64_t DIECursor::readIndirectAddr(uint32_t index) const
 {
 	if (!cu->addr_base)
 	{

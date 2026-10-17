@@ -286,7 +286,7 @@ public:
 
 	// DWARF fields.
 
-	int codeSegOff;
+	uint64_t codeSegOff;
 
 	// Lookup table for type IDs based on the DWARF_InfoData::entryPtr
 	std::unordered_map<byte*, int> mapEntryPtrToTypeID;
