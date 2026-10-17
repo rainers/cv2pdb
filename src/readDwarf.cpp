@@ -361,7 +361,7 @@ Location decodeLocation(const DWARF_Attribute& attr, const Location* frameBase, 
 
 	if (stackDepth <= 0)
 		return invalid;
-	return stack[0];
+	return stack[stackDepth - 1];
 }
 
 LOCCursor::LOCCursor(const DIECursor& parent, unsigned long off)
