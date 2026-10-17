@@ -141,10 +141,14 @@ Location decodeLocation(const DWARF_Attribute& attr, const Location* frameBase, 
     if (at == DW_AT_data_member_location)
         stack[stackDepth++] = mkAbs(0);
 
+	int steps = 0;
 	for (;;)
 	{
 		if (p >= end)
 			break;
+		// A backward DW_OP_skip or DW_OP_bra can make a malformed expression loop forever.
+		if (++steps > 0x10000)
+			return invalid;
 		// One free slot is enough because no operation pushes more than one entry.
 		if (stackDepth >= maxDepth)
 			return invalid;
@@ -321,7 +325,7 @@ Location decodeLocation(const DWARF_Attribute& attr, const Location* frameBase, 
 					case DW_OP_div:   op2.off = op2.off / op1.off; break;
 					case DW_OP_mod:   op2.off = op2.off % op1.off; break;
 					case DW_OP_shl:   op2.off = (Off)((UOff)op2.off << op1.off); break;
-					case DW_OP_shr:   op2.off = op2.off >> op1.off; break;
+					case DW_OP_shr:   op2.off = (Off)((UOff)op2.off >> op1.off); break;
 					case DW_OP_shra:  op2.off = op2.off >> op1.off; break;
 					case DW_OP_or:    op2.off = op2.off | op1.off; break;
 					case DW_OP_xor:   op2.off = op2.off ^ op1.off; break;
@@ -353,7 +357,16 @@ Location decodeLocation(const DWARF_Attribute& attr, const Location* frameBase, 
 			case DW_OP_dup:   if (stackDepth < 1) return invalid; stack[stackDepth] = stack[stackDepth - 1]; stackDepth++; break;
 			case DW_OP_drop:  if (stackDepth < 1) return invalid; stackDepth--; break;
 			case DW_OP_over:  if (stackDepth < 2) return invalid; stack[stackDepth] = stack[stackDepth - 2]; stackDepth++; break;
-			case DW_OP_pick:  if (end - p < 1 || *p >= stackDepth) return invalid; stack[stackDepth++] = stack[*p]; break;
+			case DW_OP_pick:
+			{
+				if (end - p < 1)
+					return invalid;
+				int index = *p++;
+				if (index >= stackDepth)
+					return invalid;
+				stack[stackDepth] = stack[stackDepth - 1 - index];
+				stackDepth++;
+			}   break;
 			case DW_OP_swap:  if (stackDepth < 2) return invalid; { Location tmp = stack[stackDepth - 1]; stack[stackDepth - 1] = stack[stackDepth - 2]; stack[stackDepth - 2] = tmp; } break;
 			case DW_OP_rot:   if (stackDepth < 3) return invalid; { Location tmp = stack[stackDepth - 1]; stack[stackDepth - 1] = stack[stackDepth - 2]; stack[stackDepth - 2] = stack[stackDepth - 3]; stack[stackDepth - 3] = tmp; } break;
 
@@ -367,7 +380,9 @@ Location decodeLocation(const DWARF_Attribute& attr, const Location* frameBase, 
 			{
 				if (end - p < 2)
 					return invalid;
-				unsigned off = RD2(p);
+				short off = RD2(p);
+				if (off < attr.expr.ptr - p || off > end - p)
+					return invalid;
 				p = p + off;
 			}   break;
 
@@ -380,9 +395,11 @@ Location decodeLocation(const DWARF_Attribute& attr, const Location* frameBase, 
 					return invalid;
 				if (end - p < 2)
 					return invalid;
+				short off = RD2(p);
 				if (op1.off != 0)
 				{
-					unsigned off = RD2(p);
+					if (off < attr.expr.ptr - p || off > end - p)
+						return invalid;
 					p = p + off;
 				}
 				--stackDepth;
