@@ -711,6 +711,8 @@ extern "C" {
 #define DW_OP_bit_piece                 0x9d /* DWARF3f */
 #define DW_OP_implicit_value            0x9e /* DWARF4 */
 #define DW_OP_stack_value               0x9f /* DWARF4 */
+#define DW_OP_addrx                     0xa1 /* DWARF5 */
+#define DW_OP_constx                    0xa2 /* DWARF5 */
 
 
     /* GNU extensions. */

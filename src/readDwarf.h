@@ -551,7 +551,10 @@ typedef std::unordered_map<std::pair<unsigned, unsigned>, byte*> abbrevMap_t;
 // Attempts to partially evaluate DWARF location expressions.
 // The only supported expressions are those, whose result may be represented
 // as either an absolute value, a register, or a register-relative address.
-Location decodeLocation(const DWARF_Attribute& attr, const Location* frameBase = 0, int at = 0);
+// DW_OP_addrx and DW_OP_constx read the .debug_addr table of the unit that
+// `cursor` reads; without a cursor, they yield an invalid location.
+Location decodeLocation(const DWARF_Attribute& attr, const Location* frameBase = 0, int at = 0,
+                        const DIECursor* cursor = 0);
 
 // Debug Information Entry Cursor
 class DIECursor

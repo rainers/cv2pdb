@@ -1,7 +1,9 @@
 #include "readDwarf.h"
 #include <assert.h>
 #include <array>
+#include <limits>
 #include <memory> // unique_ptr
+#include <type_traits>
 
 #include "PEImage.h"
 #include "cv2pdb.h"
@@ -109,7 +111,15 @@ static Location mkRegRel(int reg, int off)
 	return l;
 }
 
-Location decodeLocation(const DWARF_Attribute& attr, const Location* frameBase, int at)
+static bool fitsLEB128(const byte* p, const byte* end)
+{
+	while (p < end)
+		if (!(*p++ & 0x80))
+			return true;
+	return false;
+}
+
+Location decodeLocation(const DWARF_Attribute& attr, const Location* frameBase, int at, const DIECursor* cursor)
 {
 	static Location invalid = { Location::Invalid };
 
@@ -122,15 +132,26 @@ Location decodeLocation(const DWARF_Attribute& attr, const Location* frameBase, 
 	byte*p = attr.expr.ptr;
 	byte*end = attr.expr.ptr + attr.expr.len;
 
-	Location stack[256];
+	typedef decltype(Location::off) Off;
+	typedef std::make_unsigned<Off>::type UOff;
+
+	const int maxDepth = 256;
+	Location stack[maxDepth];
 	int stackDepth = 0;
     if (at == DW_AT_data_member_location)
         stack[stackDepth++] = mkAbs(0);
 
+	int steps = 0;
 	for (;;)
 	{
 		if (p >= end)
 			break;
+		// A backward DW_OP_skip or DW_OP_bra can make a malformed expression loop forever.
+		if (++steps > 0x10000)
+			return invalid;
+		// One free slot is enough because no operation pushes more than one entry.
+		if (stackDepth >= maxDepth)
+			return invalid;
 
 		int op = *p++;
 		if (op == 0)
@@ -149,22 +170,24 @@ Location decodeLocation(const DWARF_Attribute& attr, const Location* frameBase, 
 				stack[stackDepth++] = mkInReg(op - DW_OP_reg0);
 				break;
 			case DW_OP_regx:
+				if (!fitsLEB128(p, end))
+					return invalid;
 				stack[stackDepth++] = mkInReg(LEB128(p));
 				break;
 
-			case DW_OP_const1u: stack[stackDepth++] = mkAbs(*p++); break;
-			case DW_OP_const2u: stack[stackDepth++] = mkAbs(RD2(p)); break;
-			case DW_OP_const4u: stack[stackDepth++] = mkAbs(RD4(p)); break;
-			case DW_OP_const1s: stack[stackDepth++] = mkAbs((char)*p++); break;
-			case DW_OP_const2s: stack[stackDepth++] = mkAbs((short)RD2(p)); break;
-			case DW_OP_const4s: stack[stackDepth++] = mkAbs((int)RD4(p)); break;
-			case DW_OP_constu:  stack[stackDepth++] = mkAbs(LEB128(p)); break;
-			case DW_OP_consts:  stack[stackDepth++] = mkAbs(SLEB128(p)); break;
+			case DW_OP_const1u: if (end - p < 1) return invalid; stack[stackDepth++] = mkAbs(*p++); break;
+			case DW_OP_const2u: if (end - p < 2) return invalid; stack[stackDepth++] = mkAbs(RD2(p)); break;
+			case DW_OP_const4u: if (end - p < 4) return invalid; stack[stackDepth++] = mkAbs(RD4(p)); break;
+			case DW_OP_const1s: if (end - p < 1) return invalid; stack[stackDepth++] = mkAbs((char)*p++); break;
+			case DW_OP_const2s: if (end - p < 2) return invalid; stack[stackDepth++] = mkAbs((short)RD2(p)); break;
+			case DW_OP_const4s: if (end - p < 4) return invalid; stack[stackDepth++] = mkAbs((int)RD4(p)); break;
+			case DW_OP_constu:  if (!fitsLEB128(p, end)) return invalid; stack[stackDepth++] = mkAbs(LEB128(p)); break;
+			case DW_OP_consts:  if (!fitsLEB128(p, end)) return invalid; stack[stackDepth++] = mkAbs(SLEB128(p)); break;
 
 			case DW_OP_plus_uconst:
-				if (stack[stackDepth - 1].is_inreg())
+				if (stackDepth < 1 || stack[stackDepth - 1].is_inreg() || !fitsLEB128(p, end))
 					return invalid;
-				stack[stackDepth - 1].off += LEB128(p);
+				stack[stackDepth - 1].off = (Off)((UOff)stack[stackDepth - 1].off + LEB128(p));
 				break;
 
 			case DW_OP_lit0:  case DW_OP_lit1:  case DW_OP_lit2:  case DW_OP_lit3:
@@ -184,39 +207,49 @@ Location decodeLocation(const DWARF_Attribute& attr, const Location* frameBase, 
 			case DW_OP_breg20: case DW_OP_breg21: case DW_OP_breg22: case DW_OP_breg23:
 			case DW_OP_breg24: case DW_OP_breg25: case DW_OP_breg26: case DW_OP_breg27:
 			case DW_OP_breg28: case DW_OP_breg29: case DW_OP_breg30: case DW_OP_breg31:
+				if (!fitsLEB128(p, end))
+					return invalid;
 				stack[stackDepth++] = mkRegRel(op - DW_OP_breg0, SLEB128(p));
 				break;
 			case DW_OP_bregx:
 			{
+				if (!fitsLEB128(p, end))
+					return invalid;
 				unsigned reg = LEB128(p);
+				if (!fitsLEB128(p, end))
+					return invalid;
 				stack[stackDepth++] = mkRegRel(reg, SLEB128(p));
 			}   break;
 
 
 			case DW_OP_abs: case DW_OP_neg: case DW_OP_not:
 			{
+				if (stackDepth < 1)
+					return invalid;
 				Location& op1 = stack[stackDepth - 1];
 				if (!op1.is_abs())
 					return invalid;
 				switch (op)
 				{
-					case DW_OP_abs:   op1 = mkAbs(abs(op1.off)); break;
-					case DW_OP_neg:   op1 = mkAbs(-op1.off); break;
+					case DW_OP_abs:   op1 = mkAbs(op1.off < 0 ? (Off)(0 - (UOff)op1.off) : op1.off); break;
+					case DW_OP_neg:   op1 = mkAbs((Off)(0 - (UOff)op1.off)); break;
 					case DW_OP_not:   op1 = mkAbs(~op1.off); break;
 				}
 			}   break;
 
 			case DW_OP_plus:  // op2 + op1
 			{
+				if (stackDepth < 2)
+					return invalid;
 				Location& op1 = stack[stackDepth - 1];
 				Location& op2 = stack[stackDepth - 2];
 				// Can add only two offsets or a regrel and an offset.
 				if (op2.is_regrel() && op1.is_abs())
-					op2 = mkRegRel(op2.reg, op2.off + op1.off);
+					op2 = mkRegRel(op2.reg, (Off)((UOff)op2.off + (UOff)op1.off));
 				else if (op2.is_abs() && op1.is_regrel())
-					op2 = mkRegRel(op1.reg, op2.off + op1.off);
+					op2 = mkRegRel(op1.reg, (Off)((UOff)op2.off + (UOff)op1.off));
 				else if (op2.is_abs() && op1.is_abs())
-					op2 = mkAbs(op2.off + op1.off);
+					op2 = mkAbs((Off)((UOff)op2.off + (UOff)op1.off));
 				else
 					return invalid;
 				--stackDepth;
@@ -224,14 +257,16 @@ Location decodeLocation(const DWARF_Attribute& attr, const Location* frameBase, 
 
 			case DW_OP_minus: // op2 - op1
 			{
+				if (stackDepth < 2)
+					return invalid;
 				Location& op1 = stack[stackDepth - 1];
 				Location& op2 = stack[stackDepth - 2];
 				if (op2.is_regrel() && op1.is_regrel() && op2.reg == op1.reg)
 					op2 = mkAbs(0); // X - X == 0
 				else if (op2.is_regrel() && op1.is_abs())
-					op2 = mkRegRel(op2.reg, op2.off - op1.off);
+					op2 = mkRegRel(op2.reg, (Off)((UOff)op2.off - (UOff)op1.off));
 				else if (op2.is_abs() && op1.is_abs())
-					op2 = mkAbs(op2.off - op1.off);
+					op2 = mkAbs((Off)((UOff)op2.off - (UOff)op1.off));
 				else
 					return invalid;
 				--stackDepth;
@@ -239,12 +274,14 @@ Location decodeLocation(const DWARF_Attribute& attr, const Location* frameBase, 
 
 			case DW_OP_mul:
 			{
+				if (stackDepth < 2)
+					return invalid;
 				Location& op1 = stack[stackDepth - 1];
 				Location& op2 = stack[stackDepth - 2];
 				if ((op1.is_abs() && op1.off == 0) || (op2.is_abs() && op2.off == 0))
 					op2 = mkAbs(0); // X * 0 == 0
 				else if (op1.is_abs() && op2.is_abs())
-					op2 = mkAbs(op1.off * op2.off);
+					op2 = mkAbs((Off)((UOff)op1.off * (UOff)op2.off));
 				else
 					return invalid;
 				--stackDepth;
@@ -252,6 +289,8 @@ Location decodeLocation(const DWARF_Attribute& attr, const Location* frameBase, 
 
 			case DW_OP_and:
 			{
+				if (stackDepth < 2)
+					return invalid;
 				Location& op1 = stack[stackDepth - 1];
 				Location& op2 = stack[stackDepth - 2];
 				if ((op1.is_abs() && op1.off == 0) || (op2.is_abs() && op2.off == 0))
@@ -269,16 +308,24 @@ Location decodeLocation(const DWARF_Attribute& attr, const Location* frameBase, 
 			case DW_OP_eq:  case DW_OP_ge:  case DW_OP_gt:
 			case DW_OP_le:  case DW_OP_lt:  case DW_OP_ne:
 			{
+				if (stackDepth < 2)
+					return invalid;
 				Location& op1 = stack[stackDepth - 1];
 				Location& op2 = stack[stackDepth - 2];
 				if (!op1.is_abs() || !op2.is_abs()) // can't combine unless both are constants
+					return invalid;
+				if ((op == DW_OP_div || op == DW_OP_mod) &&
+				    (op1.off == 0 || (op1.off == -1 && op2.off == (std::numeric_limits<Off>::min)())))
+					return invalid;
+				if ((op == DW_OP_shl || op == DW_OP_shr || op == DW_OP_shra) &&
+				    (op1.off < 0 || op1.off >= std::numeric_limits<UOff>::digits))
 					return invalid;
 				switch (op)
 				{
 					case DW_OP_div:   op2.off = op2.off / op1.off; break;
 					case DW_OP_mod:   op2.off = op2.off % op1.off; break;
-					case DW_OP_shl:   op2.off = op2.off << op1.off; break;
-					case DW_OP_shr:   op2.off = op2.off >> op1.off; break;
+					case DW_OP_shl:   op2.off = (Off)((UOff)op2.off << op1.off); break;
+					case DW_OP_shr:   op2.off = (Off)((UOff)op2.off >> op1.off); break;
 					case DW_OP_shra:  op2.off = op2.off >> op1.off; break;
 					case DW_OP_or:    op2.off = op2.off | op1.off; break;
 					case DW_OP_xor:   op2.off = op2.off ^ op1.off; break;
@@ -294,48 +341,76 @@ Location decodeLocation(const DWARF_Attribute& attr, const Location* frameBase, 
 
 			case DW_OP_fbreg:
 			{
-				if (!frameBase)
+				if (!frameBase || !fitsLEB128(p, end))
 					return invalid;
 
 				Location loc;
 				if (frameBase->is_inreg()) // ok in frame base specification, per DWARF4 spec #3.3.5
 					loc = mkRegRel(frameBase->reg, SLEB128(p));
 				else if (frameBase->is_regrel())
-					loc = mkRegRel(frameBase->reg, frameBase->off + SLEB128(p));
+					loc = mkRegRel(frameBase->reg, (Off)((UOff)frameBase->off + (UOff)SLEB128(p)));
 				else
 					return invalid;
 				stack[stackDepth++] = loc;
 			}   break;
 
-			case DW_OP_dup:   stack[stackDepth] = stack[stackDepth - 1]; stackDepth++; break;
-			case DW_OP_drop:  stackDepth--; break;
-			case DW_OP_over:  stack[stackDepth] = stack[stackDepth - 2]; stackDepth++; break;
-			case DW_OP_pick:  stack[stackDepth++] = stack[*p]; break;
-			case DW_OP_swap:  { Location tmp = stack[stackDepth - 1]; stack[stackDepth - 1] = stack[stackDepth - 2]; stack[stackDepth - 2] = tmp; } break;
-			case DW_OP_rot:   { Location tmp = stack[stackDepth - 1]; stack[stackDepth - 1] = stack[stackDepth - 2]; stack[stackDepth - 2] = stack[stackDepth - 3]; stack[stackDepth - 3] = tmp; } break;
+			case DW_OP_dup:   if (stackDepth < 1) return invalid; stack[stackDepth] = stack[stackDepth - 1]; stackDepth++; break;
+			case DW_OP_drop:  if (stackDepth < 1) return invalid; stackDepth--; break;
+			case DW_OP_over:  if (stackDepth < 2) return invalid; stack[stackDepth] = stack[stackDepth - 2]; stackDepth++; break;
+			case DW_OP_pick:
+			{
+				if (end - p < 1)
+					return invalid;
+				int index = *p++;
+				if (index >= stackDepth)
+					return invalid;
+				stack[stackDepth] = stack[stackDepth - 1 - index];
+				stackDepth++;
+			}   break;
+			case DW_OP_swap:  if (stackDepth < 2) return invalid; { Location tmp = stack[stackDepth - 1]; stack[stackDepth - 1] = stack[stackDepth - 2]; stack[stackDepth - 2] = tmp; } break;
+			case DW_OP_rot:   if (stackDepth < 3) return invalid; { Location tmp = stack[stackDepth - 1]; stack[stackDepth - 1] = stack[stackDepth - 2]; stack[stackDepth - 2] = stack[stackDepth - 3]; stack[stackDepth - 3] = tmp; } break;
 
 			case DW_OP_addr:
+				if (end - p < 4)
+					return invalid;
 				stack[stackDepth++] = mkAbs(RD4(p)); // TODO: 64-bit
 				break;
 
 			case DW_OP_skip:
 			{
-				unsigned off = RD2(p);
+				if (end - p < 2)
+					return invalid;
+				short off = RD2(p);
+				if (off < attr.expr.ptr - p || off > end - p)
+					return invalid;
 				p = p + off;
 			}   break;
 
 			case DW_OP_bra:
 			{
+				if (stackDepth < 1)
+					return invalid;
 				Location& op1 = stack[stackDepth - 1];
 				if (!op1.is_abs())
 					return invalid;
+				if (end - p < 2)
+					return invalid;
+				short off = RD2(p);
 				if (op1.off != 0)
 				{
-					unsigned off = RD2(p);
+					if (off < attr.expr.ptr - p || off > end - p)
+						return invalid;
 					p = p + off;
 				}
 				--stackDepth;
 			}   break;
+
+			case DW_OP_addrx:
+			case DW_OP_constx:
+				if (!cursor || !fitsLEB128(p, end))
+					return invalid;
+				stack[stackDepth++] = mkAbs(cursor->readIndirectAddr(LEB128(p)));
+				break;
 
 			case DW_OP_nop:
 				break;
@@ -359,8 +434,9 @@ Location decodeLocation(const DWARF_Attribute& attr, const Location* frameBase, 
 		}
 	}
 
-	assert(stackDepth > 0);
-	return stack[0];
+	if (stackDepth <= 0)
+		return invalid;
+	return stack[stackDepth - 1];
 }
 
 LOCCursor::LOCCursor(const DIECursor& parent, unsigned long off)
@@ -659,7 +735,18 @@ uint32_t DIECursor::readIndirectAddr(uint32_t index) const
 		return 0;
 	}
 
-	byte* refAddr = cu->addr_base + index * cu->address_size;
+	uint64_t off = (uint64_t)index * cu->address_size;
+	// RDAddr reads 8 bytes for any address size other than 4.
+	uint64_t size = cu->address_size == 4 ? 4 : 8;
+	if (off + size > (uint64_t)(img->debug_addr.endByte() - cu->addr_base))
+	{
+		fprintf(stderr, "ERROR: %s:%d: addr index %u is outside .debug_addr for cu_offs=%x die_offs=%x\n", __FUNCTION__, __LINE__,
+				index, cu->cu_offset, entryOff);
+
+		return 0;
+	}
+
+	byte* refAddr = cu->addr_base + off;
 	return RDAddr(refAddr);
 }
 
