@@ -119,7 +119,7 @@ static bool fitsLEB128(const byte* p, const byte* end)
 	return false;
 }
 
-Location decodeLocation(const DWARF_Attribute& attr, const Location* frameBase, int at)
+Location decodeLocation(const DWARF_Attribute& attr, const Location* frameBase, int at, const DIECursor* cursor)
 {
 	static Location invalid = { Location::Invalid };
 
@@ -404,6 +404,13 @@ Location decodeLocation(const DWARF_Attribute& attr, const Location* frameBase, 
 				}
 				--stackDepth;
 			}   break;
+
+			case DW_OP_addrx:
+			case DW_OP_constx:
+				if (!cursor || !fitsLEB128(p, end))
+					return invalid;
+				stack[stackDepth++] = mkAbs(cursor->readIndirectAddr(LEB128(p)));
+				break;
 
 			case DW_OP_nop:
 				break;
@@ -728,7 +735,18 @@ uint32_t DIECursor::readIndirectAddr(uint32_t index) const
 		return 0;
 	}
 
-	byte* refAddr = cu->addr_base + index * cu->address_size;
+	uint64_t off = (uint64_t)index * cu->address_size;
+	// RDAddr reads 8 bytes for any address size other than 4.
+	uint64_t size = cu->address_size == 4 ? 4 : 8;
+	if (off + size > (uint64_t)(img->debug_addr.endByte() - cu->addr_base))
+	{
+		fprintf(stderr, "ERROR: %s:%d: addr index %u is outside .debug_addr for cu_offs=%x die_offs=%x\n", __FUNCTION__, __LINE__,
+				index, cu->cu_offset, entryOff);
+
+		return 0;
+	}
+
+	byte* refAddr = cu->addr_base + off;
 	return RDAddr(refAddr);
 }
 
