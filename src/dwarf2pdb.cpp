@@ -1417,7 +1417,7 @@ bool CV2PDB::addDWARFSymbols()
 	cvs->compiland_v1.id = S_COMPILAND_V1;
 	cvs->compiland_v1.language = 1; // C++
 	cvs->compiland_v1.flags = 0x80; // ?, data model
-	cvs->compiland_v1.machine = img.isX64() ? 0xd0 : 6; //0x06: Pentium Pro/II, 0xd0: x64
+	cvs->compiland_v1.machine = img.isARM64() ? 0xf6 : img.isX64() ? 0xd0 : 6; //0x06: Pentium Pro/II, 0xd0: x64, 0xf6: ARM64
 	len = sizeof(cvs->compiland_v1) - sizeof(cvs->compiland_v1.p_name);
 	len += c2p("cv2pdb", cvs->compiland_v1.p_name);
 	len = alignLength(data + off, len);
