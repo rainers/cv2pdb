@@ -1242,6 +1242,22 @@ union codeview_fieldtype
  *            Symbol information
  * ======================================== */
 
+/* CV_LVAR_ADDR_RANGE, the code range in which the location of an S_DEFRANGE_* record is valid */
+struct codeview_lvar_addr_range
+{
+    unsigned int                offStart;
+    unsigned short              isectStart;
+    unsigned short              cbRange;
+};
+
+/* CV_LVAR_ADDR_GAP, a part of the range in which the location is not valid. gapStartOffset
+ * counts from offStart. */
+struct codeview_lvar_addr_gap
+{
+    unsigned short              gapStartOffset;
+    unsigned short              cbRange;
+};
+
 union codeview_symbol
 {
     struct
@@ -1684,6 +1700,45 @@ union codeview_symbol
 		short int               section;
 		short int               parent_section;
 	} sepcode_v3;
+
+    struct
+    {
+        short int               len;
+        short int               id;             /* Always S_LOCAL_V3 */
+        unsigned int            symtype;
+        unsigned short          flags;          /* CV_LVARFLAGS */
+        char                    name[1];
+    } local_v3;
+
+    /* Each S_DEFRANGE_* record ends with the gaps of its range, as codeview_lvar_addr_gap entries. */
+    struct
+    {
+        short int               len;
+        short int               id;             /* Always S_DEFRANGE_REGISTER_V3 */
+        unsigned short          reg;
+        unsigned short          attr;           /* CV_RANGEATTR */
+        struct codeview_lvar_addr_range range;
+    } defrange_register_v3;
+
+    struct
+    {
+        short int               len;
+        short int               id;             /* Always S_DEFRANGE_SUBFIELD_REGISTER_V3 */
+        unsigned short          reg;
+        unsigned short          attr;           /* CV_RANGEATTR */
+        unsigned int            offParent;      /* Bits 0-11 are the offset of the piece in the variable. */
+        struct codeview_lvar_addr_range range;
+    } defrange_subfield_register_v3;
+
+    struct
+    {
+        short int               len;
+        short int               id;             /* Always S_DEFRANGE_REGISTER_REL_V3 */
+        unsigned short          baseReg;
+        unsigned short          flags;          /* Bit 0 is spilledUdtMember, and bits 4-15 are offsetParent. */
+        int                     offBasePointer;
+        struct codeview_lvar_addr_range range;
+    } defrange_register_rel_v3;
 };
 
 #define S_COMPILAND_V1  0x0001
@@ -1766,6 +1821,10 @@ union codeview_symbol
 #define S_SECUCOOKIE_V3 0x113A
 #define S_MSTOOLINFO_V3 0x113C
 #define S_MSTOOLENV_V3  0x113D
+#define S_LOCAL_V3      0x113E
+#define S_DEFRANGE_REGISTER_V3          0x1141
+#define S_DEFRANGE_SUBFIELD_REGISTER_V3 0x1143
+#define S_DEFRANGE_REGISTER_REL_V3      0x1145
 
 /* ======================================== *
  *          Line number information

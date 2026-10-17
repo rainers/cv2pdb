@@ -204,6 +204,14 @@
 				>
 			</File>
 			<File
+				RelativePath=".\defrange.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\defrange.h"
+				>
+			</File>
+			<File
 				RelativePath=".\demangle.cpp"
 				>
 			</File>
