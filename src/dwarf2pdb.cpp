@@ -2036,10 +2036,9 @@ bool CV2PDB::createTypes()
 						Location loc = decodeLocation(id.location, 0, 0, &cursor);
 						if (loc.is_abs())
 						{
-							segOff = loc.off;
-							seg = imgDbg->findSection(segOff);
+							seg = imgDbg->findSection(loc.off);
 							if (seg >= 0)
-								segOff -= imgDbg->getImageBase() + imgDbg->getSection(seg).VirtualAddress;
+								segOff = loc.off - imgDbg->getImageBase() - imgDbg->getSection(seg).VirtualAddress;
 						}
 					}
 					if (seg >= 0)
