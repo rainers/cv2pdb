@@ -116,7 +116,7 @@ struct DWARF_Attribute
 	AttrClass type;
 	union
 	{
-		unsigned long addr;
+		uint64_t addr;
 		struct { byte* ptr; unsigned len; } block;
 		unsigned long cons;
 		const char* string;
@@ -140,7 +140,7 @@ struct DWARF_CompilationUnitInfo
 	// Value of the DW_AT_low_pc attribute for the current compilation unit.
 	// Specify the default base address for use in location lists and range
 	// lists.
-	uint32_t base_address;
+	uint64_t base_address;
 
 	// Indirect base address in .debug_addr for addrx forms
 	byte* addr_base;
@@ -225,10 +225,10 @@ struct DWARF_InfoData
 	// Pointer to the sibling DIE in the mapped image.
 	byte* sibling;
 	unsigned long encoding;
-	unsigned long pclo;
-	unsigned long pchi;
+	uint64_t pclo;
+	uint64_t pchi;
 	unsigned long ranges; // -1u when attribute is not present
-	unsigned long pcentry;
+	uint64_t pcentry;
 
 	// Pointer to the DW_AT_type DIE describing the type of this DIE.
 	byte* type;
@@ -538,7 +538,7 @@ public:
 	RangeCursor(const DIECursor& parent, unsigned long off);
 
 	const DIECursor& parent;
-	uint32_t base;
+	uint64_t base;
 	byte *end;
 	byte *ptr;
 	bool isRngLists;
@@ -620,7 +620,7 @@ public:
 
 	// Obtain the address of a string for a strx form.
 	const char *resolveIndirectString(uint32_t index) const ;
-	uint32_t readIndirectAddr(uint32_t index) const ;
+	uint64_t readIndirectAddr(uint32_t index) const ;
 	uint32_t resolveIndirectSecPtr(uint32_t index, const SectionDescriptor &secDesc, byte *baseAddress) const;
 
 };
