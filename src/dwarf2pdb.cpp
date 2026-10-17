@@ -629,12 +629,12 @@ Location findBestFBLoc(const DIECursor& parent, unsigned long fblocoff)
 	LOCCursor cursor(parent, fblocoff);
 	LOCEntry entry;
 	Location longest = { Location::RegRel, DW_REG_CFA, 0 };
-	unsigned long longest_range = 0;
+	uint64_t longest_range = 0;
 	while(cursor.readNext(entry))
 	{
 		if(entry.loc.is_regrel() && entry.loc.reg == regebp)
 			return entry.loc;
-		unsigned long range = entry.end_offset - entry.beg_offset;
+		uint64_t range = entry.end_offset - entry.beg_offset;
 		if(range > longest_range)
 		{
 			longest_range = range;

@@ -398,15 +398,15 @@ bool LOCCursor::readNext(LOCEntry& entry)
 					parent.img->debug_loclists.sectOff(ptr), parent.entryOff);
 
 		auto readCountedLocation = [&entry](byte* &ptr) {
-			DWARF_Attribute attr;
-			attr.type = Block;
-			attr.block.len = LEB128(ptr);
-			attr.block.ptr = ptr;
-			ptr += attr.block.len;
-			entry.loc = decodeLocation(attr);
+			entry.expr.type = Block;
+			entry.expr.block.len = LEB128(ptr);
+			entry.expr.block.ptr = ptr;
+			ptr += entry.expr.block.len;
+			entry.loc = decodeLocation(entry.expr);
 			return true;
 		};
 
+		entry.isDefault = false;
 		while (ptr < end)
 		{
 			byte type = *ptr++;
@@ -426,8 +426,8 @@ bool LOCCursor::readNext(LOCEntry& entry)
 				entry.end_offset = entry.beg_offset + LEB128(ptr);
 				return readCountedLocation(ptr);
 			case DW_LLE_offset_pair:
-				entry.beg_offset = LEB128(ptr);
-				entry.end_offset = LEB128(ptr);
+				entry.beg_offset = base + LEB128(ptr);
+				entry.end_offset = base + LEB128(ptr);
 				return readCountedLocation(ptr);
 			case DW_LLE_default_location:
 				entry = {};
@@ -464,12 +464,11 @@ bool LOCCursor::readNext(LOCEntry& entry)
 						parent.img->debug_loc.sectOff(ptr), parent.entryOff);
 
 			// Extract the begin and end offset
-			// TODO: Why is this truncating to 32 bit?
-			entry.beg_offset = (unsigned long) parent.RDAddr(ptr);
-			entry.end_offset = (unsigned long) parent.RDAddr(ptr);
+			entry.beg_offset = parent.RDAddr(ptr);
+			entry.end_offset = parent.RDAddr(ptr);
 
 			// Check for a base-address-selection entry.
-			if (entry.beg_offset == -1U) {
+			if (entry.beg_offset == (parent.cu->address_size == 4 ? 0xffffffffull : ~0ull)) {
 				// This is a base address selection entry and thus has no location
 				// description.
 				// Update the base address with this entry's value.
@@ -486,12 +485,14 @@ bool LOCCursor::readNext(LOCEntry& entry)
 				return false;
 			}
 
-			DWARF_Attribute attr;
-			attr.type = Block;
-			attr.block.len = RD2(ptr);
-			attr.block.ptr = ptr;
-			entry.loc = decodeLocation(attr);
-			ptr += attr.expr.len;
+			entry.beg_offset += base;
+			entry.end_offset += base;
+			entry.isDefault = false;
+			entry.expr.type = Block;
+			entry.expr.block.len = RD2(ptr);
+			entry.expr.block.ptr = ptr;
+			entry.loc = decodeLocation(entry.expr);
+			ptr += entry.expr.block.len;
 			return true;
 		}
 	}
