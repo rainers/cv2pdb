@@ -325,3 +325,102 @@ jobs:
             off=$(printf '%08X' $((0x$addr - 0x$data))) &&
             grep "S_GDATA32: \[$seg:$off\], .*, $v\$" global-cv.dump || exit 1
           done
+  test-64-bit-addresses:
+    runs-on: windows-latest
+    needs: build
+    steps:
+      - name: Download bin/
+        uses: actions/download-artifact@v4
+        with:
+          name: bin
+          path: bin
+      - name: download cvdump
+        shell: bash
+        run: curl -Lo cvdump.exe https://raw.githubusercontent.com/microsoft/microsoft-pdb/HEAD/cvdump/cvdump.exe
+      - name: build and convert DWARF 4 clang program
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          set -x &&
+          cat >block.c <<-\EOF &&
+          #include <stdio.h>
+          #include <stdlib.h>
+
+          int g_counter = 3;
+          static int s_total;
+
+          __attribute__((noinline)) int get(int i) { return rand() + i; }
+          __attribute__((noinline)) void use(int *p) { *p += g_counter; }
+
+          int main(int argc, char **argv)
+          {
+            for (int i = 0; i < argc; i++) {
+              int v = get(i);
+              use(&v);
+              if (v & 1) {
+                int w = get(v);
+                use(&w);
+                s_total += w * v;
+              } else
+                s_total -= v;
+            }
+            printf("%d\n", s_total);
+            return 0;
+          }
+          EOF
+
+          clang --target=x86_64-w64-mingw32 -fuse-ld=lld -g -gdwarf-4 -O2 -ffunction-sections -o block.exe block.c &&
+          clang --target=x86_64-w64-mingw32 -g -gdwarf-4 -O2 -ffunction-sections -S -o block.s block.c &&
+          { awk '/DW_TAG_lexical_block$/ { getline; if ($NF == "DW_AT_ranges") r = $2 ":" } r && $1 == r { getline; if ($1 == ".quad" && $2 !~ /-/) found = 1 } END { exit !found }' block.s || { echo "test precondition lost: no lexical block with absolute ranges"; exit 1; }; } &&
+          llvm-objdump -p block.exe >block.headers &&
+          { awk '$1 == "ImageBase" { found = strtonum("0x" $2) >= 2^32 } END { exit !found }' block.headers || { echo "test precondition lost: image base below 4 GB"; exit 1; }; } &&
+          llvm-objdump -h block.exe >block.sections &&
+          llvm-nm block.exe >block.nm &&
+          bin/${{env.BUILD_CONFIGURATION}}*/cv2pdb.exe block.exe block-cv.exe &&
+          ./cvdump.exe -s block-cv.pdb >block-cv.dump &&
+          ./cvdump.exe -g block-cv.pdb >block-cv.globals
+      - name: verify global variable addresses (clang)
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          set -x &&
+          for v in g_counter s_total; do
+            addr=$(awk -v n=$v '$3 == n { print $1 }' block.nm) &&
+            test -n "$addr" &&
+            loc=$(awk -v a=$((0x$addr)) '$1 ~ /^[0-9]+$/ { lo = strtonum("0x" $4); if (lo <= a && a < lo + strtonum("0x" $3)) printf "[%04X:%08X],", $1 + 1, a - lo }' block.sections) &&
+            awk -v a="$loc" -v n=", $v" '($1 == "S_GDATA32:" || $1 == "S_LDATA32:") && $2 == a && substr($0, length($0) - length(n) + 1) == n { found=1 } END {exit !found; }' block-cv.globals || exit 1
+          done
+      - name: verify locals of lexical blocks with ranges (clang)
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          set -x &&
+          awk '$2 == "S_GPROC32:" { inmain = $NF == "main"; depth = 0 }
+               inmain && $2 == "S_BLOCK32:" { depth++ }
+               inmain && $2 == "S_END" { depth-- }
+               inmain && depth > 0 && $2 == "S_REGREL32:" { found[$NF] = 1 }
+               END {exit !(found["v"] && found["w"]); }' block-cv.dump
+      - name: verify procedures at the 4 GB boundary (clang)
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          set -x &&
+          cat >edge.c <<-\EOF &&
+          __attribute__((noinline)) int edge(int a) { return a * 7 + 1; }
+
+          int main(int argc, char **argv) { return edge(argc); }
+          EOF
+
+          clang --target=x86_64-w64-mingw32 -fuse-ld=lld -g -O1 -o edge-probe.exe edge.c &&
+          base=$(llvm-objdump -p edge-probe.exe | awk '$1 == "ImageBase" { print $2 }') &&
+          main=$(llvm-nm edge-probe.exe | awk '$3 == "main" { print $1 }') &&
+          clang --target=x86_64-w64-mingw32 -fuse-ld=lld -g -O1 -Wl,--image-base=$(printf '0x%x' $(((1 << 32) - (0x$main - 0x$base)))) -o edge.exe edge.c &&
+          llvm-objdump -h edge.exe >edge.sections &&
+          llvm-nm edge.exe >edge.nm &&
+          { awk '$3 == "main" { found = strtonum("0x" $1) == 2^32 } END { exit !found }' edge.nm || { echo "test precondition lost: main does not start at 4 GB"; exit 1; }; } &&
+          bin/${{env.BUILD_CONFIGURATION}}*/cv2pdb.exe edge.exe edge-cv.exe &&
+          ./cvdump.exe -s edge-cv.pdb >edge-cv.dump &&
+          text=$(awk '$2 == ".text" { print $4 }' edge.sections) &&
+          addr=$(awk '$2 == "T" && $3 == "main" { print $1 }' edge.nm) &&
+          off=$(printf '%08X' $((0x$addr - 0x$text))) &&
+          grep "S_GPROC32: \[0001:$off\], .*, main\$" edge-cv.dump
