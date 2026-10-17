@@ -43,6 +43,9 @@
     <ClCompile Include="defrange.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="dwarflocals.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="cv2pdb.h">
@@ -82,6 +85,9 @@
       <Filter>Source Files</Filter>
     </ClInclude>
     <ClInclude Include="defrange.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="dwarflocals.h">
       <Filter>Source Files</Filter>
     </ClInclude>
   </ItemGroup>
