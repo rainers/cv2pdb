@@ -478,14 +478,14 @@ class LOCEntry
 public:
 	// TODO: investigate making these 64bit (or vary). Also consider renaming
 	// to Value0 and Value1 since their meanings varies depending on entry type.
-	unsigned long beg_offset; // or -1U for base address selection entries
-	unsigned long end_offset; // or the base address in base address selection entries
+	unsigned long beg_offset;
+	unsigned long end_offset;
 
 	// DWARF v5 only. See DW_LLE_default_location.
 	bool isDefault;
 
 	// Location description.
-	Location loc;
+	Location loc = { Location::Invalid };
 
 	void addBase(uint32_t base)
 	{
