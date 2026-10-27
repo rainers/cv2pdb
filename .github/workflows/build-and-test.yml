@@ -232,3 +232,38 @@ jobs:
           awk '$2 == "S_GPROC32:" { split($3, a, /[:\]]/); lo = strtonum("0x" a[2]); hi = lo + strtonum("0x" substr($5, 1, 8)); inmain = $NF == "main"; }
                $2 == "S_BLOCK32:" && inmain { split($3, a, /[:\]]/); o = strtonum("0x" a[2]); n++; if (o < lo || o >= hi) { print; bad++; } }
                END {exit !(n && !bad); }' block-cv.dump
+      - name: build and convert DWARF 5 clang program with globals
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          set -x &&
+          cat >global.c <<-\EOF &&
+          int g_counter = 1;
+          static int s_counter = 2;
+
+          int main(int argc, char **argv)
+          {
+            s_counter += argc;
+            return g_counter + s_counter;
+          }
+          EOF
+
+          clang --target=x86_64-w64-mingw32 -fuse-ld=lld -g -gdwarf-5 -O0 -o global.exe global.c &&
+          clang --target=x86_64-w64-mingw32 -g -gdwarf-5 -O0 -S -o global.s global.c &&
+          { awk '/# DW_AT_location$/ { getline; if ($2 == 161) n++ } END { exit !n }' global.s || { echo "test precondition lost: no DW_OP_addrx location"; exit 1; }; } &&
+          llvm-objdump -h global.exe >global.sections &&
+          llvm-nm global.exe >global.nm &&
+          bin/${{env.BUILD_CONFIGURATION}}*/cv2pdb.exe global.exe global-cv.exe &&
+          ./cvdump.exe -g global-cv.pdb >global-cv.dump
+      - name: verify global variable addresses (clang)
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          set -x &&
+          seg=$(awk '$2 == ".data" { printf "%04X", $1 + 1 }' global.sections) &&
+          data=$(awk '$2 == ".data" { print $4 }' global.sections) &&
+          for v in g_counter s_counter; do
+            addr=$(awk -v n=$v '$3 == n { print $1 }' global.nm) &&
+            off=$(printf '%08X' $((0x$addr - 0x$data))) &&
+            grep "S_GDATA32: \[$seg:$off\], .*, $v\$" global-cv.dump || exit 1
+          done
