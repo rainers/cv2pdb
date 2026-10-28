@@ -109,7 +109,7 @@ static Location mkRegRel(int reg, int off)
 	return l;
 }
 
-Location decodeLocation(const DWARF_Attribute& attr, const Location* frameBase, int at)
+Location decodeLocation(const DWARF_Attribute& attr, const Location* frameBase, int at, const DIECursor* cursor)
 {
 	static Location invalid = { Location::Invalid };
 
@@ -336,6 +336,13 @@ Location decodeLocation(const DWARF_Attribute& attr, const Location* frameBase, 
 				}
 				--stackDepth;
 			}   break;
+
+			case DW_OP_addrx:
+			case DW_OP_constx:
+				if (!cursor)
+					return invalid;
+				stack[stackDepth++] = mkAbs(cursor->readIndirectAddr(LEB128(p)));
+				break;
 
 			case DW_OP_nop:
 				break;

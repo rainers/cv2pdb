@@ -2017,7 +2017,7 @@ bool CV2PDB::createTypes()
 					}
 					else
 					{
-						Location loc = decodeLocation(id.location);
+						Location loc = decodeLocation(id.location, 0, 0, &cursor);
 						if (loc.is_abs())
 						{
 							segOff = loc.off;
