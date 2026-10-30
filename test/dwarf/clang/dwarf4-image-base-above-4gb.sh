@@ -13,5 +13,7 @@ awk '$1 == "ImageBase" { found = strtonum("0x" $2) >= 2^32 } END { exit !found }
 awk '$2 == "S_GPROC32:" { inmain = $NF == "main"; depth = 0 }
      inmain && $2 == "S_BLOCK32:" { depth++ }
      inmain && $2 == "S_END" { depth-- }
-     inmain && depth > 0 && $2 == "S_REGREL32:" { found[$NF] = 1 }
+     $2 == "S_LOCAL:" { var = $NF; next }
+     inmain && depth > 0 && $2 == "S_DEFRANGE_REGISTER_REL:" { found[var] = 1 }
+     $2 ~ /^S_/ && $2 !~ /^S_DEFRANGE_/ { var = "" }
      END {exit !(found["v"] && found["w"]); }' block-cv.dump

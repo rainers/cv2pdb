@@ -33,7 +33,7 @@ for v in 4 5; do
          else if ((d in last) && o < last[d]) { print "S_BLOCK32 at " a[2] " starts before the end of the previous sibling" >"/dev/stderr"; bad = 1 }
          first[d] = o; last[d] = o + n; d++; delete first[d]; delete last[d]
        }
-       $2 == "S_REGREL32:" && d { print d, $NF }
+       $2 == "S_LOCAL:" && d { print d, $NF }
        $2 == "S_END" { if (d) d--; else fn = "" }
        END { exit bad }' blocks-cv-d$v.dump >blocks-cv-d$v.locals
   diff blocks.expected blocks-cv-d$v.locals
