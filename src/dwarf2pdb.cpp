@@ -952,8 +952,10 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, const std::vector<RangeEntry> 
 		// First, collect all the formal parameters of the proc.
 		// Don't worry about storing these in the tree as we're not going to need
 		// to generate fully-qualified names like we would for functions/classes.
-		while (cursor.readNext(&id, true /* stopAtNull */))
+		while (procid.hasChild && cursor.readNext(&id, true /* stopAtNull */))
 		{
+			if (id.tag == DW_TAG_formal_parameter && id.abstract_origin)
+				mergeAbstractOrigin(id, *this);
 			if (id.tag == DW_TAG_formal_parameter && id.name)
 			{
 				if (id.location.type == ExprLoc || id.location.type == Block || id.location.type == SecOffset)
@@ -964,6 +966,9 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, const std::vector<RangeEntry> 
 						appendStackVar(id.name, getTypeByDWARFPtr(id.type), loc, cfa);
 				}
 			}
+			// The parameters of an inlined subroutine within the proc are not parameters of
+			// the proc, so this loop skips the children of each entry it reads.
+			cursor.gotoSibling();
 		}
 		appendEndArg();
 
@@ -1023,6 +1028,8 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, const std::vector<RangeEntry> 
 				else if (id.tag == DW_TAG_variable)
 				{
 					// Found a local variable.
+					if (id.abstract_origin)
+						mergeAbstractOrigin(id, *this);
 					if (id.name && (id.location.type == ExprLoc || id.location.type == Block))
 					{
 						Location loc = id.location.type == SecOffset ? findBestFBLoc(cursor, id.location.sec_offset)
