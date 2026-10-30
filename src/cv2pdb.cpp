@@ -132,7 +132,7 @@ bool CV2PDB::cleanup(bool commit)
 	return true;
 }
 
-bool CV2PDB::openPDB(const TCHAR* pdbname, const TCHAR* pdbref)
+bool CV2PDB::openPDB(const TCHAR* pdbname, const TCHAR* pdbref, long pageSize)
 {
 #ifdef UNICODE
 	const wchar_t* pdbnameW = pdbname;
@@ -154,7 +154,7 @@ bool CV2PDB::openPDB(const TCHAR* pdbname, const TCHAR* pdbref)
 		GetModuleFileNameA(modMsPdb, modpath, 260);
 		printf("Loaded PDB helper DLL: %s\n", modpath);
 	}
-	pdb = CreatePDB (pdbnameW);
+	pdb = CreatePDB (pdbnameW, pageSize);
 	if (!pdb)
 		return setError("cannot create PDB file");
 

@@ -10,6 +10,8 @@
 #include <windows.h>
 #include "packages/Microsoft.VisualStudio.Setup.Configuration.Native.1.16.30/lib/native/include/Setup.Configuration.h"
 #include <fstream>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string>
 
 _COM_SMARTPTR_TYPEDEF(ISetupConfiguration, __uuidof(ISetupConfiguration));
@@ -20,6 +22,7 @@ _COM_SMARTPTR_TYPEDEF(IEnumSetupInstances, __uuidof(IEnumSetupInstances));
 
 HMODULE modMsPdb;
 mspdb::fnPDBOpen2W *pPDBOpen2W;
+mspdb::fnPDBOpenEx2W *pPDBOpenEx2W;
 
 char* mspdb80_dll = "mspdb80.dll";
 char* mspdb100_dll = "mspdb100.dll";
@@ -351,32 +354,44 @@ bool initMsPdb()
 	if (!modMsPdb)
 		return false;
 
+	if (!pPDBOpenEx2W)
+		pPDBOpenEx2W = (mspdb::fnPDBOpenEx2W*) GetProcAddress(modMsPdb, "PDBOpenEx2W");
 	if (!pPDBOpen2W)
 		pPDBOpen2W = (mspdb::fnPDBOpen2W*) GetProcAddress(modMsPdb, "PDBOpen2W");
-	if (!pPDBOpen2W)
-		return false;
 
-	return true;
+	return pPDBOpenEx2W || pPDBOpen2W;
 }
 
 bool exitMsPdb()
 {
 	pPDBOpen2W = 0;
+	pPDBOpenEx2W = 0;
 	if (modMsPdb)
 		FreeLibrary(modMsPdb);
 	modMsPdb = 0;
 	return true;
 }
 
-mspdb::PDB* CreatePDB(const wchar_t* pdbname)
+mspdb::PDB* CreatePDB(const wchar_t* pdbname, long pageSize)
 {
 	if (!initMsPdb ())
 		return 0;
 
+	if (!pageSize)
+		pageSize = mspdb::vsVersion >= 14 ? 4096 : 1024;
+	else if (!pPDBOpenEx2W && pageSize != 1024)
+		printf("warning: the PDB helper DLL does not export PDBOpenEx2W, so -b%ld has no effect and the pages are 1024 bytes\n",
+		       pageSize);
+
 	mspdb::PDB* pdb = 0;
-	long data[194] = { 193, 0 };
-	wchar_t ext[256] = L".exe";
-	if (!((*pPDBOpen2W) (pdbname, "wf", data, ext, 0x400, &pdb)))
+	long ec = 0;
+	wchar_t error[256];
+	int opened;
+	if (pPDBOpenEx2W)
+		opened = (*pPDBOpenEx2W) (pdbname, "wf", pageSize, &ec, error, _countof(error), &pdb);
+	else
+		opened = (*pPDBOpen2W) (pdbname, "wf", &ec, error, _countof(error), &pdb);
+	if (!opened)
 		return 0;
 
 	return pdb;

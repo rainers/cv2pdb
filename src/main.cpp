@@ -189,6 +189,7 @@ int T_main(int argc, TCHAR* argv[])
 	double Dversion = 2.072;
 	const TCHAR* pdbref = 0;
 	const TCHAR* debug_link = 0;
+	long pdbPageSize = 0;
 	DebugLevel debug = DebugLevel{};
 
 	CoInitialize(nullptr);
@@ -218,6 +219,14 @@ int T_main(int argc, TCHAR* argv[])
 		}
 		else if (argv[0][1] == 's' && argv[0][2])
 			dotReplacementChar = (char)argv[0][2];
+		else if (argv[0][1] == 'b' && argv[0][2])
+		{
+			TCHAR* end = nullptr;
+			pdbPageSize = T_strtoul(&argv[0][2], &end, 10);
+			if (*end || (pdbPageSize != 1024 && pdbPageSize != 4096 && pdbPageSize != 8192 &&
+			             pdbPageSize != 16384 && pdbPageSize != 32768))
+				fatal("unsupported PDB page size: " SARG " (use 1024, 4096, 8192, 16384 or 32768)", &argv[0][2]);
+		}
 		else if (argv[0][1] == 'p' && argv[0][2])
 			pdbref = argv[0] + 2;
 		else if (argv[0][1] == 'l' && argv[0][2])
@@ -234,7 +243,7 @@ int T_main(int argc, TCHAR* argv[])
 		printf("License for redistribution is given by the Artistic License 2.0\n");
 		printf("see file LICENSE for further details\n");
 		printf("\n");
-		printf("usage: " SARG " [-D<version>|-C|-n|-e|-s<C>|-p<embedded-pdb>|-l<debug-link>] <exe-file> [new-exe-file] [pdb-file]\n", argv[0]);
+		printf("usage: " SARG " [-D<version>|-C|-n|-e|-s<C>|-p<embedded-pdb>|-l<debug-link>|-b<page-size>] <exe-file> [new-exe-file] [pdb-file]\n", argv[0]);
 		return -1;
 	}
 
@@ -291,7 +300,7 @@ int T_main(int argc, TCHAR* argv[])
 
 	T_unlink(pdbname);
 
-	if(!cv2pdb.openPDB(pdbname, pdbref))
+	if(!cv2pdb.openPDB(pdbname, pdbref, pdbPageSize))
 		fatal(SARG ": %s", pdbname, cv2pdb.getLastError());
 
 	if(exe.hasDWARF() || dbg.hasDWARF())
