@@ -208,6 +208,38 @@ CV_X86_REG dwarf_to_amd64_reg(unsigned dwarf_reg)
 	}
 }
 
+enum CV_ARM64_REG
+{
+	CV_ARM64_X0 = 50, /* X1 to X28 are numbered 51 to 78 */
+	CV_ARM64_FP = 79,
+	CV_ARM64_LR = 80,
+	CV_ARM64_SP = 81,
+	CV_ARM64_Q0 = 180, /* Q1 to Q31 are numbered 181 to 211 */
+};
+
+int dwarf_to_arm64_reg(unsigned dwarf_reg)
+{
+	if (dwarf_reg <= 28)
+		return CV_ARM64_X0 + dwarf_reg;
+	if (dwarf_reg >= 64 && dwarf_reg <= 95)
+		return CV_ARM64_Q0 + dwarf_reg - 64;
+	switch (dwarf_reg)
+	{
+		case 29: return CV_ARM64_FP;
+		case 30: return CV_ARM64_LR;
+		case 31: return CV_ARM64_SP;
+		default:
+			return CV_REG_NONE;
+	}
+}
+
+int dwarf_frame_pointer_reg(const PEImage& img)
+{
+	if (img.isARM64())
+		return 29;
+	return img.isX64() ? 6 : 5;
+}
+
 // Index for efficient lookups in Call Frame Information entries
 class CFIIndex
 {
@@ -546,7 +578,7 @@ public:
 Location findBestCFA(const PEImage& img, const CFIIndex* index, unsigned int pclo, unsigned int pchi)
 {
 	bool x64 = img.isX64();
-	Location ebp = { Location::RegRel, x64 ? 6 : 5, x64 ? 16 : 8 };
+	Location ebp = { Location::RegRel, dwarf_frame_pointer_reg(img), x64 ? 16 : 8 };
 	if (!img.debug_frame.isPresent())
 		return ebp;
 
@@ -592,7 +624,7 @@ Location findBestCFA(const PEImage& img, const CFIIndex* index, unsigned int pcl
 
 Location findBestFBLoc(const DIECursor& parent, unsigned long fblocoff)
 {
-	int regebp = parent.img->isX64() ? 6 : 5;
+	int regebp = dwarf_frame_pointer_reg(*parent.img);
 	LOCCursor cursor(parent, fblocoff);
 	LOCEntry entry;
 	Location longest = { Location::RegRel, DW_REG_CFA, 0 };
@@ -635,9 +667,11 @@ void CV2PDB::appendStackVar(const char* name, int type, Location& loc, Location&
 		reg = cfa.reg;
 		off += cfa.off;
 	}
-	if (img.isX64())
+	if (img.isARM64())
+		baseReg = (CV_X86_REG)dwarf_to_arm64_reg(reg);
+	else if (img.isX64())
 		baseReg = dwarf_to_amd64_reg(reg);
-    else
+	else
 		baseReg = dwarf_to_x86_reg(reg);
 
 	if (baseReg == CV_REG_NONE)
@@ -1390,7 +1424,7 @@ bool CV2PDB::addDWARFSymbols()
 	cvs->compiland_v1.id = S_COMPILAND_V1;
 	cvs->compiland_v1.language = 1; // C++
 	cvs->compiland_v1.flags = 0x80; // ?, data model
-	cvs->compiland_v1.machine = img.isX64() ? 0xd0 : 6; //0x06: Pentium Pro/II, 0xd0: x64
+	cvs->compiland_v1.machine = img.isARM64() ? 0xf6 : img.isX64() ? 0xd0 : 6; //0x06: Pentium Pro/II, 0xd0: x64, 0xf6: ARM64
 	len = sizeof(cvs->compiland_v1) - sizeof(cvs->compiland_v1.p_name);
 	len += c2p("cv2pdb", cvs->compiland_v1.p_name);
 	len = alignLength(data + off, len);
