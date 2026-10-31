@@ -1743,6 +1743,22 @@ int CV2PDB::getDWARFTypeSize(const DIECursor& parent, byte* typePtr)
 	return 0;
 }
 
+// Add an LF_MODIFIER record for a const or volatile DIE. A chain of such DIEs,
+// e.g. const -> volatile -> int, becomes one record with both attributes.
+int CV2PDB::addDWARFModifier(const DWARF_InfoData& modifierid)
+{
+	int attr = 0;
+	const DWARF_InfoData* entry = &modifierid;
+	byte* typePtr;
+	do
+	{
+		attr |= entry->tag == DW_TAG_const_type ? 1 : 2;
+		typePtr = entry->type;
+		entry = findEntryByPtr(typePtr);
+	} while (entry && (entry->tag == DW_TAG_const_type || entry->tag == DW_TAG_volatile_type));
+	return appendModifierType(getTypeByDWARFPtr(typePtr), attr);
+}
+
 // Scan the .debug_info section and allocate type IDs for each unique type and
 // create a mapping to look them up by their address.
 // This is the first pass scan that builds up the DWARF tree. The second pass (createTypes)
@@ -1927,7 +1943,8 @@ bool CV2PDB::createTypes()
 				cvtype = appendPointerType(getTypeByDWARFPtr(id.type), pointerAttr);
 				break;
 			case DW_TAG_const_type:
-				cvtype = appendModifierType(getTypeByDWARFPtr(id.type), 1);
+			case DW_TAG_volatile_type:
+				cvtype = addDWARFModifier(id);
 				break;
 			case DW_TAG_reference_type:
 				cvtype = appendPointerType(getTypeByDWARFPtr(id.type), pointerAttr | 0x20);
@@ -1968,7 +1985,6 @@ bool CV2PDB::createTypes()
 			case DW_TAG_file_type:
 			case DW_TAG_packed_type:
 			case DW_TAG_thrown_type:
-			case DW_TAG_volatile_type:
 			case DW_TAG_restrict_type: // DWARF3
 			case DW_TAG_interface_type:
 			case DW_TAG_unspecified_type:

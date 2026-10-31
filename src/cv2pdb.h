@@ -183,6 +183,7 @@ public:
 	int  addDWARFArray(DWARF_InfoData& arrayid, const DIECursor& cursor);
 	int  addDWARFBasicType(const char*name, int encoding, int byte_size);
 	int  addDWARFEnum(DWARF_InfoData& enumid, DIECursor cursor);
+	int  addDWARFModifier(const DWARF_InfoData& modifierid);
 	int  getTypeByDWARFPtr(byte* typePtr);
 	int  findTypeIdByPtr(byte* typePtr) const;
 	int  getDWARFTypeSize(const DIECursor& parent, byte* ptr);
