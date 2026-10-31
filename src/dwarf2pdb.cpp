@@ -1305,7 +1305,10 @@ void CV2PDB::getDWARFSubrangeInfo(DWARF_InfoData& subrangeid, const DIECursor& p
 	basetype = getTypeByDWARFPtr(subrangeid.type);
 	if (subrangeid.has_lower_bound)
 		lowerBound = subrangeid.lower_bound;
-	upperBound = subrangeid.upper_bound;
+	if (subrangeid.has_count)
+		upperBound = lowerBound + subrangeid.count - 1;
+	else
+		upperBound = subrangeid.upper_bound;
 }
 
 // Compute a type ID for a basic DWARF type.
