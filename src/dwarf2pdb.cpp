@@ -1265,12 +1265,13 @@ int CV2PDB::addDWARFStructure(DWARF_InfoData& structid, DIECursor cursor)
 	return cvtype;
 }
 
-// Compute the array bounds of the DIE at the given 'cursor'.
-void CV2PDB::getDWARFArrayBounds(DIECursor cursor, int& basetype, int& lowerBound, int& upperBound)
+// Collect the subranges of the array DIE at the given 'cursor', one per
+// dimension, outermost first.
+std::vector<DWARF_InfoData> CV2PDB::getDWARFArraySubranges(DIECursor cursor)
 {
+	std::vector<DWARF_InfoData> subranges;
 	DWARF_InfoData id;
 
-	// TODO: handle multi-dimensional arrays
 	if (cursor.cu)
 	{
 		// Don't insert these elements into the DB. We're just using it for
@@ -1278,16 +1279,19 @@ void CV2PDB::getDWARFArrayBounds(DIECursor cursor, int& basetype, int& lowerBoun
 		while (cursor.readNext(&id, true /* stopAtNull */))
 		{
 			if (id.tag == DW_TAG_subrange_type)
-			{
-				getDWARFSubrangeInfo(id, cursor, basetype, lowerBound, upperBound);
-				return;
-			}
+				subranges.push_back(id);
 			cursor.gotoSibling();
 		}
 	}
 
-	// In case of error, return plausible defaults
-	getDWARFSubrangeInfo(id, cursor, basetype, lowerBound, upperBound);
+	// When no subrange is found, return one empty subrange, for which
+	// getDWARFSubrangeInfo returns plausible defaults.
+	if (subranges.empty())
+	{
+		id.clear();
+		subranges.push_back(id);
+	}
+	return subranges;
 }
 
 void CV2PDB::getDWARFSubrangeInfo(DWARF_InfoData& subrangeid, const DIECursor& parent,
@@ -1379,23 +1383,26 @@ int CV2PDB::getDWARFBasicType(int encoding, int byte_size)
 // Goal: don't rescan the same DIE twice.
 int CV2PDB::addDWARFArray(DWARF_InfoData& arrayid, const DIECursor& cursor)
 {
+	std::vector<DWARF_InfoData> subranges = getDWARFArraySubranges(cursor);
+	int elemtype = getTypeByDWARFPtr(arrayid.type);
+	int size = getDWARFTypeSize(cursor, arrayid.type);
 	int basetype, upperBound, lowerBound;
-	getDWARFArrayBounds(cursor, basetype, lowerBound, upperBound);
 
+	// Each dimension becomes one LF_ARRAY record, and the record for an inner
+	// dimension is the element type of the record for the dimension outside it.
+	for (size_t i = subranges.size() - 1; i > 0; i--)
+	{
+		getDWARFSubrangeInfo(subranges[i], cursor, basetype, lowerBound, upperBound);
+		size *= upperBound - lowerBound + 1;
+		checkDWARFTypeAlloc(100);
+		cbDwarfTypes += addArrayType((codeview_type*) (dwarfTypes + cbDwarfTypes), elemtype, basetype, size);
+		elemtype = nextDwarfType++;
+	}
+
+	getDWARFSubrangeInfo(subranges[0], cursor, basetype, lowerBound, upperBound);
+	size *= upperBound - lowerBound + 1;
 	checkUserTypeAlloc(kMaxNameLen + 100);
-	codeview_type* cvt = (codeview_type*) (userTypes + cbUserTypes);
-
-	cvt->array_v2.id = v3 ? LF_ARRAY_V3 : LF_ARRAY_V2;
-	cvt->array_v2.elemtype = getTypeByDWARFPtr(arrayid.type);
-	cvt->array_v2.idxtype = basetype;
-	int len = (BYTE*)&cvt->array_v2.arrlen - (BYTE*)cvt;
-	int size = (upperBound - lowerBound + 1) * getDWARFTypeSize(cursor, arrayid.type);
-	len += write_numeric_leaf(size, &cvt->array_v2.arrlen);
-	((BYTE*)cvt)[len++] = 0; // empty name
-	len = alignLength(userTypes + cbUserTypes, len);
-	cvt->array_v2.len = len - 2;
-
-	cbUserTypes += len;
+	cbUserTypes += addArrayType((codeview_type*) (userTypes + cbUserTypes), elemtype, basetype, size);
 
 	int cvtype = nextUserType++;
 	return cvtype;
@@ -1734,9 +1741,14 @@ int CV2PDB::getDWARFTypeSize(const DIECursor& parent, byte* typePtr)
 			return cursor.cu->address_size;
 		case DW_TAG_array_type:
 		{
-			int basetype, upperBound, lowerBound;
-			getDWARFArrayBounds(cursor, basetype, lowerBound, upperBound);
-			return (upperBound - lowerBound + 1) * getDWARFTypeSize(cursor, id.type);
+			int size = getDWARFTypeSize(cursor, id.type);
+			for (DWARF_InfoData& subrange : getDWARFArraySubranges(cursor))
+			{
+				int basetype, upperBound, lowerBound;
+				getDWARFSubrangeInfo(subrange, cursor, basetype, lowerBound, upperBound);
+				size *= upperBound - lowerBound + 1;
+			}
+			return size;
 		}
 		default:
 			if(id.type)
