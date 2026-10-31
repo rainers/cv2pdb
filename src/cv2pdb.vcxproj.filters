@@ -37,6 +37,9 @@
     <ClCompile Include="dwarflines.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="blockpieces.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="cv2pdb.h">
@@ -70,6 +73,9 @@
       <Filter>Source Files</Filter>
     </ClInclude>
     <ClInclude Include="dcvinfo.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="blockpieces.h">
       <Filter>Source Files</Filter>
     </ClInclude>
   </ItemGroup>
