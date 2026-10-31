@@ -1,6 +1,9 @@
 package main
 
-import "os"
+import (
+  "os"
+  "unsafe"
+)
 
 //go:noinline
 func Square(x int) int { return x * x }
@@ -16,10 +19,13 @@ type Getter interface{ Get() int }
 
 var sink func(int) int
 
+var opaque unsafe.Pointer
+
 //go:noinline
 func call(g Getter) int { return g.Get() }
 
 func main() {
   sink = Twice
+  opaque = unsafe.Pointer(&sink)
   os.Exit(Square(len(os.Args)) + Twice(len(os.Args)) + sink(1) + call(new(Value)) - 100)
 }

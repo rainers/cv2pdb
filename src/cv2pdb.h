@@ -184,6 +184,7 @@ public:
 	int  addDWARFBasicType(const char*name, int encoding, int byte_size);
 	int  addDWARFEnum(DWARF_InfoData& enumid, DIECursor cursor);
 	int  getTypeByDWARFPtr(byte* typePtr);
+	int  getModifiedTypeByDWARFPtr(byte* typePtr);
 	int  findTypeIdByPtr(byte* typePtr) const;
 	int  getDWARFTypeSize(const DIECursor& parent, byte* ptr);
 	void getDWARFArrayBounds(DIECursor cursor,

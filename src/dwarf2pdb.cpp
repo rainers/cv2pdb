@@ -1617,6 +1617,16 @@ int CV2PDB::addDWARFEnum(DWARF_InfoData& enumid, DIECursor cursor)
 	return enumType;
 }
 
+// Find the CV TypeID of the type that a pointer, const or typedef DIE refers to.
+// A pointer, const or typedef DIE without DW_AT_type refers to void.
+int CV2PDB::getModifiedTypeByDWARFPtr(byte* typePtr)
+{
+	if (typePtr == nullptr)
+		return T_VOID;
+
+	return getTypeByDWARFPtr(typePtr);
+}
+
 // Try to find or compute the "best" CV TypeID for a given DIE found by following
 // a DW_AT_type attribute or its closest counterpart.
 int CV2PDB::getTypeByDWARFPtr(byte* typePtr)
@@ -1920,14 +1930,14 @@ bool CV2PDB::createTypes()
 				cvtype = addDWARFBasicType(id.name, id.encoding, id.byte_size);
 				break;
 			case DW_TAG_typedef:
-				cvtype = appendModifierType(getTypeByDWARFPtr(id.type), 0);
+				cvtype = appendModifierType(getModifiedTypeByDWARFPtr(id.type), 0);
 				addUdtSymbol(cvtype, id.name);
 				break;
 			case DW_TAG_pointer_type:
-				cvtype = appendPointerType(getTypeByDWARFPtr(id.type), pointerAttr);
+				cvtype = appendPointerType(getModifiedTypeByDWARFPtr(id.type), pointerAttr);
 				break;
 			case DW_TAG_const_type:
-				cvtype = appendModifierType(getTypeByDWARFPtr(id.type), 1);
+				cvtype = appendModifierType(getModifiedTypeByDWARFPtr(id.type), 1);
 				break;
 			case DW_TAG_reference_type:
 				cvtype = appendPointerType(getTypeByDWARFPtr(id.type), pointerAttr | 0x20);
