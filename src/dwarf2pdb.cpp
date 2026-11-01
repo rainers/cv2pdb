@@ -2092,7 +2092,7 @@ bool CV2PDB::createTypes()
 							type = nextDwarfType++;
 						}
 						appendGlobalVar(id.name, type, seg + 1, segOff);
-						int rc = mod->AddPublic2(id.name, seg + 1, segOff, type);
+						int rc = mod->AddPublic2(id.name, seg + 1, segOff, 0);
 					}
 				}
 				break;
@@ -2267,7 +2267,7 @@ bool CV2PDB::addDWARFPublics()
 	mspdb::Mod* mod = globalMod();
 
 	int type = 0;
-	int rc = mod->AddPublic2("public_all", img.text.secNo + 1, 0, BASE_USER_TYPE);
+	int rc = mod->AddPublic2("public_all", img.text.secNo + 1, 0, 0);
 	if (rc <= 0)
 		return setError("cannot add public");
 	return true;
