@@ -14,6 +14,7 @@
 #include "PEImage.h"
 #include "symutil.h"
 #include "cvutil.h"
+#include "blockpieces.h"
 
 #include "dwarf.h"
 
@@ -742,7 +743,7 @@ void CV2PDB::appendEnd()
 	cbUdtSymbols += 4;
 }
 
-void CV2PDB::appendLexicalBlock(DWARF_InfoData& id, unsigned int proclo)
+void CV2PDB::appendLexicalBlock(uint64_t pclo, uint64_t pchi)
 {
 	checkUdtSymbolAlloc(32);
 
@@ -750,8 +751,8 @@ void CV2PDB::appendLexicalBlock(DWARF_InfoData& id, unsigned int proclo)
 	dsym->block_v3.id = S_BLOCK_V3;
 	dsym->block_v3.parent = 0;
 	dsym->block_v3.end = 0; // destSize + sizeof(dsym->block_v3) + 12;
-	dsym->block_v3.length = id.pchi - id.pclo;
-	dsym->block_v3.offset = id.pclo - codeSegOff;
+	dsym->block_v3.length = pchi - pclo;
+	dsym->block_v3.offset = pclo - codeSegOff;
 	dsym->block_v3.segment = img.text.secNo + 1;
 	dsym->block_v3.name[0] = 0;
 	int len = sizeof(dsym->block_v3);
@@ -1006,77 +1007,8 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, const std::vector<RangeEntry> 
 		}
 		appendEndArg();
 
-		//  Now, collect all the lexical blocks and their stack variables.
-		std::vector<DIECursor> lexicalBlocks;
-
-		// Start from the proc base, and push all nested lexical blocks as you
-		// encounter them.
-		lexicalBlocks.push_back(prev);
-
-		while (!lexicalBlocks.empty())
-		{
-			cursor = lexicalBlocks.back();
-			lexicalBlocks.pop_back();
-
-			while (cursor.readNext(&id))
-			{
-				if (id.tag == DW_TAG_lexical_block)
-				{
-					// It seems it is not possible to describe blocks with
-					// non-contiguous address ranges in CodeView. Instead,
-					// just create a range that is large enough to cover
-					// all continuous ranges.
-					if (id.hasChild && id.ranges != ~0)
-					{
-						id.pclo = ~0;
-						id.pchi = 0;
-
-						// TODO: handle base address selection
-						RangeEntry range;
-						RangeCursor rangeCursor(cursor, id.ranges);
-						while (rangeCursor.readNext(range))
-						{
-							id.pclo = min(id.pclo, range.pclo);
-							id.pchi = max(id.pchi, range.pchi);
-						}
-					}
-
-					if (id.hasChild && id.pchi > id.pclo)
-					{
-						appendLexicalBlock(id, pclo + codeSegOff);
-						DIECursor next = cursor;
-
-						// Compute the sibling node of this lexical block.
-						next.gotoSibling();
-						assert(lexicalBlocks.empty() || next.ptr <= lexicalBlocks.back().ptr);
-
-						// Append the next lexical block to the list of blocks
-						// to scan later.
-						lexicalBlocks.push_back(next);
-
-						// But for now, scan down the current lexical block.
-						cursor = cursor.getSubtreeCursor();
-						continue;
-					}
-				}
-				else if (id.tag == DW_TAG_variable)
-				{
-					// Found a local variable.
-					if (id.abstract_origin)
-						mergeAbstractOrigin(id, *this);
-					if (id.name && (id.location.type == ExprLoc || id.location.type == Block))
-					{
-						Location loc = id.location.type == SecOffset ? findBestFBLoc(cursor, id.location.sec_offset)
-						                                             : decodeLocation(id.location, &frameBase);
-						if (loc.is_regrel())
-							appendStackVar(id.name, getTypeByDWARFPtr(id.type), loc, cfa);
-					}
-				}
-				cursor.gotoSibling();
-			}
-			appendEnd();
-			assert(lexicalBlocks.empty() || cursor.ptr <= lexicalBlocks.back().ptr);
-		}
+		appendScopeSymbols(prev.getSubtreeCursor(), 0, ~0ull, frameBase, cfa);
+		appendEnd();
 	}
 	else
 	{
@@ -1104,6 +1036,47 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, const std::vector<RangeEntry> 
 		appendEnd();
 	}
 	return true;
+}
+
+// Appends the stack variables of a scope, then an S_BLOCK32 record for each piece that
+// `splitSiblingBlocks` makes of the scope's lexical blocks in [lo, hi). When a block is split into
+// several pieces, each piece gets a copy of the block's variables and the parts of its nested
+// blocks that lie within that piece.
+void CV2PDB::appendScopeSymbols(DIECursor children, uint64_t lo, uint64_t hi, Location& frameBase, Location& cfa)
+{
+	std::vector<std::vector<RangeEntry>> blockRanges;
+	std::vector<DIECursor> blockChildren;
+
+	DIECursor cursor = children;
+	DWARF_InfoData id;
+	while (cursor.readNext(&id))
+	{
+		if (id.tag == DW_TAG_lexical_block && id.hasChild)
+		{
+			blockRanges.push_back(getRanges(cursor, id));
+			blockChildren.push_back(cursor.getSubtreeCursor());
+		}
+		else if (id.tag == DW_TAG_variable)
+		{
+			if (id.abstract_origin)
+				mergeAbstractOrigin(id, *this);
+			if (id.name && (id.location.type == ExprLoc || id.location.type == Block))
+			{
+				Location loc = id.location.type == SecOffset ? findBestFBLoc(cursor, id.location.sec_offset)
+				                                             : decodeLocation(id.location, &frameBase);
+				if (loc.is_regrel())
+					appendStackVar(id.name, getTypeByDWARFPtr(id.type), loc, cfa);
+			}
+		}
+		cursor.gotoSibling();
+	}
+
+	for (const BlockPiece& piece : splitSiblingBlocks(blockRanges, lo, hi))
+	{
+		appendLexicalBlock(piece.pclo, piece.pchi);
+		appendScopeSymbols(blockChildren[piece.block], piece.pclo, piece.pchi, frameBase, cfa);
+		appendEnd();
+	}
 }
 
 // Only looks at DW_TAG_member and DW_TAG_inheritance

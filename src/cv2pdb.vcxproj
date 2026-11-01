@@ -264,6 +264,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="blockpieces.cpp" />
     <ClCompile Include="cv2pdb.cpp" />
     <ClCompile Include="cvutil.cpp" />
     <ClCompile Include="demangle.cpp" />
@@ -276,6 +277,7 @@
     <ClCompile Include="symutil.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="blockpieces.h" />
     <ClInclude Include="cv2pdb.h" />
     <ClInclude Include="cvutil.h" />
     <ClInclude Include="dcvinfo.h" />
