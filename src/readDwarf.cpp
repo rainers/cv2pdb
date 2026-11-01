@@ -977,6 +977,14 @@ DWARF_InfoData* DIECursor::readNext(DWARF_InfoData* entry, bool stopAtNull)
 					id.has_lower_bound = true;
 				}
 				break;
+			case DW_AT_count:
+				assert(a.type == Const || a.type == Ref || a.type == ExprLoc || a.type == Block);
+				if (a.type == Const)
+				{
+					id.count = a.cons;
+					id.has_count = true;
+				}
+				break;
 			case DW_AT_containing_type: assert(a.type == Ref); id.containing_type = a.ref; break;
 			case DW_AT_specification: assert(a.type == Ref); id.specification = a.ref; break;
 			case DW_AT_abstract_origin: assert(a.type == Ref); id.abstract_origin = a.ref; break;

@@ -803,6 +803,22 @@ int CV2PDB::addPointerType(unsigned char* dtype, int type, int attr)
 	return addPointerType((codeview_type*) dtype, type, attr);
 }
 
+int CV2PDB::addArrayType(codeview_type* dtype, int elemtype, int idxtype, int size)
+{
+	dtype->array_v2.id = v3 ? LF_ARRAY_V3 : LF_ARRAY_V2;
+	dtype->array_v2.elemtype = elemtype;
+	dtype->array_v2.idxtype = idxtype;
+	int len = offsetof(codeview_type, array_v2.arrlen);
+	len += write_numeric_leaf(size, &dtype->array_v2.arrlen);
+	((BYTE*)dtype)[len++] = 0; // empty name
+
+	unsigned char* p = (unsigned char*) dtype;
+	for (; len & 3; len++)
+		p[len] = 0xf4 - (len & 3);
+	dtype->array_v2.len = len - 2;
+	return len;
+}
+
 int CV2PDB::addFieldMember(codeview_fieldtype* dfieldtype, int attr, int offset, int type, const char* name)
 {
 	dfieldtype->member_v2.id = v3 ? LF_MEMBER_V3 : LF_MEMBER_V2;

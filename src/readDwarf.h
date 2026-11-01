@@ -247,6 +247,8 @@ struct DWARF_InfoData
 	long upper_bound;
 	long lower_bound;
 	bool has_lower_bound;
+	long count;
+	bool has_count;
 	unsigned language;
 	unsigned long const_value;
 	bool has_const_value;
@@ -285,6 +287,8 @@ struct DWARF_InfoData
 		upper_bound = 0;
 		lower_bound = 0;
 		has_lower_bound = false;
+		count = 0;
+		has_count = false;
 		language = 0;
 		const_value = 0;
 		has_const_value = false;
@@ -315,6 +319,7 @@ struct DWARF_InfoData
 		if (frame_base.type == Invalid) frame_base = id.frame_base;
 		if (!upper_bound) upper_bound = id.upper_bound;
 		if (!has_lower_bound) { lower_bound = id.lower_bound; has_lower_bound = id.has_lower_bound; }
+		if (!has_count) { count = id.count; has_count = id.has_count; }
 		if (!has_const_value) { const_value = id.const_value; has_const_value = id.has_const_value; }
 		if (!has_artificial) { is_artificial = id.is_artificial; has_artificial = id.has_artificial; }
 	}
