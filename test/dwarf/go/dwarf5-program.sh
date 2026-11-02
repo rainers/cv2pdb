@@ -32,6 +32,36 @@ awk -v t="$opaque" '$2 == ":" && $3 == "Length" { inrec = $1 == t; next }
      inrec && $1 == "Element" { found = $4 == "T_VOID(0003)" }
      END { exit !found }' go-cv.types
 
+# The global record of a func variable has a pointer to a function pointer as its type.
+mkdir -p functype
+cp "$TESTDIR/dwarf5-program-functype.go" functype/main.go
+shape=$(go run functype/main.go go-dwarf.exe main.sink)
+test -n "$shape" || { echo "test precondition lost: no DWARF variable named main.sink"; exit 1; }
+test "$shape" = "Typedef SubroutineType:8" || { echo "test precondition lost: the DWARF type of main.sink is $shape, not a typedef of an 8-byte subroutine type"; exit 1; }
+sink=$(awk '$1 == "S_GDATA32:" && $NF == "main@sink" { t = $4; sub(/,$/, "", t); print tolower(t) }' go-cv.globals)
+test -n "$sink" || { echo "test precondition lost: no global record for main.sink"; exit 1; }
+awk -v sink="$sink" 'function render(t,  k, n, i, a, s) {
+       if (t ~ /^T_/) return substr(t, 1, index(t, "(") - 1)
+       k = tolower(t)
+       if (leaf[k] == "LF_MODIFIER") return render(base[k])
+       if (leaf[k] == "LF_POINTER") return "ptr" size[k] "(" render(base[k]) ")"
+       if (leaf[k] == "LF_PROCEDURE") {
+         n = split(args[tolower(arglist[k])], a, " ")
+         for (i = 1; i <= n; i++) s = s (i > 1 ? "," : "") render(a[i])
+         return "proc " render(rvtype[k]) "(" s ")"
+       }
+       return leaf[k] "?" t
+     }
+     /^0x[0-9a-f]+ : / { id = $1; leaf[id] = $9; next }
+     /modifies type/ { base[id] = $NF; next }
+     /Pointer \(/ { size[id] = $NF; next }
+     /Element type :/ { base[id] = $NF; next }
+     /Return type = / { rvtype[id] = $4; sub(/,$/, "", rvtype[id]); next }
+     /Arg list type = / { arglist[id] = $NF; next }
+     leaf[id] == "LF_ARGLIST" && /list\[[0-9]+\] = / { args[id] = args[id] " " $NF; next }
+     END { print render(sink) }' go-cv.types >sink.actual
+echo 'ptr8(ptr8(proc T_VOID(T_QUAD,T_QUAD)))' | diff - sink.actual
+
 # Variables with an empty DWARF location get no S_REGREL32 record.
 mkdir -p emptyloc
 cp "$TESTDIR/dwarf5-program-emptyloc.go" emptyloc/main.go
