@@ -186,6 +186,7 @@ public:
 	int  addDWARFBasicType(const char*name, int encoding, int byte_size);
 	int  addDWARFEnum(DWARF_InfoData& enumid, DIECursor cursor);
 	int  addDWARFModifier(const DWARF_InfoData& modifierid);
+	int  addDWARFProcedureType(const DWARF_InfoData& subroutineid, DIECursor cursor, bool isUserType);
 	int  getTypeByDWARFPtr(byte* typePtr);
 	int  getModifiedTypeByDWARFPtr(byte* typePtr);
 	int  findTypeIdByPtr(byte* typePtr) const;

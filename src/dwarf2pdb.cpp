@@ -1795,6 +1795,66 @@ int CV2PDB::addDWARFModifier(const DWARF_InfoData& modifierid)
 	return appendModifierType(getModifiedTypeByDWARFPtr(typePtr), attr);
 }
 
+// Add an LF_PROCEDURE record and its LF_ARGLIST for a DW_TAG_subroutine_type DIE.
+// The LF_PROCEDURE record gets the type ID reserved for the DIE if isUserType is set,
+// and the next DWARF type ID otherwise.
+int CV2PDB::addDWARFProcedureType(const DWARF_InfoData& subroutineid, DIECursor cursor, bool isUserType)
+{
+	std::vector<int> argtypes;
+	bool variadic = false;
+	if (subroutineid.hasChild)
+	{
+		DWARF_InfoData id;
+		while (cursor.readNext(&id, true /* stopAtNull */))
+		{
+			if (id.tag == DW_TAG_formal_parameter)
+				argtypes.push_back(getTypeByDWARFPtr(id.type));
+			else if (id.tag == DW_TAG_unspecified_parameters)
+				variadic = true;
+			cursor.gotoSibling();
+		}
+	}
+	// The T_NOTYPE argument that marks a variadic procedure is appended after the loop, because the
+	// Go linker's (*dwctxt).newtype writes result parameters after the DW_TAG_unspecified_parameters entry.
+	if (variadic)
+		argtypes.push_back(T_NOTYPE);
+
+	int nargs = (int)argtypes.size();
+	int len = sizeof(codeview_reftype::arglist_v2) + 4 * (nargs - 1);
+	checkDWARFTypeAlloc(len);
+	codeview_reftype* arglist = (codeview_reftype*)(dwarfTypes + cbDwarfTypes);
+	arglist->arglist_v2.len = len - 2;
+	arglist->arglist_v2.id = LF_ARGLIST_V2;
+	arglist->arglist_v2.num = nargs;
+	for (int i = 0; i < nargs; i++)
+		arglist->arglist_v2.args[i] = translateType(argtypes[i]);
+	cbDwarfTypes += len;
+	int arglistType = nextDwarfType++;
+
+	int rvtype = translateType(getModifiedTypeByDWARFPtr(subroutineid.type));
+	codeview_type* proc;
+	if (isUserType)
+	{
+		checkUserTypeAlloc(sizeof(proc->procedure_v2));
+		proc = (codeview_type*)(userTypes + cbUserTypes);
+		cbUserTypes += sizeof(proc->procedure_v2);
+	}
+	else
+	{
+		checkDWARFTypeAlloc(sizeof(proc->procedure_v2));
+		proc = (codeview_type*)(dwarfTypes + cbDwarfTypes);
+		cbDwarfTypes += sizeof(proc->procedure_v2);
+	}
+	proc->procedure_v2.len = sizeof(proc->procedure_v2) - 2;
+	proc->procedure_v2.id = LF_PROCEDURE_V2;
+	proc->procedure_v2.rvtype = rvtype;
+	proc->procedure_v2.call = 0;
+	proc->procedure_v2.reserved = 0;
+	proc->procedure_v2.params = nargs;
+	proc->procedure_v2.arglist = arglistType;
+	return isUserType ? nextUserType++ : nextDwarfType++;
+}
+
 // Scan the .debug_info section and allocate type IDs for each unique type and
 // create a mapping to look them up by their address.
 // This is the first pass scan that builds up the DWARF tree. The second pass (createTypes)
@@ -1950,6 +2010,7 @@ bool CV2PDB::createTypes()
 		DWARF_InfoData* node = nullptr;
 		bool setFirstNode = false;
 		DWARF_InfoData id;
+		unsigned language = 0;
 
 		// Scan the DIEs in this CU, reusing the elements.
 		while (cursor.readNext(&id))
@@ -2026,6 +2087,21 @@ bool CV2PDB::createTypes()
 				break;
 
 			case DW_TAG_subroutine_type:
+				// The Go linker's (*dwctxt).newtype writes a func type as a pointer-sized
+				// DW_TAG_subroutine_type, because a Go func value points to a closure record whose
+				// first word is the code address (runtime.funcval). cv2pdb therefore writes a Go
+				// DW_TAG_subroutine_type as a pointer to a function pointer.
+				if (language == DW_LANG_Go)
+				{
+					int proctype = addDWARFProcedureType(id, cursor, false);
+					checkDWARFTypeAlloc(100);
+					cbDwarfTypes += addPointerType(dwarfTypes + cbDwarfTypes, proctype, pointerAttr);
+					cvtype = appendPointerType(nextDwarfType++, pointerAttr);
+				}
+				else
+					cvtype = addDWARFProcedureType(id, cursor, true);
+				break;
+
 			case DW_TAG_string_type:
 			case DW_TAG_ptr_to_member_type:
 			case DW_TAG_set_type:
@@ -2072,6 +2148,7 @@ bool CV2PDB::createTypes()
 			case DW_TAG_compile_unit:
 				// Set the implicit base address for range lists.
 				cu.base_address = id.pclo;
+				language = id.language;
 				switch (id.language)
 				{
 				case DW_LANG_Ada83:
