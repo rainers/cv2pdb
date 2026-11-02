@@ -3011,14 +3011,13 @@ bool CV2PDB::addPublics()
 				case S_PUB_V1:
 					char symname[kMaxNameLen];
 					dsym2c((BYTE*)sym->data_v1.p_name.name, sym->data_v1.p_name.namelen, symname, sizeof(symname));
-					int type = translateType(sym->data_v1.symtype);
 					if (debug & DbgPdbSyms)
 						fprintf(stderr, "%s:%d: AddPublic2 %s\n", __FUNCTION__, __LINE__, (const char *)symname);
 
 					if (mod)
-						rc = mod->AddPublic2(symname, sym->data_v1.segment, sym->data_v1.offset, type);
+						rc = mod->AddPublic2(symname, sym->data_v1.segment, sym->data_v1.offset, 0);
 					else
-						rc = dbi->AddPublic2(symname, sym->data_v1.segment, sym->data_v1.offset, type);
+						rc = dbi->AddPublic2(symname, sym->data_v1.segment, sym->data_v1.offset, 0);
 					if (rc <= 0)
 						return setError("cannot add public");
 					break;
