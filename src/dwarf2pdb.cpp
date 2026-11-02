@@ -1633,72 +1633,115 @@ int CV2PDB::getTypeByDWARFPtr(byte* typePtr)
 			return T_NOTYPE;
 		}
 
-		// See if there exists another "logically equivalent" entry in the tree.
-		// 
-		// First, find all entries with the same (local) name as this type.
-		auto range = mapEntryNameToEntries.equal_range(entry->name);
-		for (auto it = range.first; !ret && it != range.second; ++it) {
-			DWARF_InfoData* candidate = it->second;
-
-			// Skip self.
-			if (candidate == entry) {
-				continue;
-			}
-
-			// Skip declarations (as when they are of structs, they don't help.
-			// We want definitions only as they define the fields in DWARF.)
-			if (candidate->isDecl) {
-				continue;
-			}
-			
-			// Filter nodes based on the matching tag.
-			if (candidate->tag != entry->tag) {
-				continue;
-			}
-
-			// Found a matching tag for this element. Walk up the tree and check
-			// if all parent tags and names match also. If they do, we found an
-			// "equivalent" node to 'typePtr' one that wasn't added to the
-			// typeID registry (because it was likely a decl that we filtered out)
-			DWARF_InfoData* candidateParent = candidate->parent;
-			DWARF_InfoData* entryParent = entry->parent;
-
-			bool equivalentHierarchy = true;
-			while (candidateParent && entryParent) {
-				if (candidateParent->tag != entryParent->tag) {
-					// Tag mismatch.
-					equivalentHierarchy = false;
-					break;
-				}
-
-				// Skip CUs as of course they have different names. We only
-				// care about namespaces, other containing structs, classes, etc.
-				// Entries have the same tag. Checking one is sufficient.
-				if (entryParent->tag != DW_TAG_compile_unit) {
-
-					if (candidateParent->name != entryParent->name &&
-						(!candidateParent->name || !entryParent->name ||
-						strcmp(candidateParent->name, entryParent->name))) {
-						// Name mismatch.
-						equivalentHierarchy = false;
-						break;
-					}
-				}
-
-				candidateParent = candidateParent->parent;
-				entryParent = entryParent->parent;
-			}
-
-			if (equivalentHierarchy) {
-				// Try another lookup with this new candidate.
-				ret = findTypeIdByPtr(candidate->entryPtr);
-				assert(ret);  // how can it now be in the map?
-			}
+		ret = findEquivalentDefinitionTypeId(entry);
+		if (!ret) {
+			auto fwd = mapDeclPtrToForwardRef.find(typePtr);
+			if (fwd != mapDeclPtrToForwardRef.end())
+				ret = fwd->second;
 		}
 		if (!ret)
 			fprintf(stderr, "warn: could not find equivalent entry for typePtr %p (%s)\n", typePtr, entry->name);
 	}
 	return ret;
+}
+
+// Find the CV TypeID of a definition with the same name, tag and enclosing scopes as 'entry'.
+int CV2PDB::findEquivalentDefinitionTypeId(const DWARF_InfoData* entry) const
+{
+	int ret = 0;
+
+	// See if there exists another "logically equivalent" entry in the tree.
+	//
+	// First, find all entries with the same (local) name as this type.
+	auto range = mapEntryNameToEntries.equal_range(entry->name);
+	for (auto it = range.first; !ret && it != range.second; ++it) {
+		DWARF_InfoData* candidate = it->second;
+
+		// Skip self.
+		if (candidate == entry) {
+			continue;
+		}
+
+		// Skip declarations (as when they are of structs, they don't help.
+		// We want definitions only as they define the fields in DWARF.)
+		if (candidate->isDecl) {
+			continue;
+		}
+
+		// Filter nodes based on the matching tag.
+		if (candidate->tag != entry->tag) {
+			continue;
+		}
+
+		// Found a matching tag for this element. Walk up the tree and check
+		// if all parent tags and names match also. If they do, we found an
+		// "equivalent" node to 'entry' that wasn't added to the
+		// typeID registry (because it was likely a decl that we filtered out)
+		DWARF_InfoData* candidateParent = candidate->parent;
+		DWARF_InfoData* entryParent = entry->parent;
+
+		bool equivalentHierarchy = true;
+		while (candidateParent && entryParent) {
+			if (candidateParent->tag != entryParent->tag) {
+				// Tag mismatch.
+				equivalentHierarchy = false;
+				break;
+			}
+
+			// Skip CUs as of course they have different names. We only
+			// care about namespaces, other containing structs, classes, etc.
+			// Entries have the same tag. Checking one is sufficient.
+			if (entryParent->tag != DW_TAG_compile_unit) {
+
+				if (candidateParent->name != entryParent->name &&
+					(!candidateParent->name || !entryParent->name ||
+					strcmp(candidateParent->name, entryParent->name))) {
+					// Name mismatch.
+					equivalentHierarchy = false;
+					break;
+				}
+			}
+
+			candidateParent = candidateParent->parent;
+			entryParent = entryParent->parent;
+		}
+
+		if (equivalentHierarchy) {
+			// Try another lookup with this new candidate.
+			ret = findTypeIdByPtr(candidate->entryPtr);
+			assert(ret);  // how can it now be in the map?
+		}
+	}
+	return ret;
+}
+
+// Add a forward reference record for each named struct, class or union that is only declared.
+// addDWARFFields calls getTypeByDWARFPtr while it writes a field list into dwarfTypes, so a record
+// appended from getTypeByDWARFPtr would corrupt that field list. These records are therefore
+// written before createTypes starts.
+void CV2PDB::createForwardReferences()
+{
+	std::unordered_map<std::string, int> forwardRefByName;
+	for (const auto& named : mapEntryNameToEntries) {
+		const DWARF_InfoData* entry = named.second;
+		if (!entry->isDecl)
+			continue;
+		if (entry->tag != DW_TAG_structure_type && entry->tag != DW_TAG_class_type && entry->tag != DW_TAG_union_type)
+			continue;
+		if (findEquivalentDefinitionTypeId(entry))
+			continue;
+
+		char namebuf[kMaxNameLen] = {};
+		formatFullyQualifiedName(entry, namebuf, sizeof namebuf);
+		auto it = forwardRefByName.find(namebuf);
+		if (it == forwardRefByName.end()) {
+			checkDWARFTypeAlloc(kMaxNameLen + 100);
+			codeview_type* cvt = (codeview_type*)(dwarfTypes + cbDwarfTypes);
+			cbDwarfTypes += addAggregate(cvt, entry->tag == DW_TAG_class_type, 0, 0, kPropIncomplete, 0, 0, 0, namebuf, nullptr);
+			it = forwardRefByName.emplace(namebuf, nextDwarfType++).first;
+		}
+		mapDeclPtrToForwardRef[entry->entryPtr] = it->second;
+	}
 }
 
 // Get the logical size of a DWARF type, starting from 'typePtr' and recursing
@@ -2225,6 +2268,7 @@ bool CV2PDB::createDWARFModules()
 	countEntries = 0;
 	if (!mapTypes())
 		return false;
+	createForwardReferences();
 	if (!createTypes())
 		return false;
 
