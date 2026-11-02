@@ -1600,8 +1600,8 @@ int CV2PDB::addDWARFEnum(DWARF_InfoData& enumid, DIECursor cursor)
 	return enumType;
 }
 
-// Find the CV TypeID of the type that a pointer, const, volatile or typedef DIE refers to.
-// A pointer, const, volatile or typedef DIE without DW_AT_type refers to void.
+// Find the CV TypeID of the type that a pointer, const, volatile, restrict or typedef DIE refers to.
+// A pointer, const, volatile, restrict or typedef DIE without DW_AT_type refers to void.
 int CV2PDB::getModifiedTypeByDWARFPtr(byte* typePtr)
 {
 	if (typePtr == nullptr)
@@ -1944,6 +1944,17 @@ bool CV2PDB::createTypes()
 			case DW_TAG_volatile_type:
 				cvtype = addDWARFModifier(id);
 				break;
+			case DW_TAG_restrict_type:
+			{
+				// CodeView's `CV_modifier_t` has no restrict bit, so only an LF_POINTER can be restrict, through
+				// the `isrestrict` bit 0x1000 of its `lfPointerAttr`.
+				const DWARF_InfoData* entry = findEntryByPtr(id.type);
+				if (entry && entry->tag == DW_TAG_pointer_type)
+					cvtype = appendPointerType(getModifiedTypeByDWARFPtr(entry->type), pointerAttr | 0x1000);
+				else
+					cvtype = appendModifierType(getModifiedTypeByDWARFPtr(id.type), 0);
+				break;
+			}
 			case DW_TAG_reference_type:
 				cvtype = appendPointerType(getTypeByDWARFPtr(id.type), pointerAttr | 0x20);
 				break;
@@ -1983,7 +1994,6 @@ bool CV2PDB::createTypes()
 			case DW_TAG_file_type:
 			case DW_TAG_packed_type:
 			case DW_TAG_thrown_type:
-			case DW_TAG_restrict_type: // DWARF3
 			case DW_TAG_interface_type:
 			case DW_TAG_unspecified_type:
 			case DW_TAG_mutable_type: // withdrawn
