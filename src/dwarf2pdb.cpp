@@ -1080,7 +1080,7 @@ void CV2PDB::appendScopeSymbols(DIECursor children, uint64_t lo, uint64_t hi, Lo
 }
 
 // Only looks at DW_TAG_member and DW_TAG_inheritance
-int CV2PDB::addDWARFFields(DWARF_InfoData& structid, DIECursor& cursor, int baseoff, int flStart, bool& hasBackRef)
+int CV2PDB::addDWARFFields(DWARF_InfoData& structid, DIECursor& cursor, int baseoff, int flStart)
 {
 	bool isunion = structid.tag == DW_TAG_union_type;
 	int nfields = 0;
@@ -1113,13 +1113,6 @@ int CV2PDB::addDWARFFields(DWARF_InfoData& structid, DIECursor& cursor, int base
 				{
 					checkDWARFTypeAlloc(kMaxNameLen + 100);
 					codeview_fieldtype* dfieldtype = (codeview_fieldtype*)(dwarfTypes + cbDwarfTypes);
-					const DWARF_InfoData* entry = findEntryByPtr(id.type);
-					if (entry && entry->tag == DW_TAG_pointer_type)
-					{
-						const DWARF_InfoData* ptrEntry = findEntryByPtr(entry->type);
-						if (ptrEntry && ptrEntry->abbrev == structid.abbrev)
-							hasBackRef = true;
-					}
 					cbDwarfTypes += addFieldMember(dfieldtype, 0, baseoff + off, getTypeByDWARFPtr(id.type), id.name);
 					nfields++;
 				}
@@ -1141,7 +1134,7 @@ int CV2PDB::addDWARFFields(DWARF_InfoData& structid, DIECursor& cursor, int base
 						case DW_TAG_class_type:
 						case DW_TAG_structure_type:
 						case DW_TAG_union_type:
-							nfields += addDWARFFields(memberid, membercursor, baseoff + off, flStart, hasBackRef);
+							nfields += addDWARFFields(memberid, membercursor, baseoff + off, flStart);
 							break;
 						}
 					}
@@ -1182,7 +1175,6 @@ int CV2PDB::addDWARFStructure(DWARF_InfoData& structid, DIECursor cursor)
 
 	int fieldlistType = 0;
 	int nfields = 0;
-	bool hasBackRef = false;
 	if (cursor.cu)
 	{
 		checkDWARFTypeAlloc(100);
@@ -1204,7 +1196,7 @@ int CV2PDB::addDWARFStructure(DWARF_InfoData& structid, DIECursor cursor)
 			nfields++;
 		}
 #endif
-		nfields += addDWARFFields(structid, cursor, 0, flbegin, hasBackRef);
+		nfields += addDWARFFields(structid, cursor, 0, flbegin);
 		fl = (codeview_reftype*) (dwarfTypes + flbegin);
 		fl->fieldlist.len = cbDwarfTypes - flbegin - 2;
 		fieldlistType = nextDwarfType++;
@@ -1214,10 +1206,13 @@ int CV2PDB::addDWARFStructure(DWARF_InfoData& structid, DIECursor cursor)
 	formatFullyQualifiedName(&structid, namebuf, sizeof namebuf);
 
 	int udttype = nextUserType;
-	if (hasBackRef && fieldlistType)
+	// mspdb's type merge (`TMR::fMapRti`) writes T_NOTTRANS for a reference that closes a cycle in
+	// the type graph. A forward reference has no field list, so no cycle passes through it. The
+	// record at the type ID that `mapTypes` reserved for a named aggregate is therefore a forward
+	// reference, and only the UDT symbol refers to the definition. An anonymous aggregate keeps its
+	// definition at that ID, because any cycle through it also passes through a named aggregate.
+	if (structid.name && fieldlistType)
 	{
-		// with back references, make the original struct incomplete and
-		// put the full definition into the DWARF chunk
 		checkDWARFTypeAlloc(kMaxNameLen + 100);
 		codeview_type* dwarf = (codeview_type*)(dwarfTypes + cbDwarfTypes);
 		int len = addAggregate(dwarf, structid.tag == DW_TAG_class_type, nfields, fieldlistType, 0, 0, 0, structid.byte_size, namebuf, nullptr);
