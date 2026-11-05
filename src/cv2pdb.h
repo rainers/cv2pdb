@@ -189,6 +189,7 @@ public:
 	int  getTypeByDWARFPtr(byte* typePtr);
 	int  getModifiedTypeByDWARFPtr(byte* typePtr);
 	int  findTypeIdByPtr(byte* typePtr) const;
+	int  findEquivalentDefinitionTypeId(const DWARF_InfoData* entry) const;
 	int  getDWARFTypeSize(const DIECursor& parent, byte* ptr);
 	std::vector<DWARF_InfoData> getDWARFArraySubranges(DIECursor cursor);
 	void getDWARFSubrangeInfo(DWARF_InfoData& subrangeid, const DIECursor& parent,
@@ -197,6 +198,7 @@ public:
 
 	void build_cfi_index();
 	bool mapTypes();
+	void createForwardReferences();
 	bool createTypes();
 
 // private:
@@ -299,6 +301,9 @@ public:
 
 	// A multimap keyed on entry name. Since this is not unique, we use a multimap.
 	std::multimap<std::string, DWARF_InfoData*> mapEntryNameToEntries;
+
+	// Forward reference type IDs of declarations without a definition, keyed on DWARF_InfoData::entryPtr
+	std::unordered_map<byte*, int> mapDeclPtrToForwardRef;
 
 	// Head of list of DWARF DIE nodes.
 	DWARF_InfoData* dwarfHead = nullptr;
