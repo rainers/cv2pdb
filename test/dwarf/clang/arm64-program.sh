@@ -18,6 +18,6 @@ grep '^ *Target processor: ARM64$' arm64-O0-cv.dump
 grep '^ *Target processor: ARM64$' arm64-O2-cv.dump
 
 for o in O0 O2; do
-  awk '$2 == "S_REGREL32:" { split($3, r, "+"); n[r[1]]++; if (r[1] != "sp" && r[1] != "fp") { print; bad++; } }
+  awk '$2 == "S_DEFRANGE_REGISTER_REL:" { r = substr($3, 2); n[r]++; if (r != "sp" && r != "fp" && r !~ /^x([0-9]|1[0-9]|2[0-8])$/) { print; bad++; } }
        END { exit !(n["sp"] && n["fp"] && !bad); }' arm64-$o-cv.dump
 done

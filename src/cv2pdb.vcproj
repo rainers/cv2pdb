@@ -204,6 +204,14 @@
 				>
 			</File>
 			<File
+				RelativePath=".\defrange.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\defrange.h"
+				>
+			</File>
+			<File
 				RelativePath=".\demangle.cpp"
 				>
 			</File>
@@ -217,6 +225,14 @@
 			</File>
 			<File
 				RelativePath=".\dwarflines.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\dwarflocals.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\dwarflocals.h"
 				>
 			</File>
 			<File

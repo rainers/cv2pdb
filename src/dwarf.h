@@ -711,8 +711,16 @@ extern "C" {
 #define DW_OP_bit_piece                 0x9d /* DWARF3f */
 #define DW_OP_implicit_value            0x9e /* DWARF4 */
 #define DW_OP_stack_value               0x9f /* DWARF4 */
+#define DW_OP_implicit_pointer          0xa0 /* DWARF5 */
 #define DW_OP_addrx                     0xa1 /* DWARF5 */
 #define DW_OP_constx                    0xa2 /* DWARF5 */
+#define DW_OP_entry_value               0xa3 /* DWARF5 */
+#define DW_OP_const_type                0xa4 /* DWARF5 */
+#define DW_OP_regval_type               0xa5 /* DWARF5 */
+#define DW_OP_deref_type                0xa6 /* DWARF5 */
+#define DW_OP_xderef_type               0xa7 /* DWARF5 */
+#define DW_OP_convert                   0xa8 /* DWARF5 */
+#define DW_OP_reinterpret               0xa9 /* DWARF5 */
 
 
     /* GNU extensions. */
@@ -726,6 +734,14 @@ extern "C" {
 #define DW_OP_GNU_encoded_addr          0xf1 /* GNU */
 #define DW_OP_GNU_implicit_pointer      0xf2 /* GNU */
 #define DW_OP_GNU_entry_value           0xf3 /* GNU */
+#define DW_OP_GNU_const_type            0xf4 /* GNU */
+#define DW_OP_GNU_regval_type           0xf5 /* GNU */
+#define DW_OP_GNU_deref_type            0xf6 /* GNU */
+#define DW_OP_GNU_convert               0xf7 /* GNU */
+#define DW_OP_GNU_reinterpret           0xf9 /* GNU */
+#define DW_OP_GNU_parameter_ref         0xfa /* GNU */
+#define DW_OP_GNU_addr_index            0xfb /* GNU */
+#define DW_OP_GNU_const_index           0xfc /* GNU */
 
     /* HP extensions. */
 #define DW_OP_HP_unknown                0xe0 /* HP conflict: GNU */

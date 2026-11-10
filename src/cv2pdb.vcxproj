@@ -267,9 +267,11 @@
     <ClCompile Include="blockpieces.cpp" />
     <ClCompile Include="cv2pdb.cpp" />
     <ClCompile Include="cvutil.cpp" />
+    <ClCompile Include="defrange.cpp" />
     <ClCompile Include="demangle.cpp" />
     <ClCompile Include="dwarf2pdb.cpp" />
     <ClCompile Include="dwarflines.cpp" />
+    <ClCompile Include="dwarflocals.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="mspdb.cpp" />
     <ClCompile Include="PEImage.cpp" />
@@ -281,8 +283,10 @@
     <ClInclude Include="cv2pdb.h" />
     <ClInclude Include="cvutil.h" />
     <ClInclude Include="dcvinfo.h" />
+    <ClInclude Include="defrange.h" />
     <ClInclude Include="demangle.h" />
     <ClInclude Include="dwarf.h" />
+    <ClInclude Include="dwarflocals.h" />
     <ClInclude Include="LastError.h" />
     <ClInclude Include="mscvpdb.h" />
     <ClInclude Include="mspdb.h" />

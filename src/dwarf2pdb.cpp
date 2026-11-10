@@ -15,6 +15,7 @@
 #include "symutil.h"
 #include "cvutil.h"
 #include "blockpieces.h"
+#include "dwarflocals.h"
 
 #include "dwarf.h"
 
@@ -239,6 +240,17 @@ int dwarf_frame_pointer_reg(const PEImage& img)
 	if (img.isARM64())
 		return 29;
 	return img.isX64() ? 6 : 5;
+}
+
+int dwarfToCVRegister(const PEImage& img, int reg)
+{
+	if (img.isARM64())
+		return dwarf_to_arm64_reg(reg);
+	if (img.isX64())
+		return dwarf_to_amd64_reg(reg);
+	// `dwarf_to_x86_reg` does not follow the i386 System V numbering of the x87, SSE and segment
+	// registers.
+	return reg >= 0 && reg <= 7 ? dwarf_to_x86_reg(reg) : 0;
 }
 
 // Index for efficient lookups in Call Frame Information entries
@@ -623,18 +635,52 @@ Location findBestCFA(const PEImage& img, const CFIIndex* index, unsigned int pcl
 	return ebp;
 }
 
+std::vector<CFARow> getCFARows(const PEImage& img, const CFIIndex* index, uint64_t pclo, uint64_t pchi)
+{
+	std::vector<CFARow> rows;
+	if (!img.debug_frame.isPresent() || !index)
+		return rows;
+
+	CFIEntry entry;
+	CFICursor cursor(img);
+	cursor.ptr = index->lookup((unsigned int)pclo, (unsigned int)pchi);
+	if (!cursor.ptr || !cursor.readNext(entry))
+		return rows;
+
+	// `CFICursor` reads addresses as 32 bits, so each row address is rebuilt as the 64-bit address
+	// nearest to `pclo` that has the same low 32 bits.
+	auto address = [pclo](unsigned long long loc) { return pclo + (int32_t)((uint32_t)loc - (uint32_t)pclo); };
+	CFACursor cfa(img, entry, entry.initial_location);
+	while (cfa.processNext()) {}
+	cfa.setInstructions(entry.instructions, entry.instructions_length);
+	unsigned long long row_start = cfa.loc;
+	unsigned long long fde_end = (unsigned long long) entry.initial_location + entry.address_range;
+	for (bool more = true; more; )
+	{
+		Location row = cfa.cfa;
+		more = cfa.processNext();
+		unsigned long long row_end = more ? cfa.loc : fde_end;
+		if (row_end > row_start)
+		{
+			rows.push_back(CFARow{ address(row_start), address(row_end), row });
+			row_start = row_end;
+		}
+	}
+	return rows;
+}
+
 Location findBestFBLoc(const DIECursor& parent, unsigned long fblocoff)
 {
 	int regebp = dwarf_frame_pointer_reg(*parent.img);
 	LOCCursor cursor(parent, fblocoff);
 	LOCEntry entry;
 	Location longest = { Location::RegRel, DW_REG_CFA, 0 };
-	unsigned long longest_range = 0;
+	uint64_t longest_range = 0;
 	while(cursor.readNext(entry))
 	{
 		if(entry.loc.is_regrel() && entry.loc.reg == regebp)
 			return entry.loc;
-		unsigned long range = entry.end_offset - entry.beg_offset;
+		uint64_t range = entry.end_offset - entry.beg_offset;
 		if(range > longest_range)
 		{
 			longest_range = range;
@@ -974,6 +1020,7 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, const std::vector<RangeEntry> 
 		frameBase = findBestFBLoc(cursor, frameBase.off);
 
     Location cfa = findBestCFA(*imgDbg, cfi_index, procid.pclo, procid.pchi);
+	DWARFLocalWriter locals(*this, procid, cursor, ranges.front(), frameBase, cfa);
 
 	if (cursor.cu)
 	{
@@ -993,7 +1040,9 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, const std::vector<RangeEntry> 
 				mergeAbstractOrigin(id, *this);
 			if (id.tag == DW_TAG_formal_parameter && id.name)
 			{
-				if (id.location.type == ExprLoc || id.location.type == Block || id.location.type == SecOffset)
+				if (locals.enabled())
+					locals.add(id, cursor, true);
+				else if (id.location.type == ExprLoc || id.location.type == Block || id.location.type == SecOffset)
 				{
 					Location loc = id.location.type == SecOffset ? findBestFBLoc(cursor, id.location.sec_offset)
 					                                             : decodeLocation(id.location, &frameBase);
@@ -1007,7 +1056,7 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, const std::vector<RangeEntry> 
 		}
 		appendEndArg();
 
-		appendScopeSymbols(prev.getSubtreeCursor(), 0, ~0ull, frameBase, cfa);
+		appendScopeSymbols(prev.getSubtreeCursor(), 0, ~0ull, frameBase, cfa, locals);
 		appendEnd();
 	}
 	else
@@ -1038,11 +1087,12 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, const std::vector<RangeEntry> 
 	return true;
 }
 
-// Appends the stack variables of a scope, then an S_BLOCK32 record for each piece that
+// Appends the variables of a scope, then an S_BLOCK32 record for each piece that
 // `splitSiblingBlocks` makes of the scope's lexical blocks in [lo, hi). When a block is split into
 // several pieces, each piece gets a copy of the block's variables and the parts of its nested
 // blocks that lie within that piece.
-void CV2PDB::appendScopeSymbols(DIECursor children, uint64_t lo, uint64_t hi, Location& frameBase, Location& cfa)
+void CV2PDB::appendScopeSymbols(DIECursor children, uint64_t lo, uint64_t hi, Location& frameBase, Location& cfa,
+                                DWARFLocalWriter& locals)
 {
 	std::vector<std::vector<RangeEntry>> blockRanges;
 	std::vector<DIECursor> blockChildren;
@@ -1060,7 +1110,9 @@ void CV2PDB::appendScopeSymbols(DIECursor children, uint64_t lo, uint64_t hi, Lo
 		{
 			if (id.abstract_origin)
 				mergeAbstractOrigin(id, *this);
-			if (id.name && (id.location.type == ExprLoc || id.location.type == Block))
+			if (id.name && locals.enabled())
+				locals.add(id, cursor, false);
+			else if (id.name && (id.location.type == ExprLoc || id.location.type == Block))
 			{
 				Location loc = id.location.type == SecOffset ? findBestFBLoc(cursor, id.location.sec_offset)
 				                                             : decodeLocation(id.location, &frameBase);
@@ -1074,7 +1126,7 @@ void CV2PDB::appendScopeSymbols(DIECursor children, uint64_t lo, uint64_t hi, Lo
 	for (const BlockPiece& piece : splitSiblingBlocks(blockRanges, lo, hi))
 	{
 		appendLexicalBlock(piece.pclo, piece.pchi);
-		appendScopeSymbols(blockChildren[piece.block], piece.pclo, piece.pchi, frameBase, cfa);
+		appendScopeSymbols(blockChildren[piece.block], piece.pclo, piece.pchi, frameBase, cfa, locals);
 		appendEnd();
 	}
 }
