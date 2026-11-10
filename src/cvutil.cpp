@@ -211,3 +211,34 @@ int write_numeric_leaf(int value, void* leaf)
 	return 6;
 }
 
+int write_numeric_leaf64(uint64_t value, bool isSigned, void* leaf)
+{
+	int64_t svalue = (int64_t)value;
+	if (isSigned ? svalue >= INT32_MIN && svalue <= INT32_MAX : value < LF_NUMERIC)
+		return write_numeric_leaf((int)svalue, leaf);
+
+	unsigned short int* type = (unsigned short int*) leaf;
+	leaf = type + 1;
+	if (isSigned)
+	{
+		*type = LF_QUADWORD;
+		*(int64_t*) leaf = svalue;
+		return 10;
+	}
+	if (value <= 0xffff)
+	{
+		*type = LF_USHORT;
+		*(unsigned short*) leaf = (unsigned short)value;
+		return 4;
+	}
+	if (value <= 0xffffffff)
+	{
+		*type = LF_ULONG;
+		*(uint32_t*) leaf = (uint32_t)value;
+		return 6;
+	}
+	*type = LF_UQUADWORD;
+	*(uint64_t*) leaf = value;
+	return 10;
+}
+

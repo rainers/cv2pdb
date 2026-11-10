@@ -52,4 +52,8 @@ bool cmpStructName(const codeview_type* cvtype, const BYTE* name, bool cstr);
 int numeric_leaf(int* value, const void* leaf);
 int write_numeric_leaf(int value, void* leaf);
 
+// Writes `value` as the smallest numeric leaf that can represent it, reading it as signed when
+// `isSigned` is set. Returns the number of bytes written, at most 10.
+int write_numeric_leaf64(uint64_t value, bool isSigned, void* leaf);
+
 #endif // __CVUTIL_H__

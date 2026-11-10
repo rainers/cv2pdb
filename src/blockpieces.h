@@ -7,8 +7,8 @@
 #include <stdint.h>
 #include <vector>
 
-// One S_BLOCK32 record to write, spanning [pclo, pchi), for the block at index `block` of the
-// `blockRanges` argument of `splitSiblingBlocks`.
+// An address range [pclo, pchi) and the index `block` of the item it belongs to.
+// `splitSiblingBlocks` sets `block` to an index into its `blockRanges` argument.
 struct BlockPiece
 {
 	size_t block;
@@ -23,5 +23,11 @@ struct BlockPiece
 // blocks do not.
 std::vector<BlockPiece> splitSiblingBlocks(const std::vector<std::vector<RangeEntry>>& blockRanges,
                                            uint64_t lo, uint64_t hi);
+
+// Returns the parts of `pieces` that lie outside every piece of `holes`. Each part keeps the `block`
+// of the piece it is cut from. Both lists must be in ascending address order, with no two pieces of
+// a list overlapping. The result is in ascending order.
+std::vector<BlockPiece> cutOutPieces(const std::vector<BlockPiece>& pieces,
+                                     const std::vector<BlockPiece>& holes);
 
 #endif
