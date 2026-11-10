@@ -265,11 +265,13 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="blockpieces.cpp" />
+    <ClCompile Include="constantblocks.cpp" />
     <ClCompile Include="cv2pdb.cpp" />
     <ClCompile Include="cvutil.cpp" />
     <ClCompile Include="defrange.cpp" />
     <ClCompile Include="demangle.cpp" />
     <ClCompile Include="dwarf2pdb.cpp" />
+    <ClCompile Include="dwarfconst.cpp" />
     <ClCompile Include="dwarflines.cpp" />
     <ClCompile Include="dwarflocals.cpp" />
     <ClCompile Include="main.cpp" />
@@ -280,18 +282,21 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="blockpieces.h" />
+    <ClInclude Include="constantblocks.h" />
     <ClInclude Include="cv2pdb.h" />
     <ClInclude Include="cvutil.h" />
     <ClInclude Include="dcvinfo.h" />
     <ClInclude Include="defrange.h" />
     <ClInclude Include="demangle.h" />
     <ClInclude Include="dwarf.h" />
+    <ClInclude Include="dwarfconst.h" />
     <ClInclude Include="dwarflocals.h" />
     <ClInclude Include="LastError.h" />
     <ClInclude Include="mscvpdb.h" />
     <ClInclude Include="mspdb.h" />
     <ClInclude Include="PEImage.h" />
     <ClInclude Include="readDwarf.h" />
+    <ClInclude Include="scopeconstant.h" />
     <ClInclude Include="symutil.h" />
   </ItemGroup>
   <ItemGroup>

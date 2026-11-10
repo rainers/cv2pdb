@@ -35,3 +35,32 @@ std::vector<BlockPiece> splitSiblingBlocks(const std::vector<std::vector<RangeEn
 	}
 	return pieces;
 }
+
+static bool endsAfter(uint64_t pc, const BlockPiece& piece)
+{
+	return pc < piece.pchi;
+}
+
+std::vector<BlockPiece> cutOutPieces(const std::vector<BlockPiece>& pieces,
+                                     const std::vector<BlockPiece>& holes)
+{
+	std::vector<BlockPiece> parts;
+	for (const BlockPiece& piece : pieces)
+	{
+		uint64_t pc = piece.pclo;
+		size_t next = std::upper_bound(holes.begin(), holes.end(), pc, endsAfter) - holes.begin();
+		for (; pc < piece.pchi; next++)
+		{
+			uint64_t end = next < holes.size() ? (std::min)(piece.pchi, holes[next].pclo) : piece.pchi;
+			if (pc < end)
+			{
+				BlockPiece part = { piece.block, pc, end };
+				parts.push_back(part);
+			}
+			if (next >= holes.size())
+				break;
+			pc = holes[next].pchi;
+		}
+	}
+	return parts;
+}

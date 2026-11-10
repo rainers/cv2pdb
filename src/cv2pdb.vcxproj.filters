@@ -46,6 +46,12 @@
     <ClCompile Include="dwarflocals.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="dwarfconst.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="constantblocks.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="cv2pdb.h">
@@ -88,6 +94,15 @@
       <Filter>Source Files</Filter>
     </ClInclude>
     <ClInclude Include="dwarflocals.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="dwarfconst.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="scopeconstant.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="constantblocks.h">
       <Filter>Source Files</Filter>
     </ClInclude>
   </ItemGroup>
