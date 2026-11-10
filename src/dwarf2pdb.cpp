@@ -16,12 +16,14 @@
 #include "cvutil.h"
 #include "blockpieces.h"
 #include "constantblocks.h"
+#include "scopeblocks.h"
 #include "dwarflocals.h"
 
 #include "dwarf.h"
 
 #include <algorithm>
 #include <assert.h>
+#include <iterator>
 #include <set>
 #include <string>
 #include <vector>
@@ -1057,24 +1059,15 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, const std::vector<RangeEntry> 
 			if (id.tag == DW_TAG_formal_parameter && id.abstract_origin)
 				mergeAbstractOrigin(id, *this);
 			if (id.tag == DW_TAG_formal_parameter && id.name)
-			{
-				if (locals.enabled())
-					locals.add(id, cursor, true, 0, ~0ull, paramConstants);
-				else if (id.location.type == ExprLoc || id.location.type == Block || id.location.type == SecOffset)
-				{
-					Location loc = id.location.type == SecOffset ? findBestFBLoc(cursor, id.location.sec_offset)
-					                                             : decodeLocation(id.location, &frameBase);
-					if (loc.is_regrel())
-						appendStackVar(id.name, getTypeByDWARFPtr(id.type), loc, cfa);
-				}
-			}
+				appendVariable(id, cursor, true, 0, ~0ull, frameBase, cfa, locals, paramConstants);
 			// The parameters of an inlined subroutine within the proc are not parameters of
 			// the proc, so this loop skips the children of each entry it reads.
 			cursor.gotoSibling();
 		}
 		appendEndArg();
 
-		appendScopeSymbols(prev.getSubtreeCursor(), 0, ~0ull, frameBase, cfa, locals, paramConstants);
+		appendScopeSymbols(prev.getSubtreeCursor(), 0, ~0ull, false, ScopeBlocks(), frameBase, cfa, locals,
+		                   paramConstants);
 		appendEnd();
 	}
 	else
@@ -1105,20 +1098,48 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, const std::vector<RangeEntry> 
 	return true;
 }
 
-// Appends the variables of a scope, then an S_BLOCK32 record for each piece that
-// `splitSiblingBlocks` makes of the scope's lexical blocks in [lo, hi). When a block is split into
-// several pieces, each piece gets a copy of the block's variables and the parts of its nested
-// blocks that lie within that piece.
-// The constant values of the scope's variables, and the constants in `outerConstants` whose name no
-// variable of the scope declares, are split by `splitConstantBlocks`. An S_CONSTANT record has no
-// address range, so each `ConstantSegment` is written as an S_BLOCK32 record. The S_BLOCK32 records
-// of the segments and of the pieces are written in ascending address order. The constants inside a
-// piece are passed on to the scope of that piece.
-void CV2PDB::appendScopeSymbols(DIECursor children, uint64_t lo, uint64_t hi, Location& frameBase, Location& cfa,
+void CV2PDB::appendVariable(const DWARF_InfoData& id, const DIECursor& cursor, bool isParam, uint64_t lo,
+                            uint64_t hi, Location& frameBase, Location& cfa, DWARFLocalWriter& locals,
+                            std::vector<ScopeConstant>& constants)
+{
+	if (locals.enabled())
+		locals.add(id, cursor, isParam, lo, hi, constants);
+	else if (id.location.type == ExprLoc || id.location.type == Block || (isParam && id.location.type == SecOffset))
+	{
+		Location loc = id.location.type == SecOffset ? findBestFBLoc(cursor, id.location.sec_offset)
+		                                             : decodeLocation(id.location, &frameBase);
+		if (loc.is_regrel())
+			appendStackVar(id.name, getTypeByDWARFPtr(id.type), loc, cfa);
+	}
+}
+
+// Appends the symbols of the scope that spans the addresses [lo, hi). `nested` is false only for
+// the scope of the procedure, whose parameters `addDWARFProc` writes. A nested scope starts with an
+// S_BLOCK32 record. In a nested scope, the parameters of an inlined call are written as locals. A
+// nested scope that gets no symbols is not written.
+// The variables of the scope come first. Then each piece that `splitSiblingBlocks` makes of the
+// lexical blocks of the scope becomes a nested scope with a copy of the variables of its block.
+// `inlined` lists the inlined calls that the enclosing scope passes down. The calls in `inlined`
+// and the inlined calls of the scope are also split into pieces by `splitSiblingBlocks`. Each part
+// of an inlined call that lies outside every lexical block piece becomes a nested scope. Each
+// lexical block piece is passed the inlined calls that overlap it, so the variables of a block stay
+// in scope in an inlined call that lies between two address ranges of the block.
+// The constant values of the scope's locals, and the constants in `outerConstants` whose name no
+// local of the scope declares, are split by `splitConstantBlocks` around the nested scopes of the
+// lexical block pieces and the inlined call parts. An S_CONSTANT record has no address range, so
+// each `ConstantSegment` is written as an S_BLOCK32 record. The S_BLOCK32 records of the segments
+// and of the nested scopes are written in ascending address order. The constants inside a nested
+// scope are passed on to that scope.
+void CV2PDB::appendScopeSymbols(DIECursor children, uint64_t lo, uint64_t hi, bool nested,
+                                ScopeBlocks&& inlined, Location& frameBase, Location& cfa,
                                 DWARFLocalWriter& locals, const std::vector<ScopeConstant>& outerConstants)
 {
-	std::vector<std::vector<RangeEntry>> blockRanges;
-	std::vector<DIECursor> blockChildren;
+	int start = cbUdtSymbols;
+	if (nested)
+		appendLexicalBlock(lo, hi);
+	int body = cbUdtSymbols;
+
+	ScopeBlocks lexical;
 	std::vector<ScopeConstant> constants;
 	std::set<std::string> names;
 
@@ -1127,26 +1148,17 @@ void CV2PDB::appendScopeSymbols(DIECursor children, uint64_t lo, uint64_t hi, Lo
 	while (cursor.readNext(&id))
 	{
 		if (id.tag == DW_TAG_lexical_block && id.hasChild)
-		{
-			blockRanges.push_back(getRanges(cursor, id));
-			blockChildren.push_back(cursor.getSubtreeCursor());
-		}
-		else if (id.tag == DW_TAG_variable)
+			lexical.add(getRanges(cursor, id), cursor.getSubtreeCursor());
+		else if (id.tag == DW_TAG_inlined_subroutine && id.hasChild)
+			inlined.add(getRanges(cursor, id), cursor.getSubtreeCursor());
+		else if (id.tag == DW_TAG_variable || (nested && id.tag == DW_TAG_formal_parameter))
 		{
 			if (id.abstract_origin)
 				mergeAbstractOrigin(id, *this);
 			if (id.name)
 			{
 				names.insert(id.name);
-				if (locals.enabled())
-					locals.add(id, cursor, false, lo, hi, constants);
-				else if (id.location.type == ExprLoc || id.location.type == Block)
-				{
-					Location loc = id.location.type == SecOffset ? findBestFBLoc(cursor, id.location.sec_offset)
-					                                             : decodeLocation(id.location, &frameBase);
-					if (loc.is_regrel())
-						appendStackVar(id.name, getTypeByDWARFPtr(id.type), loc, cfa);
-				}
+				appendVariable(id, cursor, false, lo, hi, frameBase, cfa, locals, constants);
 			}
 		}
 		cursor.gotoSibling();
@@ -1156,30 +1168,50 @@ void CV2PDB::appendScopeSymbols(DIECursor children, uint64_t lo, uint64_t hi, Lo
 		if (!names.count(constant.name))
 			constants.push_back(constant);
 
-	std::vector<BlockPiece> pieces = splitSiblingBlocks(blockRanges, lo, hi);
-	std::vector<std::vector<ScopeConstant>> pieceConstants;
-	std::vector<ConstantSegment> segments = splitConstantBlocks(constants, pieces, lo, hi, pieceConstants);
-	size_t p = 0;
+	std::vector<BlockPiece> pieces = splitSiblingBlocks(lexical.ranges, lo, hi);
+	std::vector<BlockPiece> parts = cutOutPieces(splitSiblingBlocks(inlined.ranges, lo, hi), pieces);
+	size_t lexicalCount = lexical.children.size();
+	for (BlockPiece& part : parts)
+		part.block += lexicalCount;
+	std::vector<BlockPiece> scopes;
+	std::merge(pieces.begin(), pieces.end(), parts.begin(), parts.end(), std::back_inserter(scopes),
+	           [](const BlockPiece& a, const BlockPiece& b) { return a.pclo < b.pclo; });
+
+	std::vector<std::vector<ScopeConstant>> scopeConstants;
+	std::vector<ConstantSegment> segments = splitConstantBlocks(constants, scopes, lo, hi, scopeConstants);
+	size_t c = 0;
 	size_t s = 0;
-	while (p < pieces.size() || s < segments.size())
+	while (c < scopes.size() || s < segments.size())
 	{
-		if (s < segments.size() && (p == pieces.size() || segments[s].lo < pieces[p].pclo))
+		if (s < segments.size() && (c == scopes.size() || segments[s].lo < scopes[c].pclo))
 		{
 			appendLexicalBlock(segments[s].lo, segments[s].hi);
 			for (const ScopeConstant& constant : segments[s].constants)
 				appendConstant(constant);
+			appendEnd();
 			s++;
+		}
+		else if (scopes[c].block < lexicalCount)
+		{
+			const BlockPiece& piece = scopes[c];
+			appendScopeSymbols(lexical.children[piece.block], piece.pclo, piece.pchi, true,
+			                   inlined.overlapping(piece.pclo, piece.pchi), frameBase, cfa, locals,
+			                   scopeConstants[c]);
+			c++;
 		}
 		else
 		{
-			const BlockPiece& piece = pieces[p];
-			appendLexicalBlock(piece.pclo, piece.pchi);
-			appendScopeSymbols(blockChildren[piece.block], piece.pclo, piece.pchi, frameBase, cfa, locals,
-			                   pieceConstants[p]);
-			p++;
+			const BlockPiece& part = scopes[c];
+			appendScopeSymbols(inlined.children[part.block - lexicalCount], part.pclo, part.pchi, true,
+			                   ScopeBlocks(), frameBase, cfa, locals, scopeConstants[c]);
+			c++;
 		}
-		appendEnd();
 	}
+
+	if (nested && cbUdtSymbols == body)
+		cbUdtSymbols = start;
+	else if (nested)
+		appendEnd();
 }
 
 // Only looks at DW_TAG_member and DW_TAG_inheritance

@@ -296,6 +296,7 @@
     <ClInclude Include="mspdb.h" />
     <ClInclude Include="PEImage.h" />
     <ClInclude Include="readDwarf.h" />
+    <ClInclude Include="scopeblocks.h" />
     <ClInclude Include="scopeconstant.h" />
     <ClInclude Include="symutil.h" />
   </ItemGroup>

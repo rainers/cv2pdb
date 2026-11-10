@@ -31,7 +31,7 @@ for v in 4 5; do
        $2 == "S_GPROC32:" { fn = $NF; d = 0 }
        fn != "" && $2 == "S_BLOCK32:" { d++ }
        $2 == "S_END" { if (d) d--; else fn = "" }
-       $2 == "S_LOCAL:" { var = $NF; if (fn == "main" && (var == "a" || var == "local")) { print; leaked = 1 } next }
+       $2 == "S_LOCAL:" { var = $NF; if (fn == "main" && !d && (var == "a" || var == "local")) { print; leaked = 1 } next }
        fn == "helper" && $2 == "S_DEFRANGE_REGISTER_REL:" { print var, $0; if ($3 == "[rsp" && (strtonum("0x" $5) in slots)) found[var] = 1 }
        $2 ~ /^S_/ && $2 !~ /^S_DEFRANGE_/ { var = "" }
        END { exit !(("a" in found) && ("local" in found) && !leaked) }' inline-d$v.asm inline-cv-d$v.dump
