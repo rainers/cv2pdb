@@ -15,12 +15,14 @@
 #include "symutil.h"
 #include "cvutil.h"
 #include "blockpieces.h"
+#include "constantblocks.h"
 #include "dwarflocals.h"
 
 #include "dwarf.h"
 
 #include <algorithm>
 #include <assert.h>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -807,6 +809,21 @@ void CV2PDB::appendLexicalBlock(uint64_t pclo, uint64_t pchi)
 	cbUdtSymbols += len;
 }
 
+void CV2PDB::appendConstant(const ScopeConstant& constant)
+{
+	checkUdtSymbolAlloc(100 + kMaxNameLen);
+
+	codeview_symbol*cvs = (codeview_symbol*) (udtSymbols + cbUdtSymbols);
+	cvs->constant_v3.id = S_CONSTANT_V3;
+	cvs->constant_v3.type = constant.type;
+	unsigned int len = offsetof(codeview_symbol, constant_v3.cvalue);
+	len += write_numeric_leaf64(constant.value, constant.isSigned, (BYTE*) cvs + len);
+	len += cstrcpy_v(true, (BYTE*) cvs + len, constant.name.c_str());
+	len = alignLength(udtSymbols + cbUdtSymbols, len);
+	cvs->constant_v3.len = len - 2;
+	cbUdtSymbols += len;
+}
+
 // Helper to format a fully qualified proc name like 'some_ns::Foo::Foo' since
 // for a Foo constructor in a Foo class in a namespace called "some_ns".
 // PDBs require fully qualified names in their symbols.
@@ -1030,6 +1047,7 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, const std::vector<RangeEntry> 
 
 		// Save off the cursor to the start of the proc.
 		DIECursor prev = cursor;
+		std::vector<ScopeConstant> paramConstants;
 
 		// First, collect all the formal parameters of the proc.
 		// Don't worry about storing these in the tree as we're not going to need
@@ -1041,7 +1059,7 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, const std::vector<RangeEntry> 
 			if (id.tag == DW_TAG_formal_parameter && id.name)
 			{
 				if (locals.enabled())
-					locals.add(id, cursor, true);
+					locals.add(id, cursor, true, paramConstants);
 				else if (id.location.type == ExprLoc || id.location.type == Block || id.location.type == SecOffset)
 				{
 					Location loc = id.location.type == SecOffset ? findBestFBLoc(cursor, id.location.sec_offset)
@@ -1056,7 +1074,7 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, const std::vector<RangeEntry> 
 		}
 		appendEndArg();
 
-		appendScopeSymbols(prev.getSubtreeCursor(), 0, ~0ull, frameBase, cfa, locals);
+		appendScopeSymbols(prev.getSubtreeCursor(), 0, ~0ull, frameBase, cfa, locals, paramConstants);
 		appendEnd();
 	}
 	else
@@ -1091,11 +1109,18 @@ bool CV2PDB::addDWARFProc(DWARF_InfoData& procid, const std::vector<RangeEntry> 
 // `splitSiblingBlocks` makes of the scope's lexical blocks in [lo, hi). When a block is split into
 // several pieces, each piece gets a copy of the block's variables and the parts of its nested
 // blocks that lie within that piece.
+// The constant values of the scope's variables, and the constants in `outerConstants` whose name no
+// variable of the scope declares, are split by `splitConstantBlocks`. An S_CONSTANT record has no
+// address range, so each `ConstantSegment` is written as an S_BLOCK32 record. The S_BLOCK32 records
+// of the segments and of the pieces are written in ascending address order. The constants inside a
+// piece are passed on to the scope of that piece.
 void CV2PDB::appendScopeSymbols(DIECursor children, uint64_t lo, uint64_t hi, Location& frameBase, Location& cfa,
-                                DWARFLocalWriter& locals)
+                                DWARFLocalWriter& locals, const std::vector<ScopeConstant>& outerConstants)
 {
 	std::vector<std::vector<RangeEntry>> blockRanges;
 	std::vector<DIECursor> blockChildren;
+	std::vector<ScopeConstant> constants;
+	std::set<std::string> names;
 
 	DIECursor cursor = children;
 	DWARF_InfoData id;
@@ -1110,23 +1135,49 @@ void CV2PDB::appendScopeSymbols(DIECursor children, uint64_t lo, uint64_t hi, Lo
 		{
 			if (id.abstract_origin)
 				mergeAbstractOrigin(id, *this);
-			if (id.name && locals.enabled())
-				locals.add(id, cursor, false);
-			else if (id.name && (id.location.type == ExprLoc || id.location.type == Block))
+			if (id.name)
 			{
-				Location loc = id.location.type == SecOffset ? findBestFBLoc(cursor, id.location.sec_offset)
-				                                             : decodeLocation(id.location, &frameBase);
-				if (loc.is_regrel())
-					appendStackVar(id.name, getTypeByDWARFPtr(id.type), loc, cfa);
+				names.insert(id.name);
+				if (locals.enabled())
+					locals.add(id, cursor, false, constants);
+				else if (id.location.type == ExprLoc || id.location.type == Block)
+				{
+					Location loc = id.location.type == SecOffset ? findBestFBLoc(cursor, id.location.sec_offset)
+					                                             : decodeLocation(id.location, &frameBase);
+					if (loc.is_regrel())
+						appendStackVar(id.name, getTypeByDWARFPtr(id.type), loc, cfa);
+				}
 			}
 		}
 		cursor.gotoSibling();
 	}
 
-	for (const BlockPiece& piece : splitSiblingBlocks(blockRanges, lo, hi))
+	for (const ScopeConstant& constant : outerConstants)
+		if (!names.count(constant.name))
+			constants.push_back(constant);
+
+	std::vector<BlockPiece> pieces = splitSiblingBlocks(blockRanges, lo, hi);
+	std::vector<std::vector<ScopeConstant>> pieceConstants;
+	std::vector<ConstantSegment> segments = splitConstantBlocks(constants, pieces, lo, hi, pieceConstants);
+	size_t p = 0;
+	size_t s = 0;
+	while (p < pieces.size() || s < segments.size())
 	{
-		appendLexicalBlock(piece.pclo, piece.pchi);
-		appendScopeSymbols(blockChildren[piece.block], piece.pclo, piece.pchi, frameBase, cfa, locals);
+		if (s < segments.size() && (p == pieces.size() || segments[s].lo < pieces[p].pclo))
+		{
+			appendLexicalBlock(segments[s].lo, segments[s].hi);
+			for (const ScopeConstant& constant : segments[s].constants)
+				appendConstant(constant);
+			s++;
+		}
+		else
+		{
+			const BlockPiece& piece = pieces[p];
+			appendLexicalBlock(piece.pclo, piece.pchi);
+			appendScopeSymbols(blockChildren[piece.block], piece.pclo, piece.pchi, frameBase, cfa, locals,
+			                   pieceConstants[p]);
+			p++;
+		}
 		appendEnd();
 	}
 }

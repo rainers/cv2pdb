@@ -188,6 +188,14 @@
 				>
 			</File>
 			<File
+				RelativePath=".\constantblocks.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\constantblocks.h"
+				>
+			</File>
+			<File
 				RelativePath=".\cv2pdb.cpp"
 				>
 			</File>
@@ -221,6 +229,14 @@
 			</File>
 			<File
 				RelativePath=".\dwarf2pdb.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\dwarfconst.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\dwarfconst.h"
 				>
 			</File>
 			<File
@@ -265,6 +281,10 @@
 			</File>
 			<File
 				RelativePath=".\readDwarf.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\scopeconstant.h"
 				>
 			</File>
 			<File

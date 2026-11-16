@@ -3,6 +3,7 @@
 #include "PEImage.h"
 #include "cv2pdb.h"
 #include "dwarf.h"
+#include "dwarfconst.h"
 #include "symutil.h"
 
 #include <algorithm>
@@ -193,6 +194,25 @@ std::vector<DefRange> LocalRangeResolver::resolve(const DWARF_Attribute& locatio
 			resolveComposite(entry, pieces, typeSize, ranges);
 	}
 	return ranges;
+}
+
+std::vector<ScopeConstant> LocalRangeResolver::resolveConstants(const DWARF_Attribute& location,
+                                                                const DIECursor& cursor) const
+{
+	std::vector<ScopeConstant> constants;
+	if (!isLocationList(location, cursor))
+		return constants;
+	for (const ListEntry& entry : readList(cursor, location))
+	{
+		ScopeConstant constant = {};
+		if (evalConstantValue(entry.expr, constant.value))
+		{
+			constant.lo = entry.lo;
+			constant.hi = entry.hi;
+			constants.push_back(constant);
+		}
+	}
+	return constants;
 }
 
 void LocalRangeResolver::resolvePieceRanges(const LocalFragment& fragment, const LocationPiece& piece,
@@ -475,9 +495,61 @@ unsigned typeSizeOf(const CV2PDB& cv, const DIECursor& cursor, byte* typePtr)
 	return 0;
 }
 
+// Returns whether an S_CONSTANT record can give the value of a variable of the DWARF type at
+// `typePtr`. When the function returns true, `size` is set to the size of the type in bytes, and
+// `isSigned` to whether the values of the type are signed.
+bool constantTypeOf(const CV2PDB& cv, const DIECursor& cursor, byte* typePtr, unsigned& size, bool& isSigned)
+{
+	for (int depth = 0; typePtr && depth < 64; depth++)
+	{
+		const DWARF_InfoData* type = cv.findEntryByPtr(typePtr);
+		if (!type)
+			return false;
+		switch (type->tag)
+		{
+		case DW_TAG_base_type:
+			size = type->byte_size;
+			isSigned = type->encoding == DW_ATE_signed || type->encoding == DW_ATE_signed_char;
+			return size >= 1 && size <= 8 &&
+			       (isSigned || type->encoding == DW_ATE_unsigned || type->encoding == DW_ATE_unsigned_char ||
+			        type->encoding == DW_ATE_boolean || type->encoding == DW_ATE_UTF);
+		case DW_TAG_enumeration_type:
+		{
+			unsigned underlyingSize;
+			size = type->byte_size;
+			isSigned = !type->type || !constantTypeOf(cv, cursor, type->type, underlyingSize, isSigned) || isSigned;
+			return size >= 1 && size <= 8;
+		}
+		case DW_TAG_pointer_type: case DW_TAG_reference_type: case DW_TAG_rvalue_reference_type:
+			size = cursor.cu ? cursor.cu->address_size : 0;
+			isSigned = false;
+			return size != 0;
+		case DW_TAG_typedef: case DW_TAG_const_type: case DW_TAG_volatile_type: case DW_TAG_restrict_type:
+			typePtr = type->type;
+			break;
+		default:
+			return false;
+		}
+	}
+	return false;
+}
+
+// Returns `value` truncated to `size` bytes, and sign extended when `isSigned` is set.
+uint64_t constantOfSize(uint64_t value, unsigned size, bool isSigned)
+{
+	if (size >= 8)
+		return value;
+	uint64_t mask = ((uint64_t)1 << (8 * size)) - 1;
+	value &= mask;
+	if (isSigned && (value >> (8 * size - 1)) & 1)
+		value |= ~mask;
+	return value;
+}
+
 } // namespace
 
-void DWARFLocalWriter::add(const DWARF_InfoData& var, const DIECursor& cursor, bool isParam)
+void DWARFLocalWriter::add(const DWARF_InfoData& var, const DIECursor& cursor, bool isParam,
+                           std::vector<ScopeConstant>& constants)
 {
 	if (!LocalRangeResolver::isLocationList(var.location, cursor))
 	{
@@ -515,11 +587,26 @@ void DWARFLocalWriter::add(const DWARF_InfoData& var, const DIECursor& cursor, b
 	// debugger to apply.
 	bool param = isParam && whole && (typeSize == 1 || typeSize == 2 || typeSize == 4 || typeSize == 8);
 
+	int type = cv.getTypeByDWARFPtr(var.type);
+	unsigned constantSize;
+	bool isSigned;
+	if (constantTypeOf(cv, cursor, var.type, constantSize, isSigned))
+	{
+		for (ScopeConstant& constant : resolver.resolveConstants(var.location, cursor))
+		{
+			constant.name = var.name;
+			constant.type = type;
+			constant.value = constantOfSize(constant.value, constantSize, isSigned);
+			constant.isSigned = isSigned;
+			constants.push_back(constant);
+		}
+	}
+
 	char name[kMaxNameLen];
 	cstrcpy_v(true, (BYTE*)name, var.name);
 	std::vector<uint8_t> records;
 	DefRangeEncoder encoder((uint16_t)(cv.img.text.secNo + 1));
-	encoder.appendLocal(records, name, cv.getTypeByDWARFPtr(var.type), param, ranges.empty());
+	encoder.appendLocal(records, name, type, param, ranges.empty());
 	encoder.appendDefRanges(records, ranges);
 
 	cv.checkUdtSymbolAlloc((int)records.size());

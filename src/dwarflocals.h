@@ -3,6 +3,7 @@
 
 #include "defrange.h"
 #include "readDwarf.h"
+#include "scopeconstant.h"
 
 #include <utility>
 #include <vector>
@@ -85,6 +86,10 @@ public:
 	// is missing.
 	std::vector<DefRange> resolve(const DWARF_Attribute& location, const DIECursor& cursor, unsigned typeSize);
 
+	// Returns the entries of the location list `location` that compute a constant value, with `lo`,
+	// `hi` and `value` set. Returns nothing when `location` is not a location list.
+	std::vector<ScopeConstant> resolveConstants(const DWARF_Attribute& location, const DIECursor& cursor) const;
+
 private:
 	struct ListEntry
 	{
@@ -140,8 +145,9 @@ public:
 	bool enabled() const;
 
 	// Appends the records for `var` to the symbols of the function, or nothing for a variable that
-	// this writer does not describe.
-	void add(const DWARF_InfoData& var, const DIECursor& cursor, bool isParam);
+	// this writer does not describe. When the type of `var` allows an S_CONSTANT record, each entry
+	// of the location list of `var` that computes a constant value is appended to `constants`.
+	void add(const DWARF_InfoData& var, const DIECursor& cursor, bool isParam, std::vector<ScopeConstant>& constants);
 
 private:
 	CV2PDB& cv;
