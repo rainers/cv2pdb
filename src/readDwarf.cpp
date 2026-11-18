@@ -893,8 +893,8 @@ DWARF_InfoData* DIECursor::readNext(DWARF_InfoData* entry, bool stopAtNull)
 			case DW_FORM_data4:          a.type = Const; a.cons = RD4(ptr); break;
 			case DW_FORM_data8:          a.type = Const; a.cons = RD8(ptr); break;
 			case DW_FORM_data16:         a.type = Block; a.block.len = 16; a.block.ptr = ptr; ptr += a.block.len; break;
-			case DW_FORM_sdata:          a.type = Const; a.cons = SLEB128(ptr); break;
-			case DW_FORM_udata:          a.type = Const; a.cons = LEB128(ptr); break;
+			case DW_FORM_sdata:          a.type = Const; a.cons = SLEB128_64(ptr); break;
+			case DW_FORM_udata:          a.type = Const; a.cons = LEB128_64(ptr); break;
 			case DW_FORM_implicit_const: a.type = Const; a.cons = LEB128(abbrev); break;
 			case DW_FORM_string:         a.type = String; a.string = (const char*)ptr; ptr += strlen(a.string) + 1; break;
             case DW_FORM_strp:           a.type = String; a.string = (const char*)img->debug_str.byteAt(RDref(ptr)); break;

@@ -32,36 +32,50 @@ enum DebugLevel : unsigned {
 
 DEFINE_ENUM_FLAG_OPERATORS(DebugLevel);
 
-inline unsigned int LEB128(byte* &p)
+inline uint64_t LEB128_64(byte* &p)
 {
-	unsigned int x = 0;
+	uint64_t x = 0;
 	int shift = 0;
 	while (*p & 0x80)
 	{
-		x |= (*p & 0x7f) << shift;
+		if (shift < 64)
+			x |= (uint64_t)(*p & 0x7f) << shift;
 		shift += 7;
 		p++;
 	}
-	x |= *p << shift;
+	if (shift < 64)
+		x |= (uint64_t)*p << shift;
 	p++;
 	return x;
 }
 
-inline int SLEB128(byte* &p)
+inline int64_t SLEB128_64(byte* &p)
 {
-	unsigned int x = 0;
+	uint64_t x = 0;
 	int shift = 0;
 	while (*p & 0x80)
 	{
-		x |= (*p & 0x7f) << shift;
+		if (shift < 64)
+			x |= (uint64_t)(*p & 0x7f) << shift;
 		shift += 7;
 		p++;
 	}
-	x |= *p << shift;
-	if (*p & 0x40)
-		x |= -(1 << (shift + 7)); // sign extend
+	if (shift < 64)
+		x |= (uint64_t)*p << shift;
+	if ((*p & 0x40) && shift + 7 < 64)
+		x |= ~(uint64_t)0 << (shift + 7); // sign extend
 	p++;
-	return x;
+	return (int64_t)x;
+}
+
+inline unsigned int LEB128(byte* &p)
+{
+	return (unsigned int)LEB128_64(p);
+}
+
+inline int SLEB128(byte* &p)
+{
+	return (int)SLEB128_64(p);
 }
 
 inline unsigned short RD2(byte* &p)
@@ -118,7 +132,7 @@ struct DWARF_Attribute
 	{
 		uint64_t addr;
 		struct { byte* ptr; unsigned len; } block;
-		unsigned long cons;
+		uint64_t cons;
 		const char* string;
 		bool flag;
 		byte* ref;
@@ -220,7 +234,7 @@ struct DWARF_InfoData
 	const char* name;
 	const char* linkage_name;
 	const char* dir;
-	unsigned long byte_size;
+	uint64_t byte_size;
 
 	// Pointer to the sibling DIE in the mapped image.
 	byte* sibling;
@@ -244,10 +258,10 @@ struct DWARF_InfoData
 	DWARF_Attribute location;
 	DWARF_Attribute member_location;
 	DWARF_Attribute frame_base;
-	long upper_bound;
-	long lower_bound;
+	int64_t upper_bound;
+	int64_t lower_bound;
 	bool has_lower_bound;
-	long count;
+	int64_t count;
 	bool has_count;
 	unsigned language;
 	unsigned long const_value;

@@ -69,7 +69,7 @@ public:
 
 	int addPointerType(codeview_type* dtype, int type, int attr = 0x800A);
 	int addPointerType(unsigned char* dtype, int type, int attr = 0x800A);
-	int addArrayType(codeview_type* dtype, int elemtype, int idxtype, int size);
+	int addArrayType(codeview_type* dtype, int elemtype, int idxtype, uint64_t size);
 
 	int addFieldMember(codeview_fieldtype* dfieldtype, int attr, int offset, int type, const char* name);
 	int addFieldStaticMember(codeview_fieldtype* dfieldtype, int attr, int type, const char* name);
@@ -195,10 +195,10 @@ public:
 	int  getModifiedTypeByDWARFPtr(byte* typePtr);
 	int  findTypeIdByPtr(byte* typePtr) const;
 	int  findEquivalentDefinitionTypeId(const DWARF_InfoData* entry) const;
-	int  getDWARFTypeSize(const DIECursor& parent, byte* ptr);
+	uint64_t getDWARFTypeSize(const DIECursor& parent, byte* ptr);
 	std::vector<DWARF_InfoData> getDWARFArraySubranges(DIECursor cursor);
 	void getDWARFSubrangeInfo(DWARF_InfoData& subrangeid, const DIECursor& parent,
-		int& basetype, int& lowerBound, int& upperBound);
+		int& basetype, int64_t& lowerBound, int64_t& upperBound);
 	int getDWARFBasicType(int encoding, int byte_size);
 
 	void build_cfi_index();

@@ -803,13 +803,13 @@ int CV2PDB::addPointerType(unsigned char* dtype, int type, int attr)
 	return addPointerType((codeview_type*) dtype, type, attr);
 }
 
-int CV2PDB::addArrayType(codeview_type* dtype, int elemtype, int idxtype, int size)
+int CV2PDB::addArrayType(codeview_type* dtype, int elemtype, int idxtype, uint64_t size)
 {
 	dtype->array_v2.id = v3 ? LF_ARRAY_V3 : LF_ARRAY_V2;
 	dtype->array_v2.elemtype = elemtype;
 	dtype->array_v2.idxtype = idxtype;
 	int len = offsetof(codeview_type, array_v2.arrlen);
-	len += write_numeric_leaf(size, &dtype->array_v2.arrlen);
+	len += write_numeric_leaf64(size, false /* isSigned */, &dtype->array_v2.arrlen);
 	((BYTE*)dtype)[len++] = 0; // empty name
 
 	unsigned char* p = (unsigned char*) dtype;

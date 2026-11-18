@@ -1366,7 +1366,7 @@ std::vector<DWARF_InfoData> CV2PDB::getDWARFArraySubranges(DIECursor cursor)
 }
 
 void CV2PDB::getDWARFSubrangeInfo(DWARF_InfoData& subrangeid, const DIECursor& parent,
-	int& basetype, int& lowerBound, int& upperBound)
+	int& basetype, int64_t& lowerBound, int64_t& upperBound)
 {
 	// In case of error, return plausible defaults. Assume the array
 	// contains one item: this is probably helpful to users.
@@ -1456,8 +1456,9 @@ int CV2PDB::addDWARFArray(DWARF_InfoData& arrayid, const DIECursor& cursor)
 {
 	std::vector<DWARF_InfoData> subranges = getDWARFArraySubranges(cursor);
 	int elemtype = getTypeByDWARFPtr(arrayid.type);
-	int size = getDWARFTypeSize(cursor, arrayid.type);
-	int basetype, upperBound, lowerBound;
+	uint64_t size = getDWARFTypeSize(cursor, arrayid.type);
+	int basetype;
+	int64_t upperBound, lowerBound;
 
 	// Each dimension becomes one LF_ARRAY record, and the record for an inner
 	// dimension is the element type of the record for the dimension outside it.
@@ -1844,7 +1845,7 @@ void CV2PDB::createForwardReferences()
 
 // Get the logical size of a DWARF type, starting from 'typePtr' and recursing
 // if necessary. E.g. for arrays.
-int CV2PDB::getDWARFTypeSize(const DIECursor& parent, byte* typePtr)
+uint64_t CV2PDB::getDWARFTypeSize(const DIECursor& parent, byte* typePtr)
 {
 	DWARF_InfoData id;
 	DIECursor cursor(parent, typePtr);
@@ -1865,10 +1866,11 @@ int CV2PDB::getDWARFTypeSize(const DIECursor& parent, byte* typePtr)
 			return cursor.cu->address_size;
 		case DW_TAG_array_type:
 		{
-			int size = getDWARFTypeSize(cursor, id.type);
+			uint64_t size = getDWARFTypeSize(cursor, id.type);
 			for (DWARF_InfoData& subrange : getDWARFArraySubranges(cursor))
 			{
-				int basetype, upperBound, lowerBound;
+				int basetype;
+				int64_t upperBound, lowerBound;
 				getDWARFSubrangeInfo(subrange, cursor, basetype, lowerBound, upperBound);
 				size *= upperBound - lowerBound + 1;
 			}
