@@ -76,7 +76,7 @@ Description:
 cv2pdb.exe is a command line tool which outputs its usage information
 if run without arguments:
 
-    usage: cv2pdb [-D<version>|-C|-n|-e|-s<C>|-p<embedded-pdb>|-l<debug-link>] <exe-file> [new-exe-file] [pdb-file]
+    usage: cv2pdb [-D<version>|-C|-n|-e|-s<C>|-p<embedded-pdb>|-l<debug-link>|-b<page-size>] <exe-file> [new-exe-file] [pdb-file]
 
 With the `-D` option, you can specify the version of the DMD compiler
 you are using. Unfortunately, this information is not embedded into
@@ -146,6 +146,17 @@ If there is no file there, it will be loaded from `.debug` subdirectory.
 Example:
 
     cv2pdb -ldebuggee.debug debuggee.exe
+
+With the PDB helper DLL of Visual Studio 2015 or later, the PDB file is written with pages of
+4096 bytes, the default of the Microsoft linker. With an older PDB helper DLL, the pages are
+1024 bytes. The `-b` option selects the page size: 1024, 4096, 8192, 16384 or 32768 bytes.
+A larger page size allows a larger PDB file. Select 1024 bytes for a tool that cannot read
+larger pages. If the PDB helper DLL does not export `PDBOpenEx2W`, the pages are 1024 bytes,
+and cv2pdb prints a warning when `-b` selects another size.
+
+Example:
+
+    cv2pdb -b8192 debuggee.exe
 
 Changes
 -------

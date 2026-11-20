@@ -198,8 +198,10 @@ public: virtual void MRECmp::structIsBoring(unsigned long);
 //public: virtual void * Pool<65536>::AllocBytes(unsigned int);
 //public: virtual void EnumSyms::get(unsigned char * *);
 
-typedef int __cdecl fnPDBOpen2W(const wchar_t *path,char const *mode,long *p,
-				wchar_t *ext,unsigned int flags,struct PDB **pPDB);
+typedef int __cdecl fnPDBOpen2W(const wchar_t *path,char const *mode,long *ec,
+				wchar_t *error,size_t cchErrMax,struct PDB **pPDB);
+typedef int __cdecl fnPDBOpenEx2W(const wchar_t *path,char const *mode,long cbPage,long *ec,
+				wchar_t *error,size_t cchErrMax,struct PDB **pPDB);
 
 struct PDB_part1 {
 public: virtual unsigned long QueryInterfaceVersion(void);
@@ -622,7 +624,9 @@ public: virtual void EnumNameMap_Special::get(char const * *,unsigned long *);
 bool initMsPdb();
 bool exitMsPdb();
 
-mspdb::PDB* CreatePDB(const wchar_t* pdbname);
+// A `pageSize` of 0 selects 4096 bytes when `vsVersion` is 14 or later and 1024 bytes otherwise. A DLL
+// that does not export PDBOpenEx2W writes 1024-byte pages whatever `pageSize` is.
+mspdb::PDB* CreatePDB(const wchar_t* pdbname, long pageSize);
 
 extern char* mspdb_dll;
 
