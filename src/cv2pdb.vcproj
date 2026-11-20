@@ -284,6 +284,10 @@
 				>
 			</File>
 			<File
+				RelativePath=".\scopeblocks.h"
+				>
+			</File>
+			<File
 				RelativePath=".\scopeconstant.h"
 				>
 			</File>

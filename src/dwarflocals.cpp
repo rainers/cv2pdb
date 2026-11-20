@@ -170,13 +170,23 @@ bool LocalRangeResolver::isLocationList(const DWARF_Attribute& attr, const DIECu
 }
 
 std::vector<DefRange> LocalRangeResolver::resolve(const DWARF_Attribute& location, const DIECursor& cursor,
-                                                  unsigned typeSize)
+                                                  unsigned typeSize, uint64_t lo, uint64_t hi)
 {
+	lo = (std::max)(lo, scopeLo);
+	hi = (std::min)(hi, scopeHi);
 	std::vector<ListEntry> entries;
 	if (isLocationList(location, cursor))
-		entries = readList(cursor, location);
-	else
-		entries.push_back(ListEntry{ scopeLo, scopeHi, location });
+	{
+		for (ListEntry& entry : readList(cursor, location))
+		{
+			entry.lo = (std::max)(entry.lo, lo);
+			entry.hi = (std::min)(entry.hi, hi);
+			if (entry.lo < entry.hi)
+				entries.push_back(entry);
+		}
+	}
+	else if (lo < hi)
+		entries.push_back(ListEntry{ lo, hi, location });
 
 	std::vector<DefRange> ranges;
 	std::vector<LocationPiece> pieces;
@@ -548,8 +558,8 @@ uint64_t constantOfSize(uint64_t value, unsigned size, bool isSigned)
 
 } // namespace
 
-void DWARFLocalWriter::add(const DWARF_InfoData& var, const DIECursor& cursor, bool isParam,
-                           std::vector<ScopeConstant>& constants)
+void DWARFLocalWriter::add(const DWARF_InfoData& var, const DIECursor& cursor, bool isParam, uint64_t lo,
+                           uint64_t hi, std::vector<ScopeConstant>& constants)
 {
 	if (!LocalRangeResolver::isLocationList(var.location, cursor))
 	{
@@ -576,7 +586,7 @@ void DWARFLocalWriter::add(const DWARF_InfoData& var, const DIECursor& cursor, b
 	}
 
 	unsigned typeSize = typeSizeOf(cv, cursor, var.type);
-	std::vector<DefRange> ranges = resolver.resolve(var.location, cursor, typeSize);
+	std::vector<DefRange> ranges = resolver.resolve(var.location, cursor, typeSize, lo, hi);
 
 	bool whole = std::all_of(ranges.begin(), ranges.end(), [](const DefRange& r) {
 		return r.loc.kind != DefRangeLocation::SubfieldRegister && !r.loc.spilledMember;
@@ -606,6 +616,8 @@ void DWARFLocalWriter::add(const DWARF_InfoData& var, const DIECursor& cursor, b
 	cstrcpy_v(true, (BYTE*)name, var.name);
 	std::vector<uint8_t> records;
 	DefRangeEncoder encoder((uint16_t)(cv.img.text.secNo + 1));
+	// An empty `ranges` still gets an S_LOCAL record, marked optimized out, so that a debugger lists
+	// the variable as unavailable in the scope that spans [lo, hi).
 	encoder.appendLocal(records, name, type, param, ranges.empty());
 	encoder.appendDefRanges(records, ranges);
 

@@ -81,10 +81,11 @@ public:
 	static bool isLocationList(const DWARF_Attribute& attr, const DIECursor& cursor);
 
 	// Returns the locations of the variable whose DW_AT_location is `location` and whose type is
-	// `typeSize` bytes, over code section offsets. Addresses where no location is valid, or where it
-	// has no CodeView form, are left out, as are addresses where some piece of a composite location
-	// is missing.
-	std::vector<DefRange> resolve(const DWARF_Attribute& location, const DIECursor& cursor, unsigned typeSize);
+	// `typeSize` bytes, over code section offsets, inside the addresses [lo, hi). Addresses where no
+	// location is valid, or where it has no CodeView form, are left out, as are addresses where some
+	// piece of a composite location is missing.
+	std::vector<DefRange> resolve(const DWARF_Attribute& location, const DIECursor& cursor, unsigned typeSize,
+	                              uint64_t lo, uint64_t hi);
 
 	// Returns the entries of the location list `location` that compute a constant value, with `lo`,
 	// `hi` and `value` set. Returns nothing when `location` is not a location list.
@@ -144,10 +145,12 @@ public:
 	// only when this returns true.
 	bool enabled() const;
 
-	// Appends the records for `var` to the symbols of the function, or nothing for a variable that
-	// this writer does not describe. When the type of `var` allows an S_CONSTANT record, each entry
-	// of the location list of `var` that computes a constant value is appended to `constants`.
-	void add(const DWARF_InfoData& var, const DIECursor& cursor, bool isParam, std::vector<ScopeConstant>& constants);
+	// Appends the records for `var` in the scope that spans the addresses [lo, hi) to the symbols of
+	// the function, or nothing for a variable that this writer does not describe. When the type of
+	// `var` allows an S_CONSTANT record, each entry of the location list of `var` that computes a
+	// constant value is appended to `constants`.
+	void add(const DWARF_InfoData& var, const DIECursor& cursor, bool isParam, uint64_t lo, uint64_t hi,
+	         std::vector<ScopeConstant>& constants);
 
 private:
 	CV2PDB& cv;

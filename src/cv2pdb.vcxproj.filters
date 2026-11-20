@@ -81,6 +81,9 @@
     <ClInclude Include="readDwarf.h">
       <Filter>Source Files</Filter>
     </ClInclude>
+    <ClInclude Include="scopeblocks.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
     <ClInclude Include="dwarf.h">
       <Filter>Source Files</Filter>
     </ClInclude>
